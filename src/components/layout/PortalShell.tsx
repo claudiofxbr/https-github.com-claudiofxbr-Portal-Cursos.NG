@@ -263,10 +263,10 @@ export function PortalShell({
                     <span className="truncate">{mod.label}</span>
                   </div>
                   {!isAllowed && (
-  <span title="Perfil sem permissão neste módulo">
-    <Lock className="w-3 h-3 text-slate-600 shrink-0" />
-  </span>
-)}
+                    <span title="Perfil sem permissão neste módulo">
+                      <Lock className="w-3 h-3 text-slate-600 shrink-0" />
+                    </span>
+                  )}
                 </button>
               )
             })}

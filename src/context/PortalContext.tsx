@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
 import {
   UserAccount,
   UserRole,
@@ -104,6 +104,20 @@ const STORAGE_KEYS = {
   USERS: 'portalcursos_users',
 }
 
+// Carrega listas do localStorage com validação: dados corrompidos ou
+// manipulados manualmente não podem derrubar o app (JSON.parse lançando
+// exceção => tela branca) nem injetar estruturas malformadas no estado.
+function loadJsonState<T>(key: string, fallback: T[]): T[] {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as T[]) : fallback
+  } catch {
+    return fallback
+  }
+}
+
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   // Gate state
   const [isGateUnlocked, setIsGateUnlocked] = useState<boolean>(() => {
@@ -114,54 +128,52 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   // Auth state
   const [users, setUsers] = useState<UserAccount[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.USERS)
-    return saved ? JSON.parse(saved) : DEMO_ACCOUNTS
+    const loaded = loadJsonState<UserAccount>(STORAGE_KEYS.USERS, DEMO_ACCOUNTS)
+    return loaded.length > 0 ? loaded : DEMO_ACCOUNTS
   })
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    // Correção de falha de controle de acesso: antes, sem sessão salva o app
+    // inicializava logado como ADMIN (DEMO_ACCOUNTS[1]) e qualquer id salvo
+    // caía de volta no admin — burlando o login e o RBAC. Agora: sem sessão
+    // válida, ninguém está logado.
     const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
-    if (!savedId) {
-      // Começa com admin como demo padrão se destravado ou nulo
-      return DEMO_ACCOUNTS[1] // Beatriz Santos (admin)
-    }
-    const found = DEMO_ACCOUNTS.find((u) => u.id === savedId)
-    return found || DEMO_ACCOUNTS[1]
+    if (!savedId) return null
+    return users.find((u) => u.id === savedId) || null
   })
   const [loginAttempts, setLoginAttempts] = useState<number>(0)
   const [isLoginLockedOut, setIsLoginLockedOut] = useState<boolean>(false)
 
+  // Ref com a lista de usuários sempre atualizada: o login lido por closures
+  // antigas (ex.: setTimeout do auto-login pós-cadastro) não via o usuário
+  // recém-criado e o login automático falhava silenciosamente.
+  const usersRef = useRef(users)
+  usersRef.current = users
+
   // Domain states
-  const [students, setStudents] = useState<Student[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS)
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS
-  })
-  const [courses, setCourses] = useState<Course[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.COURSES)
-    return saved ? JSON.parse(saved) : INITIAL_COURSES
-  })
-  const [charges, setCharges] = useState<Charge[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.CHARGES)
-    return saved ? JSON.parse(saved) : INITIAL_CHARGES
-  })
-  const [priceTable, setPriceTable] = useState<PriceTableItem[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PRICES)
-    return saved ? JSON.parse(saved) : INITIAL_PRICE_TABLE
-  })
-  const [priceAuditLogs, setPriceAuditLogs] = useState<PriceAuditLog[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PRICE_LOGS)
-    return saved ? JSON.parse(saved) : INITIAL_PRICE_AUDIT_LOGS
-  })
-  const [billingExceptions, setBillingExceptions] = useState<BillingException[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.EXCEPTIONS)
-    return saved ? JSON.parse(saved) : INITIAL_BILLING_EXCEPTIONS
-  })
-  const [tickets, setTickets] = useState<MaintenanceTicket[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.TICKETS)
-    return saved ? JSON.parse(saved) : INITIAL_TICKETS
-  })
-  const [lgpdRequests, setLgpdRequests] = useState<LgpdRequest[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.LGPD)
-    return saved ? JSON.parse(saved) : INITIAL_LGPD_REQUESTS
-  })
+  const [students, setStudents] = useState<Student[]>(() =>
+    loadJsonState<Student>(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS),
+  )
+  const [courses, setCourses] = useState<Course[]>(() =>
+    loadJsonState<Course>(STORAGE_KEYS.COURSES, INITIAL_COURSES),
+  )
+  const [charges, setCharges] = useState<Charge[]>(() =>
+    loadJsonState<Charge>(STORAGE_KEYS.CHARGES, INITIAL_CHARGES),
+  )
+  const [priceTable, setPriceTable] = useState<PriceTableItem[]>(() =>
+    loadJsonState<PriceTableItem>(STORAGE_KEYS.PRICES, INITIAL_PRICE_TABLE),
+  )
+  const [priceAuditLogs, setPriceAuditLogs] = useState<PriceAuditLog[]>(() =>
+    loadJsonState<PriceAuditLog>(STORAGE_KEYS.PRICE_LOGS, INITIAL_PRICE_AUDIT_LOGS),
+  )
+  const [billingExceptions, setBillingExceptions] = useState<BillingException[]>(() =>
+    loadJsonState<BillingException>(STORAGE_KEYS.EXCEPTIONS, INITIAL_BILLING_EXCEPTIONS),
+  )
+  const [tickets, setTickets] = useState<MaintenanceTicket[]>(() =>
+    loadJsonState<MaintenanceTicket>(STORAGE_KEYS.TICKETS, INITIAL_TICKETS),
+  )
+  const [lgpdRequests, setLgpdRequests] = useState<LgpdRequest[]>(() =>
+    loadJsonState<LgpdRequest>(STORAGE_KEYS.LGPD, INITIAL_LGPD_REQUESTS),
+  )
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   // Sync to local storage for realistic experience during session
@@ -237,7 +249,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const login = (email: string): boolean => {
     if (isLoginLockedOut) return false
 
-    const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+    const found = usersRef.current.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
     if (found) {
       setCurrentUser(found)
       setLoginAttempts(0)
@@ -271,6 +283,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }
 
   const updateUserRole = (userId: string, newRole: UserRole) => {
+    // Controle de escalonamento de privilégios: somente Root concede o papel
+    // Root e somente Root altera contas Root (não bastava o check na UI).
+    const target = usersRef.current.find((u) => u.id === userId)
+    if (!target) return
+    if ((newRole === 'root' || target.role === 'root') && currentUser?.role !== 'root') return
+
     const roleLabels: Record<UserRole, string> = {
       root: 'Super Administrador (Root)',
       admin: 'Administrador(a) Geral',
@@ -331,7 +349,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   // Students & Matricula
   const addStudent = (studentData: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>): Student => {
-    const rawCpf = studentData.cpf.replace(/\D/g, '')
+    const rawCpf = (studentData.cpf || '').replace(/\D/g, '')
     const newStudent: Student = {
       ...studentData,
       id: `std-${Date.now().toString().slice(-4)}`,
@@ -455,6 +473,19 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const currentItem = priceTable.find((p) => p.id === id)
     if (!currentItem) return
 
+    // Sanitiza valores monetários: NaN/undefined/negativos não podem corromper
+    // a tabela nem os registros de auditoria (ex.: "R$ NaN").
+    const safeUpdates: Partial<PriceTableItem> = { ...updates }
+    if ('standardMonthlyFee' in safeUpdates) {
+      const v = Number(safeUpdates.standardMonthlyFee)
+      safeUpdates.standardMonthlyFee =
+        Number.isFinite(v) && v >= 0 ? v : currentItem.standardMonthlyFee
+    }
+    if ('enrollmentFee' in safeUpdates) {
+      const v = Number(safeUpdates.enrollmentFee)
+      safeUpdates.enrollmentFee = Number.isFinite(v) && v >= 0 ? v : currentItem.enrollmentFee
+    }
+
     const now = new Date().toISOString().split('T')[0]
     const updatedBy = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Administrador'
 
@@ -466,12 +497,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       userRole: currentUser?.role || 'admin',
       changeSummary: reason || 'Atualização de tabela tarifária',
       previousValue: `Mensal: R$ ${currentItem.standardMonthlyFee.toFixed(2)} | Matrícula: R$ ${currentItem.enrollmentFee.toFixed(2)}`,
-      newValue: `Mensal: R$ ${(updates.standardMonthlyFee ?? currentItem.standardMonthlyFee).toFixed(2)} | Matrícula: R$ ${(updates.enrollmentFee ?? currentItem.enrollmentFee).toFixed(2)}`,
+      newValue: `Mensal: R$ ${(safeUpdates.standardMonthlyFee ?? currentItem.standardMonthlyFee).toFixed(2)} | Matrícula: R$ ${(safeUpdates.enrollmentFee ?? currentItem.enrollmentFee).toFixed(2)}`,
     }
 
     setPriceAuditLogs((prev) => [logEntry, ...prev])
     setPriceTable((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt: now, updatedBy } : p)),
+      prev.map((p) => (p.id === id ? { ...p, ...safeUpdates, updatedAt: now, updatedBy } : p)),
     )
   }
 
