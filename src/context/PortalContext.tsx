@@ -27,6 +27,7 @@ import {
   INITIAL_LGPD_REQUESTS,
   INITIAL_DIAGNOSTIC,
 } from '@/data/portalMockData'
+import { generateId } from '@/lib/id'
 
 interface PortalContextType {
   // Gate
@@ -102,6 +103,65 @@ const STORAGE_KEYS = {
   TICKETS: 'portalcursos_tickets',
   LGPD: 'portalcursos_lgpd',
   USERS: 'portalcursos_users',
+  GATE_LOCK: 'portalcursos_gate_lock',
+  LOGIN_LOCK: 'portalcursos_login_lock',
+}
+
+// Limites de bloqueio por tentativas falhas (portão e login)
+const MAX_FAILED_ATTEMPTS = 4
+const GATE_LOCKOUT_MS = 30_000 // 30s
+const LOGIN_LOCKOUT_MS = 25_000 // 25s
+
+interface LockState {
+  attempts: number
+  lockedUntil: number
+}
+
+const UNLOCKED_LOCK: LockState = { attempts: 0, lockedUntil: 0 }
+
+// Grava no localStorage sem derrubar o app (quota cheia, modo privado etc.)
+function persistJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Persistência é uma conveniência da demo: falha silenciosa é aceitável.
+  }
+}
+
+// Lê o estado de bloqueio (tentativas + expiração) validando a estrutura:
+// dados corrompidos ou manipulados manualmente voltam ao estado limpo.
+function loadLockState(key: string): LockState {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return UNLOCKED_LOCK
+    const parsed = JSON.parse(raw) as Partial<LockState> | null
+    if (!parsed || typeof parsed !== 'object') return UNLOCKED_LOCK
+
+    const attempts = Number(parsed.attempts)
+    const lockedUntil = Number(parsed.lockedUntil)
+    const safeAttempts = Number.isFinite(attempts) && attempts >= 0 ? Math.floor(attempts) : 0
+    const safeUntil = Number.isFinite(lockedUntil) && lockedUntil > 0 ? lockedUntil : 0
+
+    // Bloqueio já expirado enquanto a página estava fechada: recomeça limpo.
+    if (safeUntil > 0 && safeUntil <= Date.now()) return UNLOCKED_LOCK
+
+    return { attempts: safeAttempts, lockedUntil: safeUntil }
+  } catch {
+    return UNLOCKED_LOCK
+  }
+}
+
+// Re-renderiza no instante em que um bloqueio expira e limpa o timer se o
+// provider desmontar (nada de setState após unmount).
+function useLockExpiry(lockedUntil: number, onExpire: () => void) {
+  const onExpireRef = useRef(onExpire)
+  onExpireRef.current = onExpire
+
+  useEffect(() => {
+    if (lockedUntil <= Date.now()) return
+    const timer = window.setTimeout(() => onExpireRef.current(), lockedUntil - Date.now())
+    return () => window.clearTimeout(timer)
+  }, [lockedUntil])
 }
 
 // Carrega listas do localStorage com validação: dados corrompidos ou
@@ -121,10 +181,18 @@ function loadJsonState<T>(key: string, fallback: T[]): T[] {
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   // Gate state
   const [isGateUnlocked, setIsGateUnlocked] = useState<boolean>(() => {
-    return localStorage.getItem(STORAGE_KEYS.GATE) === 'true'
+    try {
+      return localStorage.getItem(STORAGE_KEYS.GATE) === 'true'
+    } catch {
+      return false
+    }
   })
-  const [gateAttempts, setGateAttempts] = useState<number>(0)
-  const [isGateLockedOut, setIsGateLockedOut] = useState<boolean>(false)
+  // Lockout persistido: recarregar a página não zera o bloqueio por tentativas
+  // falhas (antes vivia só em memória e um F5 bastava para brute force).
+  const [gateLock, setGateLock] = useState<LockState>(() => loadLockState(STORAGE_KEYS.GATE_LOCK))
+  const gateAttempts = gateLock.attempts
+  const isGateLockedOut = gateLock.lockedUntil > Date.now()
+  useLockExpiry(gateLock.lockedUntil, () => setGateLock(UNLOCKED_LOCK))
 
   // Auth state
   const [users, setUsers] = useState<UserAccount[]>(() => {
@@ -140,8 +208,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     if (!savedId) return null
     return users.find((u) => u.id === savedId) || null
   })
-  const [loginAttempts, setLoginAttempts] = useState<number>(0)
-  const [isLoginLockedOut, setIsLoginLockedOut] = useState<boolean>(false)
+  const [loginLock, setLoginLock] = useState<LockState>(() =>
+    loadLockState(STORAGE_KEYS.LOGIN_LOCK),
+  )
+  const loginAttempts = loginLock.attempts
+  const isLoginLockedOut = loginLock.lockedUntil > Date.now()
+  useLockExpiry(loginLock.lockedUntil, () => setLoginLock(UNLOCKED_LOCK))
 
   // Ref com a lista de usuários sempre atualizada: o login lido por closures
   // antigas (ex.: setTimeout do auto-login pós-cadastro) não via o usuário
@@ -176,45 +248,70 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   )
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
-  // Sync to local storage for realistic experience during session
+  // Sync to local storage for realistic experience during session.
+  // Toda escrita passa por persistJson (try/catch): quota cheia ou modo
+  // privado não podem derrubar o app no meio de uma ação do usuário.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.GATE, String(isGateUnlocked))
+    persistJson(STORAGE_KEYS.GATE, isGateUnlocked)
   }, [isGateUnlocked])
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id)
+      persistJson(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id)
     } else {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+      try {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+      } catch {
+        // idem: falha de storage não derruba o logout
+      }
     }
   }, [currentUser])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students))
+    persistJson(STORAGE_KEYS.STUDENTS, students)
   }, [students])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(courses))
+    persistJson(STORAGE_KEYS.COURSES, courses)
   }, [courses])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CHARGES, JSON.stringify(charges))
+    persistJson(STORAGE_KEYS.CHARGES, charges)
   }, [charges])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PRICES, JSON.stringify(priceTable))
+    persistJson(STORAGE_KEYS.PRICES, priceTable)
   }, [priceTable])
 
+  // Auditoria tarifária e exceções de cobrança persistem JUNTAS com a tabela:
+  // antes só a tabela sobrevivia ao reload, quebrando a trilha de auditoria.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(tickets))
+    persistJson(STORAGE_KEYS.PRICE_LOGS, priceAuditLogs)
+  }, [priceAuditLogs])
+
+  useEffect(() => {
+    persistJson(STORAGE_KEYS.EXCEPTIONS, billingExceptions)
+  }, [billingExceptions])
+
+  // Estado de bloqueio (portão/login) persistido: reload não zera o lockout
+  useEffect(() => {
+    persistJson(STORAGE_KEYS.GATE_LOCK, gateLock)
+  }, [gateLock])
+
+  useEffect(() => {
+    persistJson(STORAGE_KEYS.LOGIN_LOCK, loginLock)
+  }, [loginLock])
+
+  useEffect(() => {
+    persistJson(STORAGE_KEYS.TICKETS, tickets)
   }, [tickets])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LGPD, JSON.stringify(lgpdRequests))
+    persistJson(STORAGE_KEYS.LGPD, lgpdRequests)
   }, [lgpdRequests])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users))
+    persistJson(STORAGE_KEYS.USERS, users)
   }, [users])
 
   // Gate functions
@@ -224,25 +321,26 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const cleanInput = code.trim().toUpperCase()
     if (cleanInput === PORTAL_GATE_PASSCODE) {
       setIsGateUnlocked(true)
-      setGateAttempts(0)
+      setGateLock(UNLOCKED_LOCK)
       return true
     }
 
     const nextAttempts = gateAttempts + 1
-    setGateAttempts(nextAttempts)
-    if (nextAttempts >= 4) {
-      setIsGateLockedOut(true)
-      setTimeout(() => {
-        setIsGateLockedOut(false)
-        setGateAttempts(0)
-      }, 30000) // 30s lockout
+    if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+      setGateLock({ attempts: nextAttempts, lockedUntil: Date.now() + GATE_LOCKOUT_MS })
+    } else {
+      setGateLock({ attempts: nextAttempts, lockedUntil: 0 })
     }
     return false
   }
 
   const lockGate = () => {
     setIsGateUnlocked(false)
-    localStorage.removeItem(STORAGE_KEYS.GATE)
+    try {
+      localStorage.removeItem(STORAGE_KEYS.GATE)
+    } catch {
+      // falha de storage não derruba o lock
+    }
   }
 
   // Auth functions
@@ -252,18 +350,15 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const found = usersRef.current.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
     if (found) {
       setCurrentUser(found)
-      setLoginAttempts(0)
+      setLoginLock(UNLOCKED_LOCK)
       return true
     }
 
     const nextAttempts = loginAttempts + 1
-    setLoginAttempts(nextAttempts)
-    if (nextAttempts >= 4) {
-      setIsLoginLockedOut(true)
-      setTimeout(() => {
-        setIsLoginLockedOut(false)
-        setLoginAttempts(0)
-      }, 25000)
+    if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+      setLoginLock({ attempts: nextAttempts, lockedUntil: Date.now() + LOGIN_LOCKOUT_MS })
+    } else {
+      setLoginLock({ attempts: nextAttempts, lockedUntil: 0 })
     }
     return false
   }
@@ -272,14 +367,17 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const found = users.find((u) => u.role === role) || DEMO_ACCOUNTS.find((u) => u.role === role)
     if (found) {
       setCurrentUser(found)
-      setLoginAttempts(0)
-      setIsLoginLockedOut(false)
+      setLoginLock(UNLOCKED_LOCK)
     }
   }
 
   const logout = () => {
     setCurrentUser(null)
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+    } catch {
+      // idem
+    }
   }
 
   const updateUserRole = (userId: string, newRole: UserRole) => {
@@ -329,7 +427,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const createUser = (userData: Omit<UserAccount, 'id' | 'createdAt'>) => {
     const newUser: UserAccount = {
       ...userData,
-      id: `user-${Date.now()}`,
+      id: generateId('user'),
       createdAt: new Date().toISOString().split('T')[0],
       lastAccess: 'Nunca',
     }
@@ -352,7 +450,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const rawCpf = (studentData.cpf || '').replace(/\D/g, '')
     const newStudent: Student = {
       ...studentData,
-      id: `std-${Date.now().toString().slice(-4)}`,
+      id: generateId('std'),
       cpfRaw: rawCpf,
       enrolledAt: new Date().toISOString().split('T')[0],
     }
@@ -368,7 +466,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
     // Cria cobrança de matrícula inicial automática
     const newCharge: Charge = {
-      id: `chg-${Date.now().toString().slice(-4)}`,
+      id: generateId('chg'),
       code: `COB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       studentId: newStudent.id,
       studentName: newStudent.fullName,
@@ -430,7 +528,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const addCourse = (courseData: Omit<Course, 'id' | 'enrolledCount'>) => {
     const newCourse: Course = {
       ...courseData,
-      id: `crs-${Date.now().toString().slice(-4)}`,
+      id: generateId('crs'),
       enrolledCount: 0,
     }
     setCourses((prev) => [newCourse, ...prev])
@@ -446,7 +544,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
               status: 'pago',
               method: 'pix',
               paidAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-              receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
+              receiptNumber: generateId('REC'),
             }
           : chg,
       ),
@@ -462,7 +560,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
               status: 'pago',
               method: 'cartao',
               paidAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-              receiptNumber: `REC-CARD-${Date.now().toString().slice(-6)}`,
+              receiptNumber: generateId('REC-CARD'),
             }
           : chg,
       ),
@@ -485,13 +583,18 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       const v = Number(safeUpdates.enrollmentFee)
       safeUpdates.enrollmentFee = Number.isFinite(v) && v >= 0 ? v : currentItem.enrollmentFee
     }
+    if ('lateFeePercentage' in safeUpdates) {
+      const v = Number(safeUpdates.lateFeePercentage)
+      safeUpdates.lateFeePercentage =
+        Number.isFinite(v) && v >= 0 && v <= 100 ? v : currentItem.lateFeePercentage
+    }
 
     const now = new Date().toISOString().split('T')[0]
     const updatedBy = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Administrador'
 
     // Registra auditoria
     const logEntry: PriceAuditLog = {
-      id: `log-${Date.now()}`,
+      id: generateId('log'),
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
       userName: currentUser?.name || 'Sistema',
       userRole: currentUser?.role || 'admin',
@@ -511,7 +614,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const newExc: BillingException = {
       ...exceptionData,
-      id: `exc-${Date.now().toString().slice(-4)}`,
+      id: generateId('exc'),
       status: 'pendente',
       createdAt: new Date().toISOString().split('T')[0],
     }
@@ -536,7 +639,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const addTicket = (ticketData: Omit<MaintenanceTicket, 'id' | 'createdAt' | 'status'>) => {
     const newTicket: MaintenanceTicket = {
       ...ticketData,
-      id: `tkt-${Date.now().toString().slice(-4)}`,
+      id: generateId('tkt'),
       status: 'aberto',
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
     }
@@ -564,7 +667,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const addLgpdRequest = (reqData: Omit<LgpdRequest, 'id' | 'createdAt'>) => {
     const newReq: LgpdRequest = {
       ...reqData,
-      id: `lgpd-${Date.now().toString().slice(-4)}`,
+      id: generateId('lgpd'),
       createdAt: new Date().toISOString().split('T')[0],
     }
     setLgpdRequests((prev) => [newReq, ...prev])

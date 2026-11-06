@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
+import { generateId } from '@/lib/id'
 import { Course } from '@/types/portal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -76,7 +77,14 @@ export function CursosModule() {
     setIsNewCourse(true)
     setEditingCourse(null)
     setName('')
-    setCode(`CRS-${Date.now().toString().slice(-4)}`)
+    // Sugestão de código com sufixo robusto (crypto.randomUUID quando
+    // disponível) em vez de Date.now().slice(-4), que colidia com facilidade.
+    const uniqueSuffix = generateId('')
+      .replace(/^-/, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 8)
+      .toUpperCase()
+    setCode(`CRS-${uniqueSuffix}`)
     setLevel('graduacao')
     setType('bacharelado')
     setModality('presencial')

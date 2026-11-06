@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { DEMO_ACCOUNTS } from '@/data/portalMockData'
 import { UserRole } from '@/types/portal'
@@ -37,6 +37,15 @@ export function LoginModalScreen() {
   const [regRole, setRegRole] = useState<UserRole>('secretaria')
   const [regDept, setRegDept] = useState('')
   const [regSuccess, setRegSuccess] = useState(false)
+
+  // Auto-login pós-cadastro em timer próprio, limpo no unmount: sem isso o
+  // setTimeout sobrevivia ao componente e fazia setState após desmontagem.
+  const autoLoginTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    return () => {
+      if (autoLoginTimerRef.current !== null) window.clearTimeout(autoLoginTimerRef.current)
+    }
+  }, [])
 
   // Se já há usuário logado e não está forçando tela
   if (currentUser) {
@@ -89,7 +98,8 @@ export function LoginModalScreen() {
     })
 
     setRegSuccess(true)
-    setTimeout(() => {
+    if (autoLoginTimerRef.current !== null) window.clearTimeout(autoLoginTimerRef.current)
+    autoLoginTimerRef.current = window.setTimeout(() => {
       login(regEmail.trim())
     }, 1200)
   }

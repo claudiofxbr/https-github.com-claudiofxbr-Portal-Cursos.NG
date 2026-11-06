@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Charge, PriceTableItem, BillingException } from '@/types/portal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -79,9 +79,48 @@ export function FinanceiroModule() {
   const [newExcJustification, setNewExcJustification] = useState('')
   const [excModalOpen, setExcModalOpen] = useState(false)
 
+  // Refs para os timers (Pix copiado, checkout de cartão): o useEffect de
+  // cleanup abaixo garante clearTimeout no unmount — nada de setState após
+  // o componente sair da tela.
+  const copyTimerRef = useRef<number | null>(null)
+  const cardTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+      if (cardTimerRef.current !== null) window.clearTimeout(cardTimerRef.current)
+    }
+  }, [])
+
   // Formatações
   const formatCurrency = (val: number) =>
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  // QR Code Pix: só renderizamos fontes geradas pelo próprio fluxo de pagamento
+  // (data:image/* gerada aqui, ou a URL de QR do sandbox do fluxo interno).
+  // Qualquer outra URL (http/https de terceiros, javascript:, etc.) não vai
+  // para <img src>: cairia no ícone de fallback.
+  const isTrustedPixQr = (url: string): boolean => {
+    try {
+      const parsed = new URL(url, window.location.origin)
+      if (parsed.protocol === 'data:') {
+        return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(url)
+      }
+      // Fonte do fluxo interno (sandbox do próprio app / CDN do fluxo)
+      return (
+        parsed.protocol === 'https:' &&
+        (parsed.hostname === 'api.qrserver.com' || parsed.hostname === window.location.hostname)
+      )
+    } catch {
+      return false
+    }
+  }
+
+  const safePixQrUrl = selectedCharge?.pixQrUrl
+    ? isTrustedPixQr(selectedCharge.pixQrUrl)
+      ? selectedCharge.pixQrUrl
+      : null
+    : null
 
   // Abertura Modal Pix
   const handleOpenPix = (charge: Charge) => {
@@ -90,16 +129,31 @@ export function FinanceiroModule() {
     setCopiedPix(false)
   }
 
-  // Copiar código Pix
-  const handleCopyPix = () => {
+  // Copiar código Pix — clipboard pode falhar (permissão, contexto não seguro,
+  // iframe): sempre tratamos a rejeição com feedback de erro ao usuário.
+  const handleCopyPix = async () => {
     if (!selectedCharge?.pixCode) return
-    navigator.clipboard.writeText(selectedCharge.pixCode)
-    setCopiedPix(true)
-    toast({
-      title: 'Código Pix Copiado',
-      description: 'Chave copia-e-cola salva na sua área de transferência.',
-    })
-    setTimeout(() => setCopiedPix(false), 3000)
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API indisponível neste navegador')
+      }
+      await navigator.clipboard.writeText(selectedCharge.pixCode)
+      setCopiedPix(true)
+      toast({
+        title: 'Código Pix Copiado',
+        description: 'Chave copia-e-cola salva na sua área de transferência.',
+      })
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = window.setTimeout(() => setCopiedPix(false), 3000)
+    } catch (err) {
+      setCopiedPix(false)
+      toast({
+        title: 'Não foi possível copiar',
+        description:
+          'A cópia automática falhou. Selecione o código abaixo e copie manualmente (Ctrl+C).',
+        variant: 'destructive',
+      })
+    }
   }
 
   // Confirmar Pix simulado
@@ -129,7 +183,8 @@ export function FinanceiroModule() {
     if (!selectedCharge) return
 
     setCardProcessing(true)
-    setTimeout(() => {
+    if (cardTimerRef.current !== null) window.clearTimeout(cardTimerRef.current)
+    cardTimerRef.current = window.setTimeout(() => {
       setCardProcessing(false)
       payChargeCard(selectedCharge.id, {
         last4: cardNumber.replace(/\D/g, '').slice(-4) || '8821',
@@ -156,6 +211,25 @@ export function FinanceiroModule() {
   const handleSavePrice = (e: React.FormEvent) => {
     e.preventDefault()
     if (!editPriceItem) return
+
+    // Bloqueia campo vazio/valor inválido antes de gravar: nada de NaN ou
+    // "R$ 0" indevido na tabela nem no log de auditoria.
+    if (
+      !Number.isFinite(editMonthly) ||
+      !Number.isFinite(editEnrollment) ||
+      !Number.isFinite(editLateFee) ||
+      editMonthly < 0 ||
+      editEnrollment < 0 ||
+      editLateFee < 0 ||
+      editLateFee > 100
+    ) {
+      toast({
+        title: 'Valores inválidos',
+        description: 'Preencha mensalidade, matrícula e multa com números válidos (≥ 0).',
+        variant: 'destructive',
+      })
+      return
+    }
 
     updatePriceTableItem(
       editPriceItem.id,
@@ -602,9 +676,9 @@ export function FinanceiroModule() {
 
                 {/* QR Code Fictício Real gerado */}
                 <div className="w-48 h-48 mx-auto bg-white p-2 rounded-xl flex items-center justify-center shadow-lg">
-                  {selectedCharge.pixQrUrl ? (
+                  {safePixQrUrl ? (
                     <img
-                      src={selectedCharge.pixQrUrl}
+                      src={safePixQrUrl}
                       alt="QR Code Pix"
                       className="w-full h-full object-contain"
                     />
@@ -756,8 +830,12 @@ export function FinanceiroModule() {
               <label className="text-xs text-slate-300">Mensalidade Padrão (R$)</label>
               <Input
                 type="number"
-                value={editMonthly}
-                onChange={(e) => setEditMonthly(Number(e.target.value))}
+                min={0}
+                step="0.01"
+                value={Number.isFinite(editMonthly) ? editMonthly : ''}
+                onChange={(e) =>
+                  setEditMonthly(e.target.value === '' ? NaN : Number(e.target.value))
+                }
                 className="bg-slate-900 border-slate-700 text-white text-xs"
                 required
               />
@@ -766,8 +844,12 @@ export function FinanceiroModule() {
               <label className="text-xs text-slate-300">Taxa de Matrícula (R$)</label>
               <Input
                 type="number"
-                value={editEnrollment}
-                onChange={(e) => setEditEnrollment(Number(e.target.value))}
+                min={0}
+                step="0.01"
+                value={Number.isFinite(editEnrollment) ? editEnrollment : ''}
+                onChange={(e) =>
+                  setEditEnrollment(e.target.value === '' ? NaN : Number(e.target.value))
+                }
                 className="bg-slate-900 border-slate-700 text-white text-xs"
                 required
               />
@@ -776,9 +858,13 @@ export function FinanceiroModule() {
               <label className="text-xs text-slate-300">Multa por atraso (%)</label>
               <Input
                 type="number"
+                min={0}
+                max={100}
                 step="0.1"
-                value={editLateFee}
-                onChange={(e) => setEditLateFee(Number(e.target.value))}
+                value={Number.isFinite(editLateFee) ? editLateFee : ''}
+                onChange={(e) =>
+                  setEditLateFee(e.target.value === '' ? NaN : Number(e.target.value))
+                }
                 className="bg-slate-900 border-slate-700 text-white text-xs"
                 required
               />

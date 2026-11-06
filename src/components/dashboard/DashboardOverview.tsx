@@ -33,6 +33,13 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Cpu,
 }
 
+// Navegação validada: o atalho só dispara se o perfil pode acessar o módulo.
+// (defesa em profundidade — o Index.tsx também valida, mas o componente não
+// deve depender disso)
+function handleNavigate(onNavigate: (mod: ModuleKey) => void, mod: ModuleKey, allowed: boolean) {
+  if (allowed) onNavigate(mod)
+}
+
 export function DashboardOverview({ onNavigate }: { onNavigate: (mod: ModuleKey) => void }) {
   const { currentUser, canAccessModule, students, courses, charges, tickets, lgpdRequests } =
     usePortal()
@@ -78,7 +85,9 @@ export function DashboardOverview({ onNavigate }: { onNavigate: (mod: ModuleKey)
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             {canAccessModule('matriculas') && (
               <Button
-                onClick={() => onNavigate('matriculas')}
+                onClick={() =>
+                  handleNavigate(onNavigate, 'matriculas', canAccessModule('matriculas'))
+                }
                 className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-9"
               >
                 <GraduationCap className="w-4 h-4 mr-2" />
@@ -87,7 +96,9 @@ export function DashboardOverview({ onNavigate }: { onNavigate: (mod: ModuleKey)
             )}
             {canAccessModule('financeiro') && (
               <Button
-                onClick={() => onNavigate('financeiro')}
+                onClick={() =>
+                  handleNavigate(onNavigate, 'financeiro', canAccessModule('financeiro'))
+                }
                 variant="outline"
                 className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200 text-xs h-9"
               >
@@ -176,9 +187,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate: (mod: ModuleKey)
                     ? 'bg-slate-900/80 border-slate-800 hover:border-blue-500/50 hover:bg-slate-900 group cursor-pointer'
                     : 'bg-slate-950/40 border-slate-800/40 opacity-50 cursor-not-allowed'
                 }`}
-                onClick={() => {
-                  if (isAllowed) onNavigate(mod.key)
-                }}
+                onClick={() => handleNavigate(onNavigate, mod.key, isAllowed)}
               >
                 <CardHeader className="p-4 pb-2">
                   <div className="flex items-center justify-between mb-2">

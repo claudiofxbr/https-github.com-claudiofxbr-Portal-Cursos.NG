@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
+import { generateId } from '@/lib/id'
 import { Student, StudentDocument } from '@/types/portal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -100,9 +101,37 @@ export function MatriculaModule() {
     return out
   }
 
+  // Limites de upload (demonstração, mas com validação real no cliente):
+  // foto 3x4 até 2 MB; documentos até 5 MB cada.
+  const MAX_PHOTO_BYTES = 2 * 1024 * 1024
+  const MAX_DOC_BYTES = 5 * 1024 * 1024
+  const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+  const ACCEPTED_DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+
+  const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1).replace('.0', '')} MB`
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (!file) return
+
+    if (!ACCEPTED_PHOTO_TYPES.includes(file.type)) {
+      toast({
+        title: 'Formato de foto não suportado',
+        description: 'Envie a foto 3x4 em JPG, PNG ou WEBP.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (file.size > MAX_PHOTO_BYTES) {
+      toast({
+        title: 'Foto muito grande',
+        description: `A foto 3x4 deve ter até ${formatBytes(MAX_PHOTO_BYTES)} (arquivo: ${formatBytes(file.size)}).`,
+        variant: 'destructive',
+      })
+      return
+    }
 
     const reader = new FileReader()
     reader.onload = () => {
@@ -112,31 +141,59 @@ export function MatriculaModule() {
         description: `${file.name} anexado à matrícula.`,
       })
     }
+    reader.onerror = () => {
+      toast({
+        title: 'Erro ao ler a foto',
+        description: 'Não foi possível processar o arquivo. Tente novamente.',
+        variant: 'destructive',
+      })
+    }
     reader.readAsDataURL(file)
   }
 
   const handleDocUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
+    e.target.value = ''
     if (files.length === 0) return
 
-    files.forEach((file, idx) => {
-      const newDoc: StudentDocument = {
-        id: `doc-${Date.now()}-${idx}`,
+    const validDocs: StudentDocument[] = []
+    let rejected = 0
+
+    files.forEach((file) => {
+      if (!ACCEPTED_DOC_TYPES.includes(file.type) || file.size > MAX_DOC_BYTES) {
+        rejected += 1
+        return
+      }
+
+      validDocs.push({
+        id: generateId('doc'),
         name: file.name,
         type: 'outro',
         fileUrl: '#',
         fileName: file.name,
         uploadedAt: new Date().toISOString().split('T')[0],
         status: 'pendente',
-      }
-
-      setFormDocs((prev) => [...prev, newDoc])
+      })
     })
 
-    toast({
-      title: 'Documentos anexados',
-      description: `${files.length} arquivo(s) aguardando validação pela secretaria.`,
-    })
+    if (validDocs.length > 0) {
+      setFormDocs((prev) => [...prev, ...validDocs])
+    }
+
+    if (rejected > 0) {
+      toast({
+        title: 'Alguns documentos foram recusados',
+        description: `Cada documento deve ter até ${formatBytes(MAX_DOC_BYTES)} e ser PDF, JPG, PNG ou WEBP. ${rejected} arquivo(s) fora dos limites.`,
+        variant: 'destructive',
+      })
+    }
+
+    if (validDocs.length > 0) {
+      toast({
+        title: 'Documentos anexados',
+        description: `${validDocs.length} arquivo(s) aguardando validação pela secretaria.`,
+      })
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {

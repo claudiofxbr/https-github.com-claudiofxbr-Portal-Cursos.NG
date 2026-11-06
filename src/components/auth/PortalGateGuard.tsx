@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { PORTAL_GATE_PASSCODE } from '@/data/portalMockData'
 import {
@@ -28,6 +28,19 @@ export function PortalGateGuard({ children }: { children: React.ReactNode }) {
   const [passcode, setPasscode] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successPing, setSuccessPing] = useState(false)
+
+  // O bloqueio (gateLock) vive no contexto e sobrevive ao reload; aqui apenas
+  // reagimos à expiração — o provider zera o estado quando o prazo acaba.
+  // Nenhum timer neste componente: nada de setState após unmount.
+  const gateAttemptsRef = useRef(gateAttempts)
+  gateAttemptsRef.current = gateAttempts
+
+  // Limpa mensagem de erro quando o bloqueio termina (feedback coerente)
+  useEffect(() => {
+    if (!isGateLockedOut && errorMsg && gateAttemptsRef.current === 0) {
+      setErrorMsg(null)
+    }
+  }, [isGateLockedOut, errorMsg])
 
   if (isGateUnlocked) {
     return <>{children}</>
