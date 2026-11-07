@@ -34,6 +34,8 @@ import {
   loadAllData,
   loginWithPassword,
   logoutAuth,
+  requestPasswordReset,
+  confirmPasswordReset,
   mapAuthUser,
   AnyRec,
 } from '@/lib/portalDb'
@@ -58,6 +60,13 @@ interface PortalContextType {
     user: Omit<UserAccount, 'id' | 'createdAt'>,
     password?: string,
   ) => Promise<UserAccount | null>
+  requestPasswordResetEmail: (
+    email: string,
+  ) => Promise<{ success: boolean; genericMessage: string }>
+  confirmPasswordResetWithToken: (
+    token: string,
+    newPassword: string,
+  ) => Promise<{ success: boolean; error?: string }>
 
   // Permissions
   canAccessModule: (module: ModuleKey) => boolean
@@ -113,12 +122,15 @@ const STORAGE_KEYS = {
   CURRENT_USER_ROLE: 'portalcursos_current_user_role',
   GATE_LOCK: 'portalcursos_gate_lock',
   LOGIN_LOCK: 'portalcursos_login_lock',
+  RESET_LOCK: 'portalcursos_reset_lock',
 }
 
 // Limites de bloqueio por tentativas falhas (portão e login)
 const MAX_FAILED_ATTEMPTS = 4
 const GATE_LOCKOUT_MS = 30_000 // 30s
 const LOGIN_LOCKOUT_MS = 25_000 // 25s
+const MAX_RESET_ATTEMPTS = 3
+const RESET_LOCKOUT_MS = 60_000 // 1 min
 
 interface LockState {
   attempts: number
@@ -436,6 +448,59 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
     } catch {
       // silencioso
+    }
+  }
+
+  // Recuperação de senha com mensagem de sucesso genérica (não revela se o e-mail existe)
+  const requestPasswordResetEmail = async (
+    email: string,
+  ): Promise<{ success: boolean; genericMessage: string }> => {
+    const clean = email.trim().toLowerCase()
+    const genericMessage =
+      'Se o e-mail informado estiver cadastrado no PortalCursos.NG, você receberá uma mensagem com instruções e link para criar uma nova senha.'
+
+    if (!clean) {
+      return { success: false, genericMessage: 'Informe um e-mail válido.' }
+    }
+
+    try {
+      await requestPasswordReset(clean)
+      return { success: true, genericMessage }
+    } catch (err) {
+      console.warn('[PortalContext] requestPasswordResetEmail:', err)
+      // Mantém mensagem genérica por segurança para não enumerar usuários
+      return { success: true, genericMessage }
+    }
+  }
+
+  const confirmPasswordResetWithToken = async (
+    token: string,
+    newPassword: string,
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!token.trim()) {
+      return { success: false, error: 'Token de redefinição não fornecido ou inválido.' }
+    }
+    if (!newPassword || newPassword.length < 8) {
+      return {
+        success: false,
+        error: 'A nova senha deve possuir no mínimo 8 caracteres.',
+      }
+    }
+
+    try {
+      const res = await confirmPasswordReset(token.trim(), newPassword)
+      if (res.success) {
+        return { success: true }
+      }
+      return {
+        success: false,
+        error: 'O link de redefinição expirou ou é inválido. Solicite uma nova recuperação.',
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Falha ao redefinir a senha no servidor.',
+      }
     }
   }
 
@@ -959,6 +1024,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         users,
         updateUserRole,
         createUser,
+        requestPasswordResetEmail,
+        confirmPasswordResetWithToken,
         canAccessModule,
         students,
         addStudent,

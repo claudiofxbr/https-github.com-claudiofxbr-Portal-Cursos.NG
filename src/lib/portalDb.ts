@@ -112,6 +112,37 @@ export function logoutAuth(): void {
   serviceAuthPromise = null
 }
 
+// Solicita e-mail de redefinição de senha através do PocketBase Skip Cloud
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ success: boolean; error?: unknown }> {
+  try {
+    const clean = email.trim().toLowerCase()
+    await pb.collection('users').requestPasswordReset(clean)
+    return { success: true }
+  } catch (err) {
+    // PocketBase retorna sucesso ou erro caso algo falhe na comunicação
+    console.warn('[portalDb] requestPasswordReset:', err)
+    return { success: false, error: err }
+  }
+}
+
+// Confirma redefinição de senha com token recebido no link de e-mail
+export async function confirmPasswordReset(
+  token: string,
+  password: string,
+  passwordConfirm?: string,
+): Promise<{ success: boolean; error?: unknown }> {
+  try {
+    const confirm = passwordConfirm || password
+    await pb.collection('users').confirmPasswordReset(token, password, confirm)
+    return { success: true }
+  } catch (err) {
+    console.warn('[portalDb] confirmPasswordReset:', err)
+    return { success: false, error: err }
+  }
+}
+
 // Converte registro de autenticação PocketBase (users) para UserAccount
 export function mapAuthUser(rec: AnyRec): UserAccount {
   return {
