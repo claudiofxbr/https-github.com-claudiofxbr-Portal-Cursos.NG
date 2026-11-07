@@ -1,0 +1,878 @@
+{
+  "generatedAt": "2026-11-07T11:57:19.178Z",
+  "collections": [
+    {
+      "name": "users",
+      "type": "auth",
+      "apiRules": {
+        "list": "id = @request.auth.id",
+        "view": "id = @request.auth.id",
+        "create": "",
+        "update": "id = @request.auth.id",
+        "delete": "id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
+        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
+      ]
+    },
+    {
+      "name": "app_users",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "root",
+            "admin",
+            "secretaria",
+            "financeiro",
+            "academico",
+            "matricula",
+            "coordenador",
+            "professor",
+            "aluno"
+          ]
+        },
+        {
+          "name": "roleTitle",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ativo", "inativo", "bloqueado"]
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avatar",
+          "type": "url",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "createdAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lastAccess",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_app_users_email ON app_users (email)"]
+    },
+    {
+      "name": "students",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "fullName",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cpfRaw",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentType",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["graduacao", "pos_graduacao"]
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "courseName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "photoUrl",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "photo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "birthDate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "street",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "zip",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["matriculado", "pre_matricula", "trancado", "concluido"]
+        },
+        {
+          "name": "enrolledAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documents",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "docFiles",
+          "type": "file",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_students_cpf_raw ON students (cpfRaw)",
+        "CREATE INDEX idx_students_course ON students (courseId)"
+      ]
+    },
+    {
+      "name": "courses",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "level",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["graduacao", "pos_graduacao", "extensao"]
+        },
+        {
+          "name": "courseType",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["bacharelado", "licenciatura", "tecnologo", "especializacao", "mba"]
+        },
+        {
+          "name": "modality",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["presencial", "ead", "semipresencial"]
+        },
+        {
+          "name": "durationSemesters",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "workloadHours",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "coordinator",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ativo", "em_revisao", "trancado"]
+        },
+        {
+          "name": "lockedForEditing",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emecCode",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emecConcept",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emecOrdinanceNumber",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emecOrdinanceDate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "monthlyFee",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vacancies",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enrolledCount",
+          "type": "number",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_courses_code ON courses (code)"]
+    },
+    {
+      "name": "charges",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentCpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "mensalidade",
+            "matricula",
+            "rematricula",
+            "taxa_diploma",
+            "segunda_chamada",
+            "outro"
+          ]
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dueDate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pendente", "pago", "atrasado", "cancelado"]
+        },
+        {
+          "name": "method",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pix", "cartao", "isencao"]
+        },
+        {
+          "name": "paidAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pixCode",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pixQrUrl",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "receiptNumber",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_charges_code ON charges (code)",
+        "CREATE INDEX idx_charges_student ON charges (studentId)"
+      ]
+    },
+    {
+      "name": "price_table_items",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "level",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["graduacao", "pos_graduacao"]
+        },
+        {
+          "name": "standardMonthlyFee",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enrollmentFee",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lateFeePercentage",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updatedBy",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_price_items_cat_level ON price_table_items (category, level)"
+      ]
+    },
+    {
+      "name": "price_audit_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "timestamp",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "userName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "userRole",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "changeSummary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "previousValue",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "newValue",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_price_logs_timestamp ON price_audit_logs (timestamp)"]
+    },
+    {
+      "name": "billing_exceptions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "discountPercentage",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "justification",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requestedBy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "approvedBy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pendente", "aprovado", "rejeitado"]
+        },
+        {
+          "name": "createdAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_billing_exc_student ON billing_exceptions (studentId)"]
+    },
+    {
+      "name": "maintenance_tickets",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "location",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "priority",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["baixa", "media", "alta", "urgente"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["aberto", "em_andamento", "concluido", "cancelado"]
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "eletrica",
+            "hidraulica",
+            "ar_condicionado",
+            "alvenaria",
+            "ti_redes",
+            "outro"
+          ]
+        },
+        {
+          "name": "reporterName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reporterRole",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assignedTo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "photoUrls",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "photo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "createdAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resolvedAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_tickets_status ON maintenance_tickets (status)"]
+    },
+    {
+      "name": "lgpd_requests",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "requesterName",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "requesterCpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requesterEmail",
+          "type": "email",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requestType",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["eliminacao", "acesso", "retificacao", "portabilidade"]
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "legalRetentionPeriodDays",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "legalRetentionDeadline",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["em_analise", "retido_legalmente", "executado", "negado"]
+        },
+        {
+          "name": "legalJustification",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "createdAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dpoNotes",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_lgpd_status ON lgpd_requests (status)"]
+    }
+  ]
+}

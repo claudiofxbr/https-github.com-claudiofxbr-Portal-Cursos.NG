@@ -50,6 +50,8 @@ export interface StudentDocument {
   fileName: string
   uploadedAt: string
   status: 'pendente' | 'aprovado' | 'rejeitado'
+  /** Arquivo selecionado no formulário, enviado ao banco no cadastro. */
+  pendingFile?: File
 }
 
 export interface Student {
@@ -74,6 +76,8 @@ export interface Student {
   enrolledAt: string
   documents: StudentDocument[]
   observations?: string
+  /** Arquivo de foto selecionado no formulário, enviado ao banco no cadastro. */
+  photoFile?: File
 }
 
 export interface Course {
@@ -170,6 +174,8 @@ export interface MaintenanceTicket {
   photoUrls: string[]
   createdAt: string
   resolvedAt?: string
+  /** Arquivos de foto selecionados no formulário, enviados ao banco no cadastro. */
+  photoFiles?: File[]
 }
 
 export interface LgpdRequest {

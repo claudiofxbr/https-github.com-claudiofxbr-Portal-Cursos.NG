@@ -65,6 +65,8 @@ export function MatriculaModule() {
   const [formZip, setFormZip] = useState('')
   const [formObs, setFormObs] = useState('')
   const [formPhoto, setFormPhoto] = useState<string | null>(null)
+  // Arquivo original da foto (enviado ao banco, não só o preview base64).
+  const [formPhotoFile, setFormPhotoFile] = useState<File | null>(null)
   const [formDocs, setFormDocs] = useState<StudentDocument[]>([])
 
   const filteredStudents = cpfQuery ? searchStudentsByCpf(cpfQuery) : students
@@ -86,6 +88,7 @@ export function MatriculaModule() {
     setFormZip('')
     setFormObs('')
     setFormPhoto(null)
+    setFormPhotoFile(null)
     setFormDocs([])
   }
 
@@ -136,6 +139,7 @@ export function MatriculaModule() {
     const reader = new FileReader()
     reader.onload = () => {
       setFormPhoto(reader.result as string)
+      setFormPhotoFile(file)
       toast({
         title: 'Foto carregada',
         description: `${file.name} anexado à matrícula.`,
@@ -173,6 +177,7 @@ export function MatriculaModule() {
         fileName: file.name,
         uploadedAt: new Date().toISOString().split('T')[0],
         status: 'pendente',
+        pendingFile: file,
       })
     })
 
@@ -236,6 +241,7 @@ export function MatriculaModule() {
       courseId: selectedCourse.id,
       courseName: selectedCourse.name,
       photoUrl: formPhoto || 'https://img.usecurling.com/ppl/medium?gender=male&seed=500',
+      photoFile: formPhotoFile || undefined,
       birthDate: formBirth || '2000-01-01',
       address: {
         street: formStreet,

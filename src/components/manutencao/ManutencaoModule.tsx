@@ -51,6 +51,8 @@ export function ManutencaoModule() {
   const [category, setCategory] = useState<MaintenanceTicket['category']>('ar_condicionado')
   const [photoUrl, setPhotoUrl] = useState('')
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null)
+  // Arquivo original da foto (vai para o banco; o preview fica em base64).
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -60,6 +62,7 @@ export function ManutencaoModule() {
     reader.onload = () => {
       setPreviewPhoto(reader.result as string)
       setPhotoUrl(reader.result as string)
+      setPhotoFile(file)
     }
     reader.readAsDataURL(file)
   }
@@ -79,6 +82,7 @@ export function ManutencaoModule() {
       reporterName: currentUser?.name || 'Solicitante',
       reporterRole: currentUser?.role || 'Docente',
       photoUrls: [fallbackPhoto],
+      photoFiles: photoFile ? [photoFile] : undefined,
     })
 
     setModalOpen(false)
@@ -86,6 +90,7 @@ export function ManutencaoModule() {
     setDescription('')
     setLocation('')
     setPhotoUrl('')
+    setPhotoFile(null)
     setPreviewPhoto(null)
 
     toast({
