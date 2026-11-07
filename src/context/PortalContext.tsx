@@ -84,7 +84,24 @@ interface PortalContextType {
 
   // Students & Matricula
   students: Student[]
-  addStudent: (student: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>) => Promise<Student> | Student
+  addStudent: (
+    student: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>,
+    chargeOptions?: {
+      amount?: number
+      category?: Charge['category']
+      description?: string
+      status?: Charge['status']
+      method?: Charge['method']
+      paidAt?: string
+      receiptNumber?: string
+      priceCategory?: string
+      dueDate?: string
+      skipCharge?: boolean
+      pixCode?: string
+      pixQrUrl?: string
+    },
+  ) => Promise<Student> | Student
+  createCharge: (charge: Charge) => Promise<Charge>
   updateStudent: (studentId: string, updates: Partial<Student>) => Promise<Student | null>
   deleteStudent: (studentId: string) => Promise<boolean>
   searchStudentsByCpf: (cpfQuery: string) => Student[]
@@ -674,6 +691,20 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   // Students & Matricula
   const addStudent = async (
     studentData: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>,
+    chargeOptions?: {
+      amount?: number
+      category?: Charge['category']
+      description?: string
+      status?: Charge['status']
+      method?: Charge['method']
+      paidAt?: string
+      receiptNumber?: string
+      priceCategory?: string
+      dueDate?: string
+      skipCharge?: boolean
+      pixCode?: string
+      pixQrUrl?: string
+    },
   ): Promise<Student> => {
     const rawCpf = (studentData.cpf || '').replace(/\D/g, '')
     const tempId = generateId('std')
@@ -694,39 +725,83 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       ),
     )
 
-    // Cria cobrança de matrícula inicial automática
-    const newCharge: Charge = {
-      id: generateId('chg'),
-      code: `COB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      studentId: newStudent.id,
-      studentName: newStudent.fullName,
-      studentCpf: newStudent.cpf,
-      category: 'matricula',
-      description: `Taxa de Matrícula Inicial - ${newStudent.courseName}`,
-      amount: newStudent.type === 'graduacao' ? 350 : 290,
-      dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'pendente',
-      pixCode: `00020126580014br.gov.bcb.pix0136cob-portalcursos-std-${newStudent.id}520400005303986540${newStudent.type === 'graduacao' ? '350.00' : '290.00'}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304XXXX`,
-      pixQrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_${newStudent.id}`,
+    let createdCharge: Charge | null = null
+
+    if (!chargeOptions?.skipCharge) {
+      const chargeAmount =
+        typeof chargeOptions?.amount === 'number'
+          ? chargeOptions.amount
+          : newStudent.type === 'graduacao'
+            ? 350
+            : 290
+
+      const chargeStatus = chargeOptions?.status || 'pendente'
+      const chargeMethod = chargeOptions?.method
+      const chargePaidAt = chargeOptions?.paidAt
+      const chargeReceipt = chargeOptions?.receiptNumber
+      const chargeCategory = chargeOptions?.category || 'matricula'
+      const chargeDesc =
+        chargeOptions?.description ||
+        `Taxa de Matrícula - ${newStudent.courseName}${chargeOptions?.priceCategory ? ` (${chargeOptions.priceCategory})` : ''}`
+
+      const newCharge: Charge = {
+        id: generateId('chg'),
+        code: `COB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        studentId: newStudent.id,
+        studentName: newStudent.fullName,
+        studentCpf: newStudent.cpf,
+        category: chargeCategory,
+        description: chargeDesc,
+        amount: chargeAmount,
+        dueDate:
+          chargeOptions?.dueDate ||
+          new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: chargeStatus,
+        method: chargeMethod,
+        paidAt: chargePaidAt,
+        receiptNumber: chargeReceipt,
+        pixCode:
+          chargeOptions?.pixCode ||
+          `00020126580014br.gov.bcb.pix0136cob-portalcursos-std-${newStudent.id}520400005303986540${chargeAmount.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304XXXX`,
+        pixQrUrl:
+          chargeOptions?.pixQrUrl ||
+          `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_${newStudent.id}`,
+      }
+
+      setCharges((prev) => [newCharge, ...prev])
+      createdCharge = newCharge
     }
-    setCharges((prev) => [newCharge, ...prev])
 
     // Persiste no PocketBase (incluindo upload real de foto e arquivos de documentos)
     try {
       const created = await portalDb.createStudent(newStudent)
       if (created) {
         setStudents((prev) => prev.map((s) => (s.id === tempId ? created : s)))
-        await portalDb.createCharge({ ...newCharge, studentId: created.id })
+        if (createdCharge) {
+          await portalDb.createCharge({ ...createdCharge, studentId: created.id })
+        }
         return created
-      } else {
-        await portalDb.createCharge(newCharge)
+      } else if (createdCharge) {
+        await portalDb.createCharge(createdCharge)
       }
     } catch (err) {
       console.warn('[PortalContext] Erro ao salvar aluno no banco:', err)
-      portalDb.createCharge(newCharge).catch(() => {})
+      if (createdCharge) {
+        portalDb.createCharge(createdCharge).catch(() => {})
+      }
     }
 
     return newStudent
+  }
+
+  const createCharge = async (charge: Charge): Promise<Charge> => {
+    setCharges((prev) => [charge, ...prev])
+    try {
+      await portalDb.createCharge(charge)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao salvar cobrança no banco:', err)
+    }
+    return charge
   }
 
   const updateStudent = async (
@@ -1497,6 +1572,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         canAccessModule,
         students,
         addStudent,
+        createCharge,
         updateStudent,
         deleteStudent,
         searchStudentsByCpf,

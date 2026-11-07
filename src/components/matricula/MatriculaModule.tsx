@@ -1,7 +1,10 @@
 import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { generateId } from '@/lib/id'
-import { Student, StudentDocument } from '@/types/portal'
+import { Student, StudentDocument, PriceTableItem, ModuleKey } from '@/types/portal'
+import { MatriculaCheckoutStep, StudentFormData, PaymentOutcome } from './MatriculaCheckoutStep'
+import { MatriculaSuccessStep } from './MatriculaSuccessStep'
+import { findPriceForCourse, MatchedPrice } from './matriculaPriceHelper'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -28,6 +31,7 @@ import {
   XCircle,
   Building2,
   IdCard,
+  ArrowRight,
 } from 'lucide-react'
 
 const statusColor: Record<string, string> = {
@@ -43,13 +47,32 @@ const docStatusIcon = {
   rejeitado: <XCircle className="w-3 h-3 text-rose-400" />,
 }
 
-export function MatriculaModule() {
-  const { students, courses, addStudent, searchStudentsByCpf, updateStudent, currentUser } =
-    usePortal()
+interface MatriculaModuleProps {
+  onNavigateToModule?: (module: ModuleKey) => void
+}
+
+export function MatriculaModule({ onNavigateToModule }: MatriculaModuleProps = {}) {
+  const {
+    students,
+    courses,
+    priceTable,
+    addStudent,
+    searchStudentsByCpf,
+    updateStudent,
+    currentUser,
+  } = usePortal()
   const { toast } = useToast()
 
   const [activeTab, setActiveTab] = useState<'listagem' | 'nova'>('listagem')
   const [cpfQuery, setCpfQuery] = useState('')
+
+  // Sub-etapas do fluxo de Nova Matrícula: dados -> checkout -> confirmacao
+  const [enrollmentStep, setEnrollmentStep] = useState<'form' | 'checkout' | 'success'>('form')
+  const [pendingStudentData, setPendingStudentData] = useState<StudentFormData | null>(null)
+  const [createdStudent, setCreatedStudent] = useState<Student | null>(null)
+  const [lastPaymentOutcome, setLastPaymentOutcome] = useState<PaymentOutcome | null>(null)
+  const [manualPriceOverride, setManualPriceOverride] = useState<PriceTableItem | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -90,7 +113,25 @@ export function MatriculaModule() {
     setFormPhoto(null)
     setFormPhotoFile(null)
     setFormDocs([])
+    setPendingStudentData(null)
+    setCreatedStudent(null)
+    setLastPaymentOutcome(null)
+    setManualPriceOverride(null)
+    setEnrollmentStep('form')
   }
+
+  // Preço calculado da tabela conforme o curso selecionado
+  const selectedCourseObj = courses.find((c) => c.id === formCourse)
+  const defaultMatchedPrice = findPriceForCourse(selectedCourseObj, formType, priceTable)
+
+  const activeMatchedPrice: MatchedPrice | null = manualPriceOverride
+    ? {
+        item: manualPriceOverride,
+        suggestedFee: manualPriceOverride.enrollmentFee,
+        monthlyFee: manualPriceOverride.standardMonthlyFee,
+        isExactCategoryMatch: true,
+      }
+    : defaultMatchedPrice
 
   // Formatação de CPF (000.000.000-00)
   const formatCpf = (value: string) => {
@@ -201,7 +242,8 @@ export function MatriculaModule() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Valida formulário e avança para a etapa final de pagamento
+  const handleProceedToCheckout = (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!formName || !formCpf || !formEmail || !formCourse) {
@@ -232,34 +274,100 @@ export function MatriculaModule() {
       return
     }
 
-    addStudent({
+    const studentData: StudentFormData = {
       fullName: formName,
       cpf: formatCpf(formCpf),
       email: formEmail,
       phone: formPhone,
+      birthDate: formBirth || '2000-01-01',
       type: formType,
       courseId: selectedCourse.id,
       courseName: selectedCourse.name,
-      photoUrl: formPhoto || 'https://img.usecurling.com/ppl/medium?gender=male&seed=500',
-      photoFile: formPhotoFile || undefined,
-      birthDate: formBirth || '2000-01-01',
       address: {
         street: formStreet,
         city: formCity,
         state: formState,
         zip: formZip,
       },
-      status: 'pre_matricula',
+      photoUrl: formPhoto || 'https://img.usecurling.com/ppl/medium?gender=male&seed=500',
+      photoFile: formPhotoFile || undefined,
       documents: formDocs,
       observations: formObs,
-    })
+    }
 
-    toast({
-      title: 'Pré-matrícula registrada!',
-      description: `${formName} entrou na fila de validação da secretaria. Uma cobrança de matrícula foi gerada automaticamente no Financeiro.`,
-    })
-    resetForm()
-    setActiveTab('listagem')
+    setPendingStudentData(studentData)
+    setEnrollmentStep('checkout')
+  }
+
+  // Ao confirmar o pagamento no checkout demonstrativo (Pix, Cartão ou Depois)
+  const handleConfirmCheckout = async (outcome: PaymentOutcome) => {
+    if (!pendingStudentData) return
+
+    setIsSubmitting(true)
+    try {
+      const studentPayload: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'> = {
+        fullName: pendingStudentData.fullName,
+        cpf: pendingStudentData.cpf,
+        email: pendingStudentData.email,
+        phone: pendingStudentData.phone,
+        type: pendingStudentData.type,
+        courseId: pendingStudentData.courseId,
+        courseName: pendingStudentData.courseName,
+        photoUrl: pendingStudentData.photoUrl,
+        photoFile: pendingStudentData.photoFile,
+        birthDate: pendingStudentData.birthDate,
+        address: pendingStudentData.address,
+        status: outcome.status === 'pago' ? 'matriculado' : 'pre_matricula',
+        documents: pendingStudentData.documents,
+        observations: pendingStudentData.observations,
+      }
+
+      const chargeOptions = {
+        amount: outcome.amount,
+        category: 'matricula' as const,
+        description: `Taxa de Matrícula - ${pendingStudentData.courseName}${outcome.priceCategory ? ` (${outcome.priceCategory})` : ''}`,
+        status: outcome.status,
+        method: outcome.method,
+        paidAt: outcome.paidAt,
+        receiptNumber: outcome.receiptNumber,
+        priceCategory: outcome.priceCategory,
+        pixCode: outcome.pixCode,
+        pixQrUrl: outcome.pixQrUrl,
+        skipCharge: false,
+      }
+
+      const created = await addStudent(studentPayload, chargeOptions)
+
+      setCreatedStudent(created)
+      setLastPaymentOutcome(outcome)
+      setEnrollmentStep('success')
+
+      if (outcome.status === 'pago') {
+        toast({
+          title: 'Matrícula confirmada e paga!',
+          description: `Pagamento simulado via cartão aprovado. Recibo: ${outcome.receiptNumber}. Aluno matriculado com sucesso!`,
+        })
+      } else if (outcome.type === 'pix') {
+        toast({
+          title: 'Matrícula registrada com Pix pendente',
+          description: 'A cobrança foi criada no módulo Financeiro e aguarda baixa/confirmação.',
+        })
+      } else {
+        toast({
+          title: 'Pré-matrícula registrada!',
+          description: 'Cobrança de matrícula gerada para acerto posterior pela secretaria.',
+        })
+      }
+    } catch (err) {
+      console.error('[MatriculaModule] Erro ao concluir matrícula:', err)
+      toast({
+        title: 'Erro ao concluir matrícula',
+        description: 'Ocorreu uma falha ao persistir a matrícula. Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -429,272 +537,304 @@ export function MatriculaModule() {
 
         {/* NOVA MATRÍCULA */}
         <TabsContent value="nova" className="mt-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-white flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-blue-400" />
-                  Dados Pessoais do Ingressante
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-400">
-                  Graduação ou Pós-Graduação — o CPF é normalizado (apenas dígitos) para busca e
-                  cobrança
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Nome Completo *</label>
-                  <Input
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="ex: Marcos Aurélio Ribeiro"
-                    className="bg-slate-950 border-slate-700 text-white text-sm"
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">CPF *</label>
-                  <Input
-                    value={formCpf}
-                    onChange={(e) => setFormCpf(formatCpf(e.target.value))}
-                    placeholder="000.000.000-00"
-                    className="bg-slate-950 border-slate-700 text-white text-sm font-mono"
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">E-mail *</label>
-                  <Input
-                    type="email"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="aluno@exemplo.com.br"
-                    className="bg-slate-950 border-slate-700 text-white text-sm"
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Telefone</label>
-                  <Input
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="(11) 90000-0000"
-                    className="bg-slate-950 border-slate-700 text-white text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Data de Nascimento</label>
-                  <Input
-                    type="date"
-                    value={formBirth}
-                    onChange={(e) => setFormBirth(e.target.value)}
-                    className="bg-slate-950 border-slate-700 text-white text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Tipo de Ingresso *</label>
-                  <Select
-                    value={formType}
-                    onValueChange={(v) => {
-                      setFormType(v as any)
-                      setFormCourse('')
-                    }}
-                  >
-                    <SelectTrigger className="bg-slate-950 border-slate-700 text-white text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-700 text-white">
-                      <SelectItem value="graduacao">Graduação</SelectItem>
-                      <SelectItem value="pos_graduacao">Pós-Graduação</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-xs text-slate-300">Curso de Destino *</label>
-                  <Select value={formCourse} onValueChange={setFormCourse}>
-                    <SelectTrigger className="bg-slate-950 border-slate-700 text-white text-sm">
-                      <SelectValue placeholder="Selecione o curso" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-700 text-white max-h-60">
-                      {coursesForType.map((course) => (
-                        <SelectItem key={course.id} value={course.id}>
-                          {course.name} ({course.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
+          {enrollmentStep === 'success' && createdStudent ? (
+            <MatriculaSuccessStep
+              student={createdStudent}
+              paymentOutcome={lastPaymentOutcome}
+              onReset={() => {
+                resetForm()
+                setActiveTab('listagem')
+              }}
+              onNavigateToStudents={
+                onNavigateToModule ? () => onNavigateToModule('alunos') : undefined
+              }
+              onNavigateToFinancial={
+                onNavigateToModule ? () => onNavigateToModule('financeiro') : undefined
+              }
+            />
+          ) : enrollmentStep === 'checkout' && pendingStudentData ? (
+            <MatriculaCheckoutStep
+              formData={pendingStudentData}
+              selectedCourse={selectedCourseObj}
+              matchedPrice={activeMatchedPrice}
+              priceTable={priceTable}
+              onSelectPriceItem={(item) => setManualPriceOverride(item)}
+              onConfirmPayment={handleConfirmCheckout}
+              onBack={() => setEnrollmentStep('form')}
+              isSubmitting={isSubmitting}
+            />
+          ) : (
+            <form onSubmit={handleProceedToCheckout} className="space-y-4">
+              <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-white flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-blue-400" />
+                    Dados Pessoais do Ingressante
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-400">
+                    Graduação ou Pós-Graduação — o CPF é normalizado (apenas dígitos) para busca e
+                    cobrança
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Nome Completo *</label>
+                    <Input
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      placeholder="ex: Marcos Aurélio Ribeiro"
+                      className="bg-slate-950 border-slate-700 text-white text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">CPF *</label>
+                    <Input
+                      value={formCpf}
+                      onChange={(e) => setFormCpf(formatCpf(e.target.value))}
+                      placeholder="000.000.000-00"
+                      className="bg-slate-950 border-slate-700 text-white text-sm font-mono"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">E-mail *</label>
+                    <Input
+                      type="email"
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      placeholder="aluno@exemplo.com.br"
+                      className="bg-slate-950 border-slate-700 text-white text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Telefone</label>
+                    <Input
+                      value={formPhone}
+                      onChange={(e) => setFormPhone(e.target.value)}
+                      placeholder="(11) 90000-0000"
+                      className="bg-slate-950 border-slate-700 text-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Data de Nascimento</label>
+                    <Input
+                      type="date"
+                      value={formBirth}
+                      onChange={(e) => setFormBirth(e.target.value)}
+                      className="bg-slate-950 border-slate-700 text-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Tipo de Ingresso *</label>
+                    <Select
+                      value={formType}
+                      onValueChange={(v) => {
+                        setFormType(v as any)
+                        setFormCourse('')
+                      }}
+                    >
+                      <SelectTrigger className="bg-slate-950 border-slate-700 text-white text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-700 text-white">
+                        <SelectItem value="graduacao">Graduação</SelectItem>
+                        <SelectItem value="pos_graduacao">Pós-Graduação</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-xs text-slate-300">Curso de Destino *</label>
+                    <Select value={formCourse} onValueChange={setFormCourse}>
+                      <SelectTrigger className="bg-slate-950 border-slate-700 text-white text-sm">
+                        <SelectValue placeholder="Selecione o curso" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-700 text-white max-h-60">
+                        {coursesForType.map((course) => (
+                          <SelectItem key={course.id} value={course.id}>
+                            {course.name} ({course.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Endereço */}
-            <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-white flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-indigo-400" />
-                  Endereço de Contato
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-400">
-                  Comprovante de residência pode ser anexado nos documentos
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-xs text-slate-300">Logradouro</label>
-                  <Input
-                    value={formStreet}
-                    onChange={(e) => setFormStreet(e.target.value)}
-                    placeholder="Rua, Avenida, número, bairro"
-                    className="bg-slate-950 border-slate-700 text-white text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Cidade</label>
-                  <Input
-                    value={formCity}
-                    onChange={(e) => setFormCity(e.target.value)}
-                    placeholder="ex: São Paulo"
-                    className="bg-slate-950 border-slate-700 text-white text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Estado (UF)</label>
-                  <Input
-                    value={formState}
-                    onChange={(e) => setFormState(e.target.value.toUpperCase().slice(0, 2))}
-                    placeholder="ex: SP"
-                    className="bg-slate-950 border-slate-700 text-white text-sm uppercase"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">CEP</label>
-                  <Input
-                    value={formZip}
-                    onChange={(e) => setFormZip(e.target.value)}
-                    placeholder="00000-000"
-                    className="bg-slate-950 border-slate-700 text-white text-sm font-mono"
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              {/* Endereço */}
+              <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-white flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-indigo-400" />
+                    Endereço de Contato
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-400">
+                    Comprovante de residência pode ser anexado nos documentos
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-xs text-slate-300">Logradouro</label>
+                    <Input
+                      value={formStreet}
+                      onChange={(e) => setFormStreet(e.target.value)}
+                      placeholder="Rua, Avenida, número, bairro"
+                      className="bg-slate-950 border-slate-700 text-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Cidade</label>
+                    <Input
+                      value={formCity}
+                      onChange={(e) => setFormCity(e.target.value)}
+                      placeholder="ex: São Paulo"
+                      className="bg-slate-950 border-slate-700 text-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Estado (UF)</label>
+                    <Input
+                      value={formState}
+                      onChange={(e) => setFormState(e.target.value.toUpperCase().slice(0, 2))}
+                      placeholder="ex: SP"
+                      className="bg-slate-950 border-slate-700 text-white text-sm uppercase"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">CEP</label>
+                    <Input
+                      value={formZip}
+                      onChange={(e) => setFormZip(e.target.value)}
+                      placeholder="00000-000"
+                      className="bg-slate-950 border-slate-700 text-white text-sm font-mono"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Upload de Foto & Documentos */}
-            <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-white flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-emerald-400" />
-                  Foto do Aluno & Documentos Obrigatórios
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-400">
-                  Os arquivos são lidos no navegador (base64/locais) e ficam pendentes de validação
-                  da secretaria
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Foto */}
-                <div className="space-y-2">
-                  <label className="text-xs text-slate-300 flex items-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5 text-blue-400" /> Foto 3x4 do Aluno
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-lg border border-slate-700 bg-slate-950 overflow-hidden flex items-center justify-center shrink-0">
-                      {formPhoto ? (
-                        <img src={formPhoto} alt="Prévia" className="w-full h-full object-cover" />
-                      ) : (
-                        <IdCard className="w-6 h-6 text-slate-600" />
-                      )}
+              {/* Upload de Foto & Documentos */}
+              <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-white flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-emerald-400" />
+                    Foto do Aluno & Documentos Obrigatórios
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-400">
+                    Os arquivos são lidos no navegador (base64/locais) e ficam pendentes de
+                    validação da secretaria
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Foto */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-slate-300 flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-blue-400" /> Foto 3x4 do Aluno
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="w-16 h-16 rounded-lg border border-slate-700 bg-slate-950 overflow-hidden flex items-center justify-center shrink-0">
+                        {formPhoto ? (
+                          <img
+                            src={formPhoto}
+                            alt="Prévia"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <IdCard className="w-6 h-6 text-slate-600" />
+                        )}
+                      </div>
+                      <label className="flex-1 cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                        />
+                        <span className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-dashed border-slate-600 bg-slate-950 text-xs text-slate-300 hover:bg-slate-900 hover:border-blue-500 transition-colors">
+                          <Camera className="w-3.5 h-3.5" />
+                          {formPhoto ? 'Trocar foto' : 'Enviar foto'}
+                        </span>
+                      </label>
                     </div>
-                    <label className="flex-1 cursor-pointer">
+                  </div>
+
+                  {/* Docs */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-slate-300 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-emerald-400" /> Documentos (RG,
+                      Histórico, Diploma)
+                    </label>
+                    <label className="block cursor-pointer">
                       <input
                         type="file"
-                        accept="image/*"
-                        onChange={handlePhotoUpload}
+                        multiple
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        onChange={handleDocUpload}
                         className="hidden"
                       />
-                      <span className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-dashed border-slate-600 bg-slate-950 text-xs text-slate-300 hover:bg-slate-900 hover:border-blue-500 transition-colors">
-                        <Camera className="w-3.5 h-3.5" />
-                        {formPhoto ? 'Trocar foto' : 'Enviar foto'}
+                      <span className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-dashed border-slate-600 bg-slate-950 text-xs text-slate-300 hover:bg-slate-900 hover:border-emerald-500 transition-colors">
+                        <Upload className="w-3.5 h-3.5" />
+                        Adicionar arquivos
                       </span>
                     </label>
-                  </div>
-                </div>
-
-                {/* Docs */}
-                <div className="space-y-2">
-                  <label className="text-xs text-slate-300 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-emerald-400" /> Documentos (RG, Histórico,
-                    Diploma)
-                  </label>
-                  <label className="block cursor-pointer">
-                    <input
-                      type="file"
-                      multiple
-                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                      onChange={handleDocUpload}
-                      className="hidden"
-                    />
-                    <span className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-dashed border-slate-600 bg-slate-950 text-xs text-slate-300 hover:bg-slate-900 hover:border-emerald-500 transition-colors">
-                      <Upload className="w-3.5 h-3.5" />
-                      Adicionar arquivos
-                    </span>
-                  </label>
-                  {formDocs.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      {formDocs.map((doc) => (
-                        <div
-                          key={doc.id}
-                          className="flex items-center justify-between px-2 py-1 rounded bg-slate-800/80 border border-slate-700 text-[11px]"
-                        >
-                          <span className="truncate text-slate-300">{doc.name}</span>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {docStatusIcon[doc.status]}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setFormDocs((prev) => prev.filter((d) => d.id !== doc.id))
-                              }
-                              className="text-slate-500 hover:text-rose-400 text-xs px-1"
-                            >
-                              ✕
-                            </button>
+                    {formDocs.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        {formDocs.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center justify-between px-2 py-1 rounded bg-slate-800/80 border border-slate-700 text-[11px]"
+                          >
+                            <span className="truncate text-slate-300">{doc.name}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {docStatusIcon[doc.status]}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormDocs((prev) => prev.filter((d) => d.id !== doc.id))
+                                }
+                                className="text-slate-500 hover:text-rose-400 text-xs px-1"
+                              >
+                                ✕
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-xs text-slate-300">Observações da Matrícula</label>
-                  <textarea
-                    value={formObs}
-                    onChange={(e) => setFormObs(e.target.value)}
-                    placeholder="Informações adicionais: bolsas, transferência, necessidades especiais..."
-                    rows={2}
-                    className="w-full rounded-md bg-slate-950 border border-slate-700 text-white text-sm p-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-xs text-slate-300">Observações da Matrícula</label>
+                    <textarea
+                      value={formObs}
+                      onChange={(e) => setFormObs(e.target.value)}
+                      placeholder="Informações adicionais: bolsas, transferência, necessidades especiais..."
+                      rows={2}
+                      className="w-full rounded-md bg-slate-950 border border-slate-700 text-white text-sm p-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-            <div className="flex justify-end gap-2 pb-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={resetForm}
-                className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 text-sm"
-              >
-                Limpar Formulário
-              </Button>
-              <Button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-6"
-              >
-                <UserPlus className="w-4 h-4 mr-2" />
-                Registrar Pré-Matrícula
-              </Button>
-            </div>
-          </form>
+              <div className="flex justify-end gap-2 pb-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetForm}
+                  className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 text-sm"
+                >
+                  Limpar Formulário
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-6"
+                >
+                  Avançar para Pagamento & Checkout
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </form>
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -51,7 +51,15 @@ export default function Index() {
           )}
           {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
           {safeActiveModule === 'alunos' && <AlunosModule />}
-          {safeActiveModule === 'matriculas' && <MatriculaModule />}
+          {safeActiveModule === 'matriculas' && (
+            <MatriculaModule
+              onNavigateToModule={(mod) => {
+                if (canAccessModule(mod)) {
+                  setActiveModule(mod)
+                }
+              }}
+            />
+          )}
           {safeActiveModule === 'cursos' && <CursosModule />}
           {safeActiveModule === 'financeiro' && <FinanceiroModule />}
           {safeActiveModule === 'relatorios' && <RelatoriosModule />}
