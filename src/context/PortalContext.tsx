@@ -76,7 +76,8 @@ interface PortalContextType {
   // Students & Matricula
   students: Student[]
   addStudent: (student: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>) => Promise<Student> | Student
-  updateStudent: (studentId: string, updates: Partial<Student>) => void
+  updateStudent: (studentId: string, updates: Partial<Student>) => Promise<Student | null>
+  deleteStudent: (studentId: string) => Promise<boolean>
   searchStudentsByCpf: (cpfQuery: string) => Student[]
 
   // Courses
@@ -660,32 +661,59 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     return newStudent
   }
 
-  const updateStudent = (studentId: string, updates: Partial<Student>) => {
+  const updateStudent = async (
+    studentId: string,
+    updates: Partial<Student>,
+  ): Promise<Student | null> => {
     const rawCpf = updates.cpf ? updates.cpf.replace(/\D/g, '') : undefined
+    const localMerged = {
+      ...updates,
+      ...(rawCpf !== undefined ? { cpfRaw: rawCpf } : {}),
+    }
+
     setStudents((prev) =>
       prev.map((s) => {
         if (s.id !== studentId) return s
         return {
           ...s,
-          ...updates,
-          ...(rawCpf !== undefined ? { cpfRaw: rawCpf } : {}),
+          ...localMerged,
+          address: {
+            ...s.address,
+            ...(updates.address || {}),
+          },
         }
       }),
     )
 
-    portalDb
-      .updateStudent(studentId, {
-        ...updates,
-        ...(rawCpf !== undefined ? { cpfRaw: rawCpf } : {}),
-      })
-      .then((updated) => {
-        if (updated) {
-          setStudents((prev) => prev.map((s) => (s.id === studentId ? updated : s)))
-        }
-      })
-      .catch((err) => {
-        console.warn('[PortalContext] Falha ao atualizar aluno no banco:', err)
-      })
+    try {
+      const updated = await portalDb.updateStudent(studentId, localMerged)
+      if (updated) {
+        setStudents((prev) => prev.map((s) => (s.id === studentId ? updated : s)))
+        return updated
+      }
+      return null
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao atualizar aluno no banco:', err)
+      return null
+    }
+  }
+
+  const deleteStudent = async (studentId: string): Promise<boolean> => {
+    // Apenas root e admin podem excluir alunos
+    if (!currentUser || (currentUser.role !== 'root' && currentUser.role !== 'admin')) {
+      console.warn('[PortalContext] Tentativa não autorizada de excluir aluno:', currentUser?.role)
+      return false
+    }
+
+    setStudents((prev) => prev.filter((s) => s.id !== studentId))
+
+    try {
+      const ok = await portalDb.deleteStudent(studentId)
+      return ok
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao excluir aluno no banco:', err)
+      return false
+    }
   }
 
   const searchStudentsByCpf = (cpfQuery: string): Student[] => {
@@ -1073,6 +1101,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         students,
         addStudent,
         updateStudent,
+        deleteStudent,
         searchStudentsByCpf,
         courses,
         toggleCourseLock,

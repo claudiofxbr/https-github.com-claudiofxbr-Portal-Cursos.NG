@@ -43,6 +43,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   ShieldCheck,
   Cpu,
   BarChart3,
+  UserCheck,
 }
 
 interface PortalHeaderAndSidebarProps {

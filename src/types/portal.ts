@@ -26,6 +26,7 @@ export interface UserAccount {
 }
 export type ModuleKey =
   | 'dashboard'
+  | 'alunos'
   | 'matriculas'
   | 'cursos'
   | 'financeiro'
@@ -73,7 +74,7 @@ export interface Student {
     street: string
     zip: string
   }
-  status: 'matriculado' | 'pre_matricula' | 'trancado' | 'concluido'
+  status: 'ativo' | 'inativo' | 'trancado' | 'matriculado' | 'pre_matricula' | 'concluido'
   enrolledAt: string
   documents: StudentDocument[]
   observations?: string

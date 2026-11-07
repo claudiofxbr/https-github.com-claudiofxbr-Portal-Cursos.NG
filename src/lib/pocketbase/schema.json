@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T15:36:39.901Z",
+  "generatedAt": "2026-11-07T16:09:59.423Z",
   "collections": [
     {
       "name": "users",
@@ -210,7 +210,7 @@
         "view": "@request.auth.id != ''",
         "create": "@request.auth.id != ''",
         "update": "@request.auth.id != ''",
-        "delete": null
+        "delete": "@request.auth.id != ''"
       },
       "fields": [
         {
@@ -307,9 +307,16 @@
         {
           "name": "status",
           "type": "select",
-          "required": true,
+          "required": false,
           "system": false,
-          "selectValues": ["matriculado", "pre_matricula", "trancado", "concluido"]
+          "selectValues": [
+            "ativo",
+            "inativo",
+            "trancado",
+            "matriculado",
+            "pre_matricula",
+            "concluido"
+          ]
         },
         {
           "name": "enrolledAt",

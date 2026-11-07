@@ -718,12 +718,24 @@ export const portalDb = {
     safeWrite(
       async () => {
         const payload: Record<string, unknown> = {}
+        if (updates.fullName !== undefined) payload.fullName = updates.fullName
         if (updates.cpf !== undefined) payload.cpf = updates.cpf
         if (updates.cpfRaw !== undefined) payload.cpfRaw = updates.cpfRaw
         if (updates.email !== undefined) payload.email = updates.email
         if (updates.phone !== undefined) payload.phone = updates.phone
+        if (updates.type !== undefined) payload.studentType = updates.type
+        if (updates.courseId !== undefined) payload.courseId = updates.courseId
+        if (updates.courseName !== undefined) payload.courseName = updates.courseName
+        if (updates.photoUrl !== undefined) payload.photoUrl = updates.photoUrl
+        if (updates.birthDate !== undefined) payload.birthDate = updates.birthDate
         if (updates.status !== undefined) payload.status = updates.status
         if (updates.observations !== undefined) payload.observations = updates.observations
+        if (updates.address !== undefined) {
+          if (updates.address.street !== undefined) payload.street = updates.address.street
+          if (updates.address.city !== undefined) payload.city = updates.address.city
+          if (updates.address.state !== undefined) payload.state = updates.address.state
+          if (updates.address.zip !== undefined) payload.zip = updates.address.zip
+        }
         if (updates.documents !== undefined) {
           payload.documents = JSON.stringify(
             updates.documents.map(({ pendingFile: _f, ...rest }) => rest),
@@ -747,6 +759,23 @@ export const portalDb = {
       },
       null as Student | null,
     ),
+
+  deleteStudent: (studentId: string) =>
+    safeWrite(async () => {
+      try {
+        await pb.collection(COLLECTIONS.students).delete(studentId)
+        return true
+      } catch {
+        const found = await pb
+          .collection(COLLECTIONS.students)
+          .getFirstListItem(`id = "${studentId}"`)
+        if (found) {
+          await pb.collection(COLLECTIONS.students).delete(found.id)
+          return true
+        }
+        throw new Error('Student not found for delete')
+      }
+    }, false),
 
   createCourse: (course: Course) =>
     safeWrite(

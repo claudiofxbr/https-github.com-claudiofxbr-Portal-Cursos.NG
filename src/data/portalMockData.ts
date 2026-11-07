@@ -35,9 +35,16 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     ],
   },
   {
+    key: 'alunos',
+    label: 'Gestão de Alunos',
+    description: 'Listagem, ficha completa, histórico financeiro, documentos e status de alunos',
+    icon: 'UserCheck',
+    requiredRoles: ['root', 'admin', 'secretaria', 'matricula', 'coordenador', 'professor'],
+  },
+  {
     key: 'matriculas',
-    label: 'Matrículas & Alunos',
-    description: 'Gestão de ingressantes, envio de documentos e fotos de graduação/pós',
+    label: 'Inscrição & Matrícula',
+    description: 'Novo cadastro de ingressantes, envio de documentos e fotos de graduação/pós',
     icon: 'GraduationCap',
     requiredRoles: ['root', 'admin', 'secretaria', 'matricula', 'coordenador'],
   },

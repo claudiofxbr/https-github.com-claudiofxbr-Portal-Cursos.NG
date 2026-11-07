@@ -13,6 +13,7 @@ import { ManutencaoModule } from '@/components/manutencao/ManutencaoModule'
 import { LgpdModule } from '@/components/lgpd/LgpdModule'
 import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
 import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
+import { AlunosModule } from '@/components/alunos/AlunosModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -37,6 +38,7 @@ export default function Index() {
           {safeActiveModule === 'dashboard' && (
             <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
           )}
+          {safeActiveModule === 'alunos' && <AlunosModule />}
           {safeActiveModule === 'matriculas' && <MatriculaModule />}
           {safeActiveModule === 'cursos' && <CursosModule />}
           {safeActiveModule === 'financeiro' && <FinanceiroModule />}

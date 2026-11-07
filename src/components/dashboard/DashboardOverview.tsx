@@ -33,6 +33,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Wrench,
   ShieldCheck,
   Cpu,
+  UserCheck,
 }
 
 // Navegação validada: o atalho só dispara se o perfil pode acessar o módulo.
@@ -85,14 +86,24 @@ export function DashboardOverview({ onNavigate }: { onNavigate: (mod: ModuleKey)
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {canAccessModule('alunos') && (
+              <Button
+                onClick={() => handleNavigate(onNavigate, 'alunos', canAccessModule('alunos'))}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-9"
+              >
+                <UserCheck className="w-4 h-4 mr-2" />
+                Gestão de Alunos
+              </Button>
+            )}
             {canAccessModule('matriculas') && (
               <Button
                 onClick={() =>
                   handleNavigate(onNavigate, 'matriculas', canAccessModule('matriculas'))
                 }
-                className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-9"
+                variant="outline"
+                className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200 text-xs h-9"
               >
-                <GraduationCap className="w-4 h-4 mr-2" />
+                <GraduationCap className="w-4 h-4 mr-2 text-indigo-400" />
                 Nova Matrícula
               </Button>
             )}
