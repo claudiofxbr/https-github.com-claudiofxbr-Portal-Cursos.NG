@@ -28,7 +28,15 @@ import {
   INITIAL_DIAGNOSTIC,
 } from '@/data/portalMockData'
 import { generateId } from '@/lib/id'
-import { portalDb, loadAllData } from '@/lib/portalDb'
+import pb from '@/lib/pocketbase/client'
+import {
+  portalDb,
+  loadAllData,
+  loginWithPassword,
+  logoutAuth,
+  mapAuthUser,
+  AnyRec,
+} from '@/lib/portalDb'
 
 interface PortalContextType {
   // Gate
@@ -42,12 +50,14 @@ interface PortalContextType {
   currentUser: UserAccount | null
   loginAttempts: number
   isLoginLockedOut: boolean
-  login: (email: string, password?: string) => boolean
-  loginAsDemoRole: (role: UserRole) => void
+  login: (email: string, password?: string) => Promise<boolean> | boolean
   logout: () => void
   users: UserAccount[]
   updateUserRole: (userId: string, newRole: UserRole) => void
-  createUser: (user: Omit<UserAccount, 'id' | 'createdAt'>) => void
+  createUser: (
+    user: Omit<UserAccount, 'id' | 'createdAt'>,
+    password?: string,
+  ) => Promise<UserAccount | null>
 
   // Permissions
   canAccessModule: (module: ModuleKey) => boolean
@@ -195,16 +205,30 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   // Auth & Session state
   const [users, setUsers] = useState<UserAccount[]>(DEMO_ACCOUNTS)
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    // 1. Tenta restaurar do PocketBase authStore nativo (sessão real)
+    try {
+      if (pb.authStore.isValid && pb.authStore.record) {
+        const authRec = pb.authStore.record as unknown as AnyRec
+        // Não restaura a conta de serviço compartilhada como usuário de tela
+        if (authRec.email !== 'portal@portalcursos.ng') {
+          return mapAuthUser(authRec)
+        }
+      }
+    } catch {
+      // continua para fallback
+    }
+
+    // 2. Fallback de localStorage
     try {
       const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
       const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
       const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
-      if (savedEmail) {
+      if (savedEmail && savedEmail !== 'portal@portalcursos.ng') {
         const match = DEMO_ACCOUNTS.find(
           (u) =>
             u.email.toLowerCase() === savedEmail.toLowerCase() ||
-            (savedRole && u.role === savedRole) ||
-            u.id === savedId,
+            u.id === savedId ||
+            (savedRole && u.role === savedRole),
         )
         if (match) return match
       }
@@ -258,21 +282,33 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.tickets && data.tickets.length > 0) setTickets(data.tickets)
       if (data.lgpdRequests && data.lgpdRequests.length > 0) setLgpdRequests(data.lgpdRequests)
 
-      // Re-valida sessão contra os usuários atualizados do banco
+      // Re-valida sessão contra os dados do PocketBase
       try {
-        const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
-        const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
-        const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
-        if (savedEmail || savedId) {
-          const list = data.users.length > 0 ? data.users : DEMO_ACCOUNTS
-          const matched = list.find(
-            (u) =>
-              (savedEmail && u.email.toLowerCase() === savedEmail.toLowerCase()) ||
-              (savedId && u.id === savedId) ||
-              (savedRole && u.role === savedRole),
-          )
-          if (matched) {
-            setCurrentUser(matched)
+        if (pb.authStore.isValid && pb.authStore.record) {
+          const rec = pb.authStore.record as unknown as AnyRec
+          if (rec.email !== 'portal@portalcursos.ng') {
+            const authUser = mapAuthUser(rec)
+            // Complementa com dados da lista se houver
+            const foundInList = data.users.find(
+              (u) => u.id === authUser.id || u.email.toLowerCase() === authUser.email.toLowerCase(),
+            )
+            setCurrentUser(foundInList || authUser)
+          }
+        } else {
+          const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
+          const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
+          const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
+          if (savedEmail && savedEmail !== 'portal@portalcursos.ng') {
+            const list = data.users.length > 0 ? data.users : DEMO_ACCOUNTS
+            const matched = list.find(
+              (u) =>
+                (savedEmail && u.email.toLowerCase() === savedEmail.toLowerCase()) ||
+                (savedId && u.id === savedId) ||
+                (savedRole && u.role === savedRole),
+            )
+            if (matched) {
+              setCurrentUser(matched)
+            }
           }
         }
       } catch {
@@ -352,43 +388,47 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }
 
   // Auth functions
-  const login = (email: string): boolean => {
+  const login = async (email: string, password?: string): Promise<boolean> => {
     if (isLoginLockedOut) return false
 
     const clean = email.trim().toLowerCase()
-    const found =
-      usersRef.current.find((u) => u.email.toLowerCase() === clean) ||
-      DEMO_ACCOUNTS.find((u) => u.email.toLowerCase() === clean)
+    const pass = password || ''
 
-    if (found) {
-      setCurrentUser(found)
+    if (!clean || !pass) {
+      const nextAttempts = loginAttempts + 1
+      if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+        setLoginLock({ attempts: nextAttempts, lockedUntil: Date.now() + LOGIN_LOCKOUT_MS })
+      } else {
+        setLoginLock({ attempts: nextAttempts, lockedUntil: 0 })
+      }
+      return false
+    }
+
+    try {
+      // Autenticação real no servidor PocketBase (coleção users)
+      const { user } = await loginWithPassword(clean, pass)
+      setCurrentUser(user)
       setLoginLock(UNLOCKED_LOCK)
-      // Atualiza lastAccess no banco de forma assíncrona
+
+      // Atualiza lastAccess no servidor de forma não bloqueante
       const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16)
-      portalDb.updateAppUser(found.id, { lastAccess: nowStr }).catch(() => {})
+      portalDb.updateAppUser(user.id, { lastAccess: nowStr }).catch(() => {})
       return true
-    }
+    } catch (err) {
+      console.warn('[PortalContext] Falha de autenticação real no servidor:', err)
 
-    const nextAttempts = loginAttempts + 1
-    if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
-      setLoginLock({ attempts: nextAttempts, lockedUntil: Date.now() + LOGIN_LOCKOUT_MS })
-    } else {
-      setLoginLock({ attempts: nextAttempts, lockedUntil: 0 })
-    }
-    return false
-  }
-
-  const loginAsDemoRole = (role: UserRole) => {
-    const found = users.find((u) => u.role === role) || DEMO_ACCOUNTS.find((u) => u.role === role)
-    if (found) {
-      setCurrentUser(found)
-      setLoginLock(UNLOCKED_LOCK)
-      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16)
-      portalDb.updateAppUser(found.id, { lastAccess: nowStr }).catch(() => {})
+      const nextAttempts = loginAttempts + 1
+      if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+        setLoginLock({ attempts: nextAttempts, lockedUntil: Date.now() + LOGIN_LOCKOUT_MS })
+      } else {
+        setLoginLock({ attempts: nextAttempts, lockedUntil: 0 })
+      }
+      return false
     }
   }
 
   const logout = () => {
+    logoutAuth()
     setCurrentUser(null)
     try {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
@@ -451,7 +491,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       })
   }
 
-  const createUser = (userData: Omit<UserAccount, 'id' | 'createdAt'>) => {
+  const createUser = async (
+    userData: Omit<UserAccount, 'id' | 'createdAt'>,
+    password?: string,
+  ): Promise<UserAccount | null> => {
     const newUser: UserAccount = {
       ...userData,
       id: generateId('user'),
@@ -461,17 +504,17 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setUsers((prev) => [newUser, ...prev])
 
     // Persiste no PocketBase
-    portalDb
-      .createAppUser(newUser)
-      .then((created) => {
-        if (created) {
-          setUsers((prev) => prev.map((u) => (u.id === newUser.id ? created : u)))
-          if (currentUser?.id === newUser.id) setCurrentUser(created)
-        }
-      })
-      .catch((err) => {
-        console.warn('[PortalContext] Falha ao criar usuário no banco:', err)
-      })
+    try {
+      const created = await portalDb.createAppUser(newUser, password)
+      if (created) {
+        setUsers((prev) => prev.map((u) => (u.id === newUser.id ? created : u)))
+        return created
+      }
+      return newUser
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao criar usuário no banco:', err)
+      return newUser
+    }
   }
 
   // Permission check
@@ -912,7 +955,6 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         loginAttempts,
         isLoginLockedOut,
         login,
-        loginAsDemoRole,
         logout,
         users,
         updateUserRole,

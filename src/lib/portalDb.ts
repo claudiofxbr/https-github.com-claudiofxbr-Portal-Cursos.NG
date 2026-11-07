@@ -35,15 +35,18 @@ export const COLLECTIONS = {
   tickets: 'maintenance_tickets',
   lgpd: 'lgpd_requests',
   appUsers: 'app_users',
+  users: 'users',
 } as const
 
-// Conta compartilhada de demonstração usada pela app para autenticar no
-// PocketBase (criada pela migration). As credenciais são públicas por design:
-// o acesso dos 9 perfis continua client-side, como na demo.
-const DEMO_AUTH = {
+// Conta compartilhada de serviço usada como fallback apenas quando não há
+// usuário real autenticado no PocketBase (ex.: boot inicial antes do login).
+const SERVICE_AUTH = {
   identity: 'portal@portalcursos.ng',
   password: 'PortalCursos#2025',
 }
+
+// Senha padrão dos 9 usuários demo na coleção users do PocketBase
+export const DEMO_USER_PASSWORD = 'Portal#2025'
 
 // URL pública de um arquivo armazenado no PocketBase.
 export function pbFileUrl(collection: string, recordId: string, filename: string): string {
@@ -63,23 +66,75 @@ async function safeList<T>(run: () => Promise<T[]>, fallback: T[]): Promise<T[]>
 
 // ---------- auth ----------
 
-let authPromise: Promise<void> | null = null
+let serviceAuthPromise: Promise<void> | null = null
 
-// Autentica a app no PocketBase com a conta demo compartilhada e renova a
-// sessão quando expira (as chamadas subsequentes reutilizam o token em cache).
-export function ensureAuth(): Promise<void> {
-  if (!authPromise) {
-    authPromise = pb
+// Garante que o cliente PocketBase tenha um token válido.
+// Se um usuário já estiver autenticado na sessão real (pb.authStore.isValid),
+// reutiliza essa sessão real diretamente. Caso contrário, autentica temporariamente
+// com a conta de serviço compartilhada para viabilizar as leituras iniciais.
+export async function ensureAuth(): Promise<void> {
+  if (pb.authStore.isValid && pb.authStore.record) {
+    return
+  }
+
+  if (!serviceAuthPromise) {
+    serviceAuthPromise = pb
       .collection('users')
-      .authWithPassword(DEMO_AUTH.identity, DEMO_AUTH.password)
+      .authWithPassword(SERVICE_AUTH.identity, SERVICE_AUTH.password)
       .then(() => undefined)
       .catch((err) => {
-        // Permite nova tentativa no próximo load (rede instável, backend fora).
-        authPromise = null
+        serviceAuthPromise = null
         throw err
       })
   }
-  return authPromise
+  return serviceAuthPromise
+}
+
+// Realiza login real por usuário contra a coleção `users` do PocketBase
+export async function loginWithPassword(
+  email: string,
+  password: string,
+): Promise<{ user: UserAccount; token: string }> {
+  // Limpa promessa de conta de serviço ao fazer login real
+  serviceAuthPromise = null
+
+  const authData = await pb
+    .collection('users')
+    .authWithPassword(email.trim().toLowerCase(), password)
+  const rec = authData.record as unknown as AnyRec
+  const user = mapAuthUser(rec)
+  return { user, token: authData.token }
+}
+
+// Encerra sessão real no PocketBase
+export function logoutAuth(): void {
+  pb.authStore.clear()
+  serviceAuthPromise = null
+}
+
+// Converte registro de autenticação PocketBase (users) para UserAccount
+export function mapAuthUser(rec: AnyRec): UserAccount {
+  return {
+    id: str(rec.id),
+    name: str(rec.name) || (rec.email ? str(rec.email).split('@')[0] : 'Usuário'),
+    email: str(rec.email),
+    role: (str(rec.role) || 'aluno') as UserAccount['role'],
+    roleTitle: str(rec.roleTitle) || 'Membro Institucional',
+    department: str(rec.department) || 'Campus Central',
+    status: (str(rec.status) || 'ativo') as UserAccount['status'],
+    cpf: str(rec.cpf),
+    phone: str(rec.phone),
+    avatar:
+      str(rec.avatarUrl) ||
+      (typeof rec.avatar === 'string' && rec.avatar
+        ? pbFileUrl('users', str(rec.id), rec.avatar)
+        : undefined),
+    createdAt:
+      str(rec.createdAtText) ||
+      str(rec.created).split('T')[0] ||
+      new Date().toISOString().split('T')[0],
+    lastAccess: str(rec.lastAccessText) || 'Recente',
+  }
 }
 
 // ---------- seed (executa uma vez, no primeiro load contra banco vazio) ----------
@@ -246,7 +301,7 @@ export function seedIfEmpty(): Promise<void> {
 
 // ---------- mapeamentos registro PocketBase -> tipo do app ----------
 
-type AnyRec = Record<string, unknown>
+export type AnyRec = Record<string, unknown>
 
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
 const num = (v: unknown, fallback = 0): number => {
@@ -460,11 +515,22 @@ export async function loadAllData(): Promise<{
     tickets,
     lgpdRequests,
   ] = await Promise.all([
-    safeList(
-      async () =>
-        (await pb.collection(COLLECTIONS.appUsers).getFullList({ sort: 'name' })).map(mapAppUser),
-      DEMO_ACCOUNTS,
-    ),
+    safeList(async () => {
+      // Tenta carregar usuários da coleção `users` (auth real)
+      try {
+        const authUsers = await pb.collection('users').getFullList({ sort: 'name' })
+        // Filtra a conta de serviço compartilhada da exibição pública de membros
+        const filtered = authUsers
+          .filter((u) => u.email !== SERVICE_AUTH.identity)
+          .map((u) => mapAuthUser(u as unknown as AnyRec))
+        if (filtered.length > 0) return filtered
+      } catch {
+        // fallback para app_users
+      }
+      return (await pb.collection(COLLECTIONS.appUsers).getFullList({ sort: 'name' })).map(
+        mapAppUser,
+      )
+    }, DEMO_ACCOUNTS),
     safeList(
       async () =>
         (await pb.collection(COLLECTIONS.students).getFullList({ sort: '-created' })).map(
@@ -726,9 +792,39 @@ export const portalDb = {
       null as Course | null,
     ),
 
-  createAppUser: (user: UserAccount) =>
+  createAppUser: (user: UserAccount, password?: string) =>
     safeWrite(
       async () => {
+        const userPassword = password || user.password || DEMO_USER_PASSWORD
+
+        // Cria na coleção de autenticação real `users`
+        try {
+          const authPayload: Record<string, unknown> = {
+            email: user.email,
+            emailVisibility: false,
+            password: userPassword,
+            passwordConfirm: userPassword,
+            name: user.name,
+            role: user.role,
+            roleTitle: user.roleTitle,
+            department: user.department,
+            status: user.status || 'ativo',
+            cpf: user.cpf || '',
+            phone: user.phone || '',
+            avatarUrl: user.avatar || '',
+            createdAtText: user.createdAt || new Date().toISOString().split('T')[0],
+            lastAccessText: user.lastAccess || 'Recente',
+          }
+          const authRec = await pb.collection('users').create(authPayload)
+          return mapAuthUser(authRec as unknown as AnyRec)
+        } catch (authErr) {
+          console.warn(
+            '[portalDb] Erro ao criar usuário na auth collection users, tentando app_users:',
+            authErr,
+          )
+        }
+
+        // Fallback em app_users
         const payload: Record<string, unknown> = {
           name: user.name,
           email: user.email,
@@ -754,6 +850,40 @@ export const portalDb = {
   updateAppUser: (userId: string, updates: Partial<UserAccount>) =>
     safeWrite(
       async () => {
+        // Tenta atualizar na coleção `users` do PocketBase
+        try {
+          const authPayload: Record<string, unknown> = {}
+          if (updates.name !== undefined) authPayload.name = updates.name
+          if (updates.role !== undefined) authPayload.role = updates.role
+          if (updates.roleTitle !== undefined) authPayload.roleTitle = updates.roleTitle
+          if (updates.department !== undefined) authPayload.department = updates.department
+          if (updates.status !== undefined) authPayload.status = updates.status
+          if (updates.cpf !== undefined) authPayload.cpf = updates.cpf
+          if (updates.phone !== undefined) authPayload.phone = updates.phone
+          if (updates.avatar !== undefined) authPayload.avatarUrl = updates.avatar
+          if (updates.lastAccess !== undefined) authPayload.lastAccessText = updates.lastAccess
+
+          // Atualiza pelo ID ou busca por e-mail
+          let targetId = userId
+          try {
+            const rec = await pb.collection('users').update(targetId, authPayload)
+            return mapAuthUser(rec as unknown as AnyRec)
+          } catch {
+            if (updates.email) {
+              const found = await pb
+                .collection('users')
+                .getFirstListItem(`email = "${updates.email}"`)
+              if (found) {
+                const rec = await pb.collection('users').update(found.id, authPayload)
+                return mapAuthUser(rec as unknown as AnyRec)
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[portalDb] Falha ao atualizar na coleção users, tentando app_users:', e)
+        }
+
+        // Fallback para app_users
         const payload: Record<string, unknown> = {}
         if (updates.name !== undefined) payload.name = updates.name
         if (updates.role !== undefined) payload.role = updates.role

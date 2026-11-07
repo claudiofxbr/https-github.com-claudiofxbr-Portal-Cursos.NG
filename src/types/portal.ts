@@ -16,14 +16,14 @@ export interface UserAccount {
   role: UserRole
   roleTitle: string
   department: string
-  avatar?: string
+  status: 'ativo' | 'inativo' | 'bloqueado'
   cpf?: string
   phone?: string
-  status: 'ativo' | 'inativo' | 'bloqueado'
-  createdAt: string
+  avatar?: string
+  createdAt?: string
   lastAccess?: string
+  password?: string // Opcional no cadastro/seed demo
 }
-
 export type ModuleKey =
   | 'dashboard'
   | 'matriculas'
