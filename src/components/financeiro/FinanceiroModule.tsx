@@ -32,9 +32,24 @@ import {
   Check,
   Building2,
   DollarSign,
+  User,
+  Search,
+  X,
 } from 'lucide-react'
 
-export function FinanceiroModule() {
+interface FinanceiroModuleProps {
+  initialChargeId?: string | null
+  initialStudentCpf?: string | null
+  onClearInitialFilters?: () => void
+  onNavigateToAluno?: (studentId: string) => void
+}
+
+export function FinanceiroModule({
+  initialChargeId,
+  initialStudentCpf,
+  onClearInitialFilters,
+  onNavigateToAluno,
+}: FinanceiroModuleProps = {}) {
   const {
     charges,
     payChargePix,
@@ -54,6 +69,28 @@ export function FinanceiroModule() {
   const [activeTab, setActiveTab] = useState<'cobrancas' | 'tabela' | 'excecoes' | 'auditoria'>(
     'cobrancas',
   )
+
+  // Filtros de cobranças (com suporte a navegação cruzada)
+  const [chargeSearch, setChargeSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'pago'>('todos')
+  const [highlightedChargeId, setHighlightedChargeId] = useState<string | null>(null)
+
+  // Aplica parâmetros recebidos via navegação cruzada
+  useEffect(() => {
+    if (initialChargeId) {
+      setActiveTab('cobrancas')
+      setHighlightedChargeId(initialChargeId)
+      // Limpa busca para a cobrança ser exibida
+      setChargeSearch('')
+      setStatusFilter('todos')
+      onClearInitialFilters?.()
+    } else if (initialStudentCpf) {
+      setActiveTab('cobrancas')
+      setChargeSearch(initialStudentCpf)
+      setStatusFilter('todos')
+      onClearInitialFilters?.()
+    }
+  }, [initialChargeId, initialStudentCpf, onClearInitialFilters])
 
   // Modais de pagamento
   const [selectedCharge, setSelectedCharge] = useState<Charge | null>(null)
@@ -306,6 +343,67 @@ export function FinanceiroModule() {
 
         {/* TAB 1: COBRANÇAS */}
         <TabsContent value="cobrancas" className="space-y-4 mt-4">
+          {/* Barra de Filtros e Busca */}
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Input
+                value={chargeSearch}
+                onChange={(e) => setChargeSearch(e.target.value)}
+                placeholder="Buscar por aluno, CPF, código ou descrição..."
+                className="pl-9 bg-slate-950 border-slate-800 text-xs text-white h-9"
+              />
+              {chargeSearch && (
+                <button
+                  type="button"
+                  onClick={() => setChargeSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                size="sm"
+                variant={statusFilter === 'todos' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('todos')}
+                className={`h-8 text-xs ${
+                  statusFilter === 'todos'
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                    : 'border-slate-800 text-slate-300'
+                }`}
+              >
+                Todas
+              </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === 'pendente' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('pendente')}
+                className={`h-8 text-xs ${
+                  statusFilter === 'pendente'
+                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                    : 'border-slate-800 text-slate-300'
+                }`}
+              >
+                Pendentes
+              </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === 'pago' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('pago')}
+                className={`h-8 text-xs ${
+                  statusFilter === 'pago'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    : 'border-slate-800 text-slate-300'
+                }`}
+              >
+                Liquidadas
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Card className="bg-slate-900/60 border-slate-800 text-slate-100">
               <CardContent className="p-3.5 space-y-1">
@@ -338,130 +436,173 @@ export function FinanceiroModule() {
           </div>
 
           <div className="space-y-3">
-            {charges.map((charge) => {
-              const isPaid = charge.status === 'pago'
+            {charges
+              .filter((charge) => {
+                if (statusFilter !== 'todos' && charge.status !== statusFilter) return false
+                if (chargeSearch) {
+                  const q = chargeSearch.toLowerCase().trim()
+                  const cleanQ = q.replace(/\D/g, '')
+                  const matchName = charge.studentName?.toLowerCase().includes(q)
+                  const matchCode = charge.code?.toLowerCase().includes(q)
+                  const matchDesc = charge.description?.toLowerCase().includes(q)
+                  const matchCpf = cleanQ && charge.studentCpf?.replace(/\D/g, '').includes(cleanQ)
+                  if (!matchName && !matchCode && !matchDesc && !matchCpf) return false
+                }
+                return true
+              })
+              .map((charge) => {
+                const isPaid = charge.status === 'pago'
+                const isHighlighted = highlightedChargeId === charge.id
 
-              return (
-                <Card
-                  key={charge.id}
-                  className={`border transition-all ${
-                    isPaid
-                      ? 'bg-slate-900/40 border-slate-800/80'
-                      : 'bg-slate-900/80 border-slate-700'
-                  } text-slate-100`}
-                >
-                  <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-blue-400 font-semibold">
-                          {charge.code}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${
-                            isPaid
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                              : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                          }`}
-                        >
-                          {isPaid ? 'LIQUIDADO' : 'PENDENTE'}
-                        </Badge>
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] bg-slate-800 text-slate-300"
-                        >
-                          {charge.category}
-                        </Badge>
-                      </div>
+                // Tenta localizar o aluno para permitir clique direto "Ver aluno"
+                const linkedStudent = students.find(
+                  (s) =>
+                    s.id === charge.studentId ||
+                    (charge.studentCpf &&
+                      (s.cpfRaw === charge.studentCpf.replace(/\D/g, '') ||
+                        s.cpf === charge.studentCpf)),
+                )
 
-                      <h3 className="text-sm font-semibold text-white">{charge.description}</h3>
-
-                      <div className="flex flex-wrap gap-x-4 text-xs text-slate-400">
-                        <span>
-                          Aluno: <strong className="text-slate-200">{charge.studentName}</strong>
-                        </span>
-                        <span className="font-mono">CPF: {charge.studentCpf}</span>
-                        <span>Vencimento: {charge.dueDate}</span>
-                      </div>
-
-                      {isPaid && (
-                        <div className="space-y-1">
-                          <p className="text-[11px] text-emerald-400 font-mono flex flex-wrap items-center gap-1.5">
-                            <span>
-                              ✓ Pago via {charge.method?.toUpperCase()} em {charge.paidAt}
-                            </span>
-                            <span>
-                              • Recibo: <strong>{charge.receiptNumber}</strong>
-                            </span>
-                            {charge.installments && charge.installments > 1 && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] border-emerald-500/30 text-emerald-300 py-0"
-                              >
-                                {charge.installments}x de{' '}
-                                {formatCurrency(charge.amount / charge.installments)}
-                              </Badge>
-                            )}
-                            {charge.cardLast4 && (
-                              <span className="text-slate-400 text-[10px]">
-                                ({charge.cardBrand ? `${charge.cardBrand} ` : ''}final{' '}
-                                {charge.cardLast4})
-                              </span>
-                            )}
-                          </p>
+                return (
+                  <Card
+                    key={charge.id}
+                    className={`border transition-all ${
+                      isHighlighted
+                        ? 'ring-2 ring-blue-500 bg-slate-900 border-blue-500 shadow-lg shadow-blue-500/10'
+                        : isPaid
+                          ? 'bg-slate-900/40 border-slate-800/80'
+                          : 'bg-slate-900/80 border-slate-700'
+                    } text-slate-100`}
+                  >
+                    <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs text-blue-400 font-semibold">
+                            {charge.code}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              isPaid
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                            }`}
+                          >
+                            {isPaid ? 'LIQUIDADO' : 'PENDENTE'}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] bg-slate-800 text-slate-300"
+                          >
+                            {charge.category}
+                          </Badge>
+                          {isHighlighted && (
+                            <Badge className="text-[10px] bg-blue-600 text-white animate-pulse">
+                              Cobrança Selecionada
+                            </Badge>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    <div className="flex flex-row md:flex-col items-end justify-between md:justify-center gap-2 shrink-0 border-t md:border-t-0 pt-2 md:pt-0 border-slate-800">
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block">Valor Nominal</span>
-                        <span className="text-lg font-bold text-white">
-                          {formatCurrency(charge.amount)}
-                        </span>
+                        <h3 className="text-sm font-semibold text-white">{charge.description}</h3>
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                          <span className="flex items-center gap-1.5">
+                            Aluno: <strong className="text-slate-200">{charge.studentName}</strong>
+                            {linkedStudent && onNavigateToAluno && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => onNavigateToAluno(linkedStudent.id)}
+                                className="h-5 px-1.5 text-[11px] text-blue-400 hover:text-white hover:bg-slate-800"
+                                title="Abrir ficha do aluno na Gestão de Alunos"
+                              >
+                                <User className="w-3 h-3 mr-1" />
+                                Ver aluno
+                              </Button>
+                            )}
+                          </span>
+                          <span className="font-mono">CPF: {charge.studentCpf}</span>
+                          <span>Vencimento: {charge.dueDate}</span>
+                        </div>
+
+                        {isPaid && (
+                          <div className="space-y-1">
+                            <p className="text-[11px] text-emerald-400 font-mono flex flex-wrap items-center gap-1.5">
+                              <span>
+                                ✓ Pago via {charge.method?.toUpperCase()} em {charge.paidAt}
+                              </span>
+                              <span>
+                                • Recibo: <strong>{charge.receiptNumber}</strong>
+                              </span>
+                              {charge.installments && charge.installments > 1 && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] border-emerald-500/30 text-emerald-300 py-0"
+                                >
+                                  {charge.installments}x de{' '}
+                                  {formatCurrency(charge.amount / charge.installments)}
+                                </Badge>
+                              )}
+                              {charge.cardLast4 && (
+                                <span className="text-slate-400 text-[10px]">
+                                  ({charge.cardBrand ? `${charge.cardBrand} ` : ''}final{' '}
+                                  {charge.cardLast4})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {!isPaid ? (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => handleOpenPix(charge)}
-                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
-                            >
-                              <QrCode className="w-3.5 h-3.5 mr-1" />
-                              Pagar com Pix
-                            </Button>
+                      <div className="flex flex-row md:flex-col items-end justify-between md:justify-center gap-2 shrink-0 border-t md:border-t-0 pt-2 md:pt-0 border-slate-800">
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 block">Valor Nominal</span>
+                          <span className="text-lg font-bold text-white">
+                            {formatCurrency(charge.amount)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {!isPaid ? (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenPix(charge)}
+                                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                              >
+                                <QrCode className="w-3.5 h-3.5 mr-1" />
+                                Pagar com Pix
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenCard(charge)}
+                                className="h-8 text-xs border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200"
+                              >
+                                <CreditCard className="w-3.5 h-3.5 mr-1" />
+                                Cartão (Simulado)
+                              </Button>
+                            </>
+                          ) : (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleOpenCard(charge)}
-                              className="h-8 text-xs border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200"
+                              onClick={() => {
+                                setReceiptCharge(charge)
+                                setReceiptModalOpen(true)
+                              }}
+                              className="h-8 text-xs border-emerald-500/40 text-emerald-300 bg-emerald-950/20 hover:bg-emerald-950/40"
                             >
-                              <CreditCard className="w-3.5 h-3.5 mr-1" />
-                              Cartão (Simulado)
+                              <FileText className="w-3.5 h-3.5 mr-1" />
+                              Ver Recibo
                             </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setReceiptCharge(charge)
-                              setReceiptModalOpen(true)
-                            }}
-                            className="h-8 text-xs border-emerald-500/40 text-emerald-300 bg-emerald-950/20 hover:bg-emerald-950/40"
-                          >
-                            <FileText className="w-3.5 h-3.5 mr-1" />
-                            Ver Recibo
-                          </Button>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+                    </CardContent>
+                  </Card>
+                )
+              })}
           </div>
         </TabsContent>
 

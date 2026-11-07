@@ -1,6 +1,11 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { usePortal } from '@/context/PortalContext'
-import { Student, Charge, StudentDocument } from '@/types/portal'
+import { Student, Charge, StudentDocument, ACADEMIC_RULES } from '@/types/portal'
+import {
+  calculateAcademicSummary,
+  getAcademicStatusBadge,
+  getAttendanceBadge,
+} from '@/lib/academicCalculations'
 import { StudentGradesAndAttendanceTab } from '@/components/alunos/StudentGradesAndAttendanceTab'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -62,7 +67,17 @@ import {
   ExternalLink,
 } from 'lucide-react'
 
-export function AlunosModule() {
+interface AlunosModuleProps {
+  initialStudentId?: string | null
+  onClearInitialStudent?: () => void
+  onNavigateToFinanceiro?: (options?: { chargeId?: string; studentCpf?: string }) => void
+}
+
+export function AlunosModule({
+  initialStudentId,
+  onClearInitialStudent,
+  onNavigateToFinanceiro,
+}: AlunosModuleProps = {}) {
   const {
     currentUser,
     students,
@@ -96,6 +111,17 @@ export function AlunosModule() {
   // Modais
   const [viewStudent, setViewStudent] = useState<Student | null>(null)
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+
+  // Responde à navegação cruzada abrindo a ficha do aluno solicitado
+  useEffect(() => {
+    if (initialStudentId && students.length > 0) {
+      const found = students.find((s) => s.id === initialStudentId)
+      if (found) {
+        setViewStudent(found)
+      }
+      onClearInitialStudent?.()
+    }
+  }, [initialStudentId, students, onClearInitialStudent])
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -143,6 +169,100 @@ export function AlunosModule() {
         (c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf),
     )
   }, [viewStudent, charges])
+
+  // Notas e frequência do aluno selecionado
+  const selectedStudentGrades = useMemo(() => {
+    if (!viewStudent) return []
+    const cleanCpf = viewStudent.cpfRaw || viewStudent.cpf.replace(/\D/g, '')
+    return grades.filter(
+      (g) =>
+        g.studentId === viewStudent.id ||
+        (g.studentCpf && g.studentCpf.replace(/\D/g, '') === cleanCpf),
+    )
+  }, [viewStudent, grades])
+
+  const selectedStudentAttendance = useMemo(() => {
+    if (!viewStudent) return []
+    const cleanCpf = viewStudent.cpfRaw || viewStudent.cpf.replace(/\D/g, '')
+    return attendance.filter(
+      (a) =>
+        a.studentId === viewStudent.id ||
+        (a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf),
+    )
+  }, [viewStudent, attendance])
+
+  // Resumo acadêmico consolidado por disciplina e global
+  const academicConsolidated = useMemo(() => {
+    if (!viewStudent) {
+      return {
+        summaries: [],
+        overallAverage: 0,
+        overallAttendancePercent: 100,
+        totalClasses: 0,
+        totalPresents: 0,
+        status: 'em_curso' as 'aprovado' | 'reprovado' | 'em_curso',
+        hasData: false,
+      }
+    }
+
+    const summaries = calculateAcademicSummary(selectedStudentGrades, selectedStudentAttendance)
+
+    if (
+      summaries.length === 0 &&
+      selectedStudentGrades.length === 0 &&
+      selectedStudentAttendance.length === 0
+    ) {
+      return {
+        summaries: [],
+        overallAverage: 0,
+        overallAttendancePercent: 100,
+        totalClasses: 0,
+        totalPresents: 0,
+        status: 'em_curso' as 'aprovado' | 'reprovado' | 'em_curso',
+        hasData: false,
+      }
+    }
+
+    // Média geral das notas
+    let overallAverage = 0
+    if (selectedStudentGrades.length > 0) {
+      const sum = selectedStudentGrades.reduce((acc, g) => acc + g.value, 0)
+      overallAverage = Math.round((sum / selectedStudentGrades.length) * 10) / 10
+    } else if (summaries.length > 0) {
+      const sumAvg = summaries.reduce((acc, s) => acc + s.averageGrade, 0)
+      overallAverage = Math.round((sumAvg / summaries.length) * 10) / 10
+    }
+
+    // % de Frequência acumulada
+    let overallAttendancePercent = 100
+    let totalClasses = 0
+    let totalPresents = 0
+    if (selectedStudentAttendance.length > 0) {
+      totalClasses = selectedStudentAttendance.length
+      totalPresents = selectedStudentAttendance.filter(
+        (a) => a.status === 'presente' || a.status === 'falta_justificada',
+      ).length
+      overallAttendancePercent = Math.round((totalPresents / totalClasses) * 1000) / 10
+    }
+
+    // Situação geral MEC: aprovado se média >= 6.0 e frequência >= 75%
+    let status: 'aprovado' | 'reprovado' | 'em_curso' = 'em_curso'
+    if (selectedStudentGrades.length >= 2 || totalClasses >= 4) {
+      const gradeOk = overallAverage >= ACADEMIC_RULES.MIN_PASSING_GRADE
+      const freqOk = overallAttendancePercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+      status = gradeOk && freqOk ? 'aprovado' : 'reprovado'
+    }
+
+    return {
+      summaries,
+      overallAverage,
+      overallAttendancePercent,
+      totalClasses,
+      totalPresents,
+      status,
+      hasData: true,
+    }
+  }, [viewStudent, selectedStudentGrades, selectedStudentAttendance])
 
   // Filtragem de alunos (busca por nome e CPF normalizado sem pontuação)
   const filteredStudents = useMemo(() => {
@@ -775,9 +895,12 @@ export function AlunosModule() {
                 </div>
               )}
 
-              {/* Abas da Ficha: Dados Pessoais, Documentos, Cobranças, Notas e Frequência */}
-              <Tabs defaultValue="dados" className="w-full">
-                <TabsList className="grid grid-cols-4 bg-slate-950 border border-slate-800 text-xs">
+              {/* Abas da Ficha: Resumo Acadêmico, Dados Pessoais, Lançamento de Notas & Freq, Documentos, Cobranças */}
+              <Tabs defaultValue="resumo" className="w-full">
+                <TabsList className="grid grid-cols-5 bg-slate-950 border border-slate-800 text-xs">
+                  <TabsTrigger value="resumo" className="text-xs font-semibold text-blue-300">
+                    Resumo Acadêmico
+                  </TabsTrigger>
                   <TabsTrigger value="dados" className="text-xs">
                     Dados Pessoais
                   </TabsTrigger>
@@ -785,14 +908,169 @@ export function AlunosModule() {
                     Notas & Freq.
                   </TabsTrigger>
                   <TabsTrigger value="documentos" className="text-xs">
-                    Documentos ({viewStudent.documents?.length || 0})
+                    Docs ({viewStudent.documents?.length || 0})
                   </TabsTrigger>
                   <TabsTrigger value="cobrancas" className="text-xs">
                     Cobranças ({selectedStudentCharges.length})
                   </TabsTrigger>
                 </TabsList>
 
-                {/* Aba Nova: Notas e Frequência */}
+                {/* Aba: Resumo Acadêmico Consolidado */}
+                <TabsContent value="resumo" className="space-y-4 pt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Média Geral */}
+                    <div className="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between">
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        Média Geral das Notas
+                      </span>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span
+                          className={`text-2xl font-bold font-mono ${
+                            academicConsolidated.overallAverage >= ACADEMIC_RULES.MIN_PASSING_GRADE
+                              ? 'text-emerald-400'
+                              : academicConsolidated.overallAverage > 0
+                                ? 'text-rose-400'
+                                : 'text-slate-400'
+                          }`}
+                        >
+                          {academicConsolidated.hasData
+                            ? academicConsolidated.overallAverage.toFixed(1)
+                            : '—'}
+                        </span>
+                        <span className="text-[11px] text-slate-500">/ 10,0</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1">
+                        Mínimo para aprovação: {ACADEMIC_RULES.MIN_PASSING_GRADE.toFixed(1)}
+                      </span>
+                    </div>
+
+                    {/* Frequência Acumulada */}
+                    <div className="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between">
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        % Frequência Acumulada
+                      </span>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span
+                          className={`text-2xl font-bold font-mono ${
+                            academicConsolidated.overallAttendancePercent >=
+                            ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                              ? 'text-emerald-400'
+                              : 'text-rose-400'
+                          }`}
+                        >
+                          {academicConsolidated.hasData
+                            ? `${academicConsolidated.overallAttendancePercent}%`
+                            : '100%'}
+                        </span>
+                        {academicConsolidated.totalClasses > 0 && (
+                          <span className="text-[11px] text-slate-400">
+                            ({academicConsolidated.totalPresents}/
+                            {academicConsolidated.totalClasses} aulas)
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1">
+                        Mínimo legal MEC: {ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%
+                      </span>
+                    </div>
+
+                    {/* Situação Acadêmica Geral */}
+                    <div className="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between">
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        Situação Acadêmica MEC
+                      </span>
+                      <div className="mt-1.5">
+                        {academicConsolidated.status === 'aprovado' ? (
+                          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-xs px-2.5 py-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+                            Aprovado
+                          </Badge>
+                        ) : academicConsolidated.status === 'reprovado' ? (
+                          <Badge className="bg-rose-500/20 text-rose-300 border-rose-500/40 text-xs px-2.5 py-1">
+                            <AlertCircle className="w-3.5 h-3.5 mr-1.5 text-rose-400" />
+                            Reprovado
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/40 text-xs px-2.5 py-1">
+                            <Clock className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
+                            Em Curso
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1">
+                        Critério: Nota ≥ 6,0 e Presença ≥ 75%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Resumo Consolidado por Disciplina */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
+                      Desempenho por Disciplina
+                    </h4>
+
+                    {academicConsolidated.summaries.length === 0 ? (
+                      <div className="p-6 rounded-lg bg-slate-950/40 border border-slate-800 text-center text-xs text-slate-400">
+                        Nenhum registro de nota ou frequência lançado para este aluno ainda.
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Use a aba <strong>Notas & Freq.</strong> para realizar lançamentos
+                          acadêmicos.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {academicConsolidated.summaries.map((s) => {
+                          const badge = getAcademicStatusBadge(s.status)
+                          const attBadge = getAttendanceBadge(s.attendancePercent)
+                          return (
+                            <div
+                              key={s.subject}
+                              className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                            >
+                              <div className="space-y-0.5">
+                                <p className="font-semibold text-white">{s.subject}</p>
+                                <p className="text-[11px] text-slate-400">
+                                  Semestre/Módulo:{' '}
+                                  <span className="text-slate-300">{s.term || 'Atual'}</span> •{' '}
+                                  {s.grades.length} avaliações • {s.totalClasses} aulas registradas
+                                </p>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div className="text-right">
+                                  <span className="text-[10px] text-slate-400 block">Média</span>
+                                  <span
+                                    className={`font-mono font-bold ${
+                                      s.averageGrade >= ACADEMIC_RULES.MIN_PASSING_GRADE
+                                        ? 'text-emerald-400'
+                                        : 'text-rose-400'
+                                    }`}
+                                  >
+                                    {s.averageGrade.toFixed(1)}
+                                  </span>
+                                </div>
+
+                                <div className="text-right">
+                                  <span className="text-[10px] text-slate-400 block">Presença</span>
+                                  <span className="font-mono font-semibold text-slate-200">
+                                    {attBadge.label}
+                                  </span>
+                                </div>
+
+                                <Badge variant="outline" className={`text-[10px] ${badge.color}`}>
+                                  {badge.label}
+                                </Badge>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                {/* Aba: Notas e Frequência Detalhadas */}
                 <TabsContent value="notas" className="space-y-4 pt-2">
                   <StudentGradesAndAttendanceTab
                     student={viewStudent}
@@ -939,6 +1217,27 @@ export function AlunosModule() {
 
                 {/* Aba 3: Cobranças vinculadas */}
                 <TabsContent value="cobrancas" className="space-y-3 pt-3">
+                  <div className="flex items-center justify-between pb-1">
+                    <span className="text-xs text-slate-400">
+                      Cobranças atreladas a este aluno no financeiro:
+                    </span>
+                    {onNavigateToFinanceiro && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const cpf = viewStudent.cpfRaw || viewStudent.cpf
+                          setViewStudent(null)
+                          onNavigateToFinanceiro({ studentCpf: cpf })
+                        }}
+                        className="h-7 text-xs border-emerald-500/40 text-emerald-300 bg-emerald-950/20 hover:bg-emerald-950/40"
+                      >
+                        <ExternalLink className="w-3 h-3 mr-1" />
+                        Abrir todas no Financeiro
+                      </Button>
+                    )}
+                  </div>
+
                   {selectedStudentCharges.length === 0 ? (
                     <div className="p-8 text-center text-slate-400 text-xs">
                       Nenhuma cobrança registrada para este aluno no módulo financeiro.
@@ -948,10 +1247,10 @@ export function AlunosModule() {
                       {selectedStudentCharges.map((chg) => (
                         <div
                           key={chg.id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-xs"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-xs gap-2"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                            <div className="w-8 h-8 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
                               <CreditCard className="w-4 h-4" />
                             </div>
                             <div>
@@ -963,22 +1262,41 @@ export function AlunosModule() {
                             </div>
                           </div>
 
-                          <div className="text-right">
-                            <p className="font-bold text-white text-sm">
-                              R$ {chg.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </p>
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] mt-0.5 ${
-                                chg.status === 'pago'
-                                  ? 'border-emerald-500/40 text-emerald-300 bg-emerald-950/30'
-                                  : chg.status === 'atrasado'
-                                    ? 'border-rose-500/40 text-rose-300 bg-rose-950/30'
-                                    : 'border-amber-500/40 text-amber-300 bg-amber-950/30'
-                              }`}
-                            >
-                              {chg.status.toUpperCase()}
-                            </Badge>
+                          <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800/80">
+                            <div className="text-left sm:text-right">
+                              <p className="font-bold text-white text-sm">
+                                R${' '}
+                                {chg.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </p>
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] mt-0.5 ${
+                                  chg.status === 'pago'
+                                    ? 'border-emerald-500/40 text-emerald-300 bg-emerald-950/30'
+                                    : chg.status === 'atrasado'
+                                      ? 'border-rose-500/40 text-rose-300 bg-rose-950/30'
+                                      : 'border-amber-500/40 text-amber-300 bg-amber-950/30'
+                                }`}
+                              >
+                                {chg.status.toUpperCase()}
+                              </Badge>
+                            </div>
+
+                            {onNavigateToFinanceiro && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setViewStudent(null)
+                                  onNavigateToFinanceiro({ chargeId: chg.id })
+                                }}
+                                className="h-7 text-xs text-blue-400 hover:text-white hover:bg-slate-800 px-2"
+                                title="Abrir cobrança no módulo Financeiro"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                                Abrir
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}

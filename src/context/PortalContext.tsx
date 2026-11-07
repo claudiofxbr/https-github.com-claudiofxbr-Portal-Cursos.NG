@@ -796,11 +796,22 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (created) {
         setStudents((prev) => prev.map((s) => (s.id === tempId ? created : s)))
         if (createdCharge) {
-          await portalDb.createCharge({ ...createdCharge, studentId: created.id })
+          const persistedCharge = await portalDb.createCharge({
+            ...createdCharge,
+            studentId: created.id,
+          })
+          if (persistedCharge) {
+            setCharges((prev) =>
+              prev.map((c) => (c.id === createdCharge!.id ? persistedCharge : c)),
+            )
+          }
         }
         return created
       } else if (createdCharge) {
-        await portalDb.createCharge(createdCharge)
+        const persistedCharge = await portalDb.createCharge(createdCharge)
+        if (persistedCharge) {
+          setCharges((prev) => prev.map((c) => (c.id === createdCharge!.id ? persistedCharge : c)))
+        }
       }
     } catch (err) {
       console.warn('[PortalContext] Erro ao salvar aluno no banco:', err)

@@ -20,6 +20,25 @@ import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard')
+  // Parâmetros de navegação cruzada entre módulos
+  const [targetStudentId, setTargetStudentId] = useState<string | null>(null)
+  const [targetChargeId, setTargetChargeId] = useState<string | null>(null)
+  const [targetStudentCpf, setTargetStudentCpf] = useState<string | null>(null)
+
+  const handleNavigateToAlunos = (studentId: string) => {
+    setTargetStudentId(studentId)
+    if (canAccessModule('alunos')) {
+      setActiveModule('alunos')
+    }
+  }
+
+  const handleNavigateToFinanceiro = (options?: { chargeId?: string; studentCpf?: string }) => {
+    if (options?.chargeId) setTargetChargeId(options.chargeId)
+    if (options?.studentCpf) setTargetStudentCpf(options.studentCpf)
+    if (canAccessModule('financeiro')) {
+      setActiveModule('financeiro')
+    }
+  }
 
   // Se o usuário logado for do papel ALUNO, renderiza o PORTAL DO ALUNO completo e dedicado
   if (currentUser && currentUser.role === 'aluno') {
@@ -50,7 +69,13 @@ export default function Index() {
             <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
           )}
           {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
-          {safeActiveModule === 'alunos' && <AlunosModule />}
+          {safeActiveModule === 'alunos' && (
+            <AlunosModule
+              initialStudentId={targetStudentId}
+              onClearInitialStudent={() => setTargetStudentId(null)}
+              onNavigateToFinanceiro={handleNavigateToFinanceiro}
+            />
+          )}
           {safeActiveModule === 'matriculas' && (
             <MatriculaModule
               onNavigateToModule={(mod) => {
@@ -61,7 +86,17 @@ export default function Index() {
             />
           )}
           {safeActiveModule === 'cursos' && <CursosModule />}
-          {safeActiveModule === 'financeiro' && <FinanceiroModule />}
+          {safeActiveModule === 'financeiro' && (
+            <FinanceiroModule
+              initialChargeId={targetChargeId}
+              initialStudentCpf={targetStudentCpf}
+              onClearInitialFilters={() => {
+                setTargetChargeId(null)
+                setTargetStudentCpf(null)
+              }}
+              onNavigateToAluno={handleNavigateToAlunos}
+            />
+          )}
           {safeActiveModule === 'relatorios' && <RelatoriosModule />}
           {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
           {safeActiveModule === 'manutencao' && <ManutencaoModule />}
