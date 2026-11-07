@@ -93,6 +93,8 @@ export function AlunosModule({
     addAttendance,
     updateAttendance,
     deleteAttendance,
+    certificates,
+    issueCertificate,
   } = usePortal()
   const { toast } = useToast()
 

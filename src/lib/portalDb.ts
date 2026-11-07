@@ -52,6 +52,7 @@ export const COLLECTIONS = {
   calendarEvents: 'calendar_events',
   studentNotifications: 'student_notifications',
   studentSupportTickets: 'student_support_tickets',
+  certificates: 'certificates',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -685,6 +686,29 @@ export function mapStudentSupportTicket(rec: AnyRec): StudentSupportTicket {
   }
 }
 
+export function mapCertificate(rec: AnyRec): Certificate {
+  return {
+    id: str(rec.id),
+    studentId: str(rec.studentId),
+    studentName: str(rec.studentName),
+    studentCpf: str(rec.studentCpf) || undefined,
+    courseId: str(rec.courseId),
+    courseName: str(rec.courseName),
+    courseLevel: str(rec.courseLevel) || undefined,
+    workloadHours: num(rec.workloadHours, 0),
+    issueDate: str(rec.issueDate) || new Date().toISOString().slice(0, 10),
+    verificationCode: str(rec.verificationCode),
+    issuedBy: str(rec.issuedBy),
+    issuedByUserId: str(rec.issuedByUserId) || undefined,
+    averageGrade: typeof rec.averageGrade === 'number' ? rec.averageGrade : undefined,
+    attendancePercent:
+      typeof rec.attendancePercent === 'number' ? rec.attendancePercent : undefined,
+    status: str(rec.status, 'ativo') as 'ativo' | 'revogado',
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
 // ---------- loaders ----------
 
 // Carrega todos os dados do banco (com seed inicial em coleções vazias).
@@ -707,6 +731,7 @@ export async function loadAllData(): Promise<{
   calendarEvents: CalendarEvent[]
   studentNotifications: StudentNotification[]
   studentSupportTickets: StudentSupportTicket[]
+  certificates: Certificate[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -729,6 +754,7 @@ export async function loadAllData(): Promise<{
     calendarEvents,
     studentNotifications,
     studentSupportTickets,
+    certificates,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -859,6 +885,13 @@ export async function loadAllData(): Promise<{
         ).map(mapStudentSupportTicket),
       [],
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.certificates).getFullList({ sort: '-created' })).map(
+          mapCertificate,
+        ),
+      [],
+    ),
   ])
 
   return {
@@ -879,6 +912,7 @@ export async function loadAllData(): Promise<{
     calendarEvents,
     studentNotifications,
     studentSupportTickets,
+    certificates,
   }
 }
 
@@ -1771,6 +1805,42 @@ export const portalDb = {
     ),
 
   // --- Portal do Aluno: Edição de Perfil do Aluno ---
+  // --- Certificados Acadêmicos ---
+  createCertificate: (cert: Omit<Certificate, 'id' | 'created' | 'updated'> & { id?: string }) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          studentId: cert.studentId,
+          studentName: cert.studentName,
+          studentCpf: cert.studentCpf || '',
+          courseId: cert.courseId,
+          courseName: cert.courseName,
+          courseLevel: cert.courseLevel || '',
+          workloadHours: cert.workloadHours,
+          issueDate: cert.issueDate,
+          verificationCode: cert.verificationCode,
+          issuedBy: cert.issuedBy,
+          issuedByUserId: cert.issuedByUserId || '',
+          averageGrade: cert.averageGrade !== undefined ? cert.averageGrade : 0,
+          attendancePercent: cert.attendancePercent !== undefined ? cert.attendancePercent : 0,
+          status: cert.status || 'ativo',
+          ...(cert.id && cert.id.length >= 15 ? { id: cert.id } : {}),
+        }
+        const rec = await pb.collection(COLLECTIONS.certificates).create(payload)
+        return mapCertificate(rec as unknown as AnyRec)
+      },
+      null as Certificate | null,
+    ),
+
+  updateCertificateStatus: (certId: string, status: 'ativo' | 'revogado') =>
+    safeWrite(
+      async () => {
+        const rec = await pb.collection(COLLECTIONS.certificates).update(certId, { status })
+        return mapCertificate(rec as unknown as AnyRec)
+      },
+      null as Certificate | null,
+    ),
+
   updateStudentProfile: (
     studentId: string,
     userId: string,

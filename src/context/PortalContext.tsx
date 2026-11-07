@@ -165,6 +165,18 @@ interface PortalContextType {
   ) => Promise<AttendanceRecord | null>
   deleteAttendance: (id: string) => Promise<boolean>
 
+  // Certificates
+  certificates: Certificate[]
+  issueCertificate: (params: {
+    studentId: string
+    courseId?: string
+    issuedBy?: string
+  }) => Promise<
+    { certificate: Certificate; error?: string } | { certificate?: null; error: string }
+  >
+  revokeCertificate: (certificateId: string) => Promise<boolean>
+  getStudentCertificate: (studentId: string) => Certificate | undefined
+
   // Diagnostic
   diagnostic: SystemDiagnostic
   refreshDiagnostic: () => void
@@ -367,6 +379,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [studentNotifications, setStudentNotifications] = useState<StudentNotification[]>([])
   const [studentSupportTickets, setStudentSupportTickets] = useState<StudentSupportTicket[]>([])
+  const [certificates, setCertificates] = useState<Certificate[]>([])
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -400,6 +413,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.calendarEvents) setCalendarEvents(data.calendarEvents)
       if (data.studentNotifications) setStudentNotifications(data.studentNotifications)
       if (data.studentSupportTickets) setStudentSupportTickets(data.studentSupportTickets)
+      if (data.certificates) setCertificates(data.certificates)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -1361,6 +1375,180 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // --- Gestão de Certificados ---
+  const getStudentCertificate = useCallback(
+    (studentId: string): Certificate | undefined => {
+      return certificates.find((c) => c.studentId === studentId && c.status === 'ativo')
+    },
+    [certificates],
+  )
+
+  const issueCertificate = async (params: {
+    studentId: string
+    courseId?: string
+    issuedBy?: string
+  }): Promise<
+    { certificate: Certificate; error?: string } | { certificate?: null; error: string }
+  > => {
+    // 1. Validação de permissões
+    const allowedRoles: UserRole[] = ['root', 'admin', 'secretaria', 'coordenador']
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      return {
+        certificate: null,
+        error:
+          'Apenas a Secretaria Geral, Coordenação ou Administradores podem emitir certificados.',
+      }
+    }
+
+    // 2. Busca o aluno
+    const student = students.find((s) => s.id === params.studentId)
+    if (!student) {
+      return { certificate: null, error: 'Aluno não encontrado no cadastro.' }
+    }
+
+    // 3. Verifica se já existe certificado ativo
+    const existing = certificates.find((c) => c.studentId === student.id && c.status === 'ativo')
+    if (existing) {
+      return { certificate: existing }
+    }
+
+    // 4. Busca o curso correspondente
+    const targetCourseId = params.courseId || student.courseId
+    const course = courses.find(
+      (c) =>
+        c.id === targetCourseId ||
+        c.code === targetCourseId ||
+        c.name.toLowerCase() === student.courseName.toLowerCase(),
+    )
+
+    // 5. Calcula resumo acadêmico com as notas e presenças do aluno
+    const studentGrades = grades.filter((g) => g.studentId === student.id)
+    const studentAttendance = attendance.filter((a) => a.studentId === student.id)
+
+    // Cálculo consolidado
+    let totalGrade = 0
+    let gradeCount = 0
+    studentGrades.forEach((g) => {
+      if (typeof g.value === 'number') {
+        totalGrade += g.value
+        gradeCount += 1
+      }
+    })
+    const averageGrade = gradeCount > 0 ? Number((totalGrade / gradeCount).toFixed(1)) : 0
+
+    let totalClasses = 0
+    let attendedClasses = 0
+    studentAttendance.forEach((a) => {
+      totalClasses += a.hours || 1
+      if (a.status === 'presente' || a.status === 'falta_justificada') {
+        attendedClasses += a.hours || 1
+      }
+    })
+    const attendancePercent =
+      totalClasses > 0 ? Number(((attendedClasses / totalClasses) * 100).toFixed(1)) : 100
+
+    // Critérios MEC: nota >= 6.0 e frequência >= 75%
+    const isGradeApproved = averageGrade >= 6.0
+    const isAttendanceApproved = attendancePercent >= 75.0
+
+    if (!isGradeApproved || !isAttendanceApproved) {
+      const reasons: string[] = []
+      if (!isGradeApproved) {
+        reasons.push(
+          `Média geral ${averageGrade.toFixed(1)} inferior ao mínimo exigido pelo MEC (6,0)`,
+        )
+      }
+      if (!isAttendanceApproved) {
+        reasons.push(
+          `Frequência apurada ${attendancePercent.toFixed(1)}% inferior ao mínimo legal do MEC (75,0%)`,
+        )
+      }
+      return {
+        certificate: null,
+        error: `Emissão bloqueada por pendência acadêmica: ${reasons.join('; ')}.`,
+      }
+    }
+
+    // 6. Gera código de verificação único e legível: CERT-XXXX-XXXX
+    const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const randomHex2 = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const verificationCode = `CERT-${randomHex}-${randomHex2}`
+
+    const workloadHours = course?.workloadHours || (student.type === 'pos_graduacao' ? 420 : 3600)
+    const courseLevel = course?.level || student.type || 'graduacao'
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    const newCert: Certificate = {
+      id: `cert-${Date.now()}`,
+      studentId: student.id,
+      studentName: student.fullName,
+      studentCpf: student.cpf,
+      courseId: course?.id || student.courseId,
+      courseName: course?.name || student.courseName,
+      courseLevel,
+      workloadHours,
+      issueDate: todayStr,
+      verificationCode,
+      issuedBy: params.issuedBy || currentUser.name || 'Secretaria Acadêmica',
+      issuedByUserId: currentUser.id,
+      averageGrade,
+      attendancePercent,
+      status: 'ativo',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+
+    // Atualização otimista
+    setCertificates((prev) => [newCert, ...prev])
+
+    // Notifica o aluno se existir
+    const notification: StudentNotification = {
+      id: `notif-${Date.now()}`,
+      studentId: student.id,
+      title: '🎓 Certificado de Conclusão Disponível',
+      message: `Seu certificado do curso ${newCert.courseName} foi emitido com sucesso e já está disponível para download.`,
+      type: 'academico',
+      read: false,
+      actionUrl: '/portal-aluno',
+      created: new Date().toISOString(),
+    }
+    setStudentNotifications((prev) => [notification, ...prev])
+
+    // Persiste no PocketBase
+    try {
+      const persisted = await portalDb.createCertificate(newCert)
+      if (persisted) {
+        setCertificates((prev) =>
+          prev.map((c) => (c.verificationCode === verificationCode ? persisted : c)),
+        )
+        return { certificate: persisted }
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao persistir certificado no banco:', err)
+    }
+
+    return { certificate: newCert }
+  }
+
+  const revokeCertificate = async (certificateId: string): Promise<boolean> => {
+    const allowedRoles: UserRole[] = ['root', 'admin', 'secretaria']
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      return false
+    }
+
+    setCertificates((prev) =>
+      prev.map((c) => (c.id === certificateId ? { ...c, status: 'revogado' } : c)),
+    )
+
+    try {
+      await portalDb.updateCertificateStatus(certificateId, 'revogado')
+      return true
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao revogar certificado:', err)
+      return false
+    }
+  }
+
   // --- Portal do Aluno: Métodos ---
   const updateLessonProgress = async (
     lessonId: string,
@@ -1662,6 +1850,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         markAllNotificationsAsRead,
         createStudentSupportTicket,
         updateStudentProfile,
+        certificates,
+        issueCertificate,
+        revokeCertificate,
+        getStudentCertificate,
         isBackendReady,
         isSyncing,
       }}

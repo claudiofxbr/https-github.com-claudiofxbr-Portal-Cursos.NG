@@ -379,7 +379,28 @@ export type StudentPortalTab =
   | 'calendario'
   | 'notificacoes'
   | 'minhas_notas'
+  | 'certificados'
   | 'suporte'
+
+export interface Certificate {
+  id: string
+  studentId: string
+  studentName: string
+  studentCpf?: string
+  courseId: string
+  courseName: string
+  courseLevel?: string
+  workloadHours: number
+  issueDate: string // YYYY-MM-DD
+  verificationCode: string // ex: CERT-XXXX-XXXX
+  issuedBy: string
+  issuedByUserId?: string
+  averageGrade?: number
+  attendancePercent?: number
+  status: 'ativo' | 'revogado'
+  created?: string
+  updated?: string
+}
 
 export type SupportCategory =
   | 'academico'

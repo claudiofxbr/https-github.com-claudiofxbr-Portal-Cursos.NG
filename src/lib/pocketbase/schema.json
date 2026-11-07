@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T18:53:42.681Z",
+  "generatedAt": "2026-11-07T19:18:18.455Z",
   "collections": [
     {
       "name": "users",
@@ -1863,6 +1863,123 @@
         "CREATE INDEX idx_supp_student ON student_support_tickets (studentId)",
         "CREATE INDEX idx_supp_status ON student_support_tickets (status)",
         "CREATE UNIQUE INDEX idx_supp_protocol ON student_support_tickets (protocol)"
+      ]
+    },
+    {
+      "name": "certificates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentCpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "courseName",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "courseLevel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "workloadHours",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "issueDate",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "verificationCode",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "issuedBy",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "issuedByUserId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "averageGrade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attendancePercent",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ativo", "revogado"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_certificates_student ON certificates (studentId)",
+        "CREATE INDEX idx_certificates_course ON certificates (courseId)",
+        "CREATE UNIQUE INDEX idx_certificates_code ON certificates (verificationCode)"
       ]
     }
   ]
