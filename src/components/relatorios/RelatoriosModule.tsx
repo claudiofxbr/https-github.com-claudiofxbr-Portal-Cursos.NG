@@ -445,6 +445,8 @@ export const RelatoriosModule: React.FC = () => {
       },
       kpis: currentMetrics,
       courses: coursePerformance,
+      categoriesChartData,
+      evolutionChartData,
     }
   }
 

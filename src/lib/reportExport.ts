@@ -5,6 +5,22 @@
 
 import { CoursePerformanceData } from '@/components/relatorios/CoursePerformanceTable'
 
+export interface ReportCategoryData {
+  category: string
+  label: string
+  amount: number
+  count: number
+  percentage: number
+}
+
+export interface ReportMonthlyEvolutionData {
+  monthKey: string
+  monthLabel: string
+  receitas: number
+  despesas: number
+  lucro: number
+}
+
 export interface ReportKpisData {
   receita: number
   despesas: number
@@ -30,6 +46,8 @@ export interface ReportExportPayload {
   }
   kpis: ReportKpisData
   courses: CoursePerformanceData[]
+  categoriesChartData?: ReportCategoryData[]
+  evolutionChartData?: ReportMonthlyEvolutionData[]
 }
 
 const ALLOWED_EXPORT_ROLES = new Set(['root', 'admin', 'financeiro'])
@@ -224,12 +242,27 @@ export function exportReportToCsv(payload: ReportExportPayload): void {
  * (incluindo quebra de página controlada, tabela zebrada, cores institucionais e metadados).
  */
 export function exportReportToPdf(payload: ReportExportPayload): void {
-  const { portalName, periodLabel, generatedAt, generatedBy, kpis, courses } = payload
+  const {
+    portalName,
+    periodLabel,
+    generatedAt,
+    generatedBy,
+    kpis,
+    courses,
+    categoriesChartData = [],
+    evolutionChartData = [],
+  } = payload
 
   const formattedDate = formatDateTime(generatedAt)
   const dateStr = generatedAt.toISOString().slice(0, 10)
   const periodStr = sanitizeFilenamePart(payload.periodKey || payload.periodLabel)
   const documentTitle = `Relatorio_Gerencial_${periodStr}_${dateStr}`
+
+  // Gera SVG para Evolução Financeira
+  const evolutionChartSvg = generateEvolutionChartSvg(evolutionChartData)
+
+  // Gera SVG para Distribuição por Categoria
+  const categoriesChartSvg = generateCategoriesChartSvg(categoriesChartData)
 
   // Monta linhas da tabela de cursos
   const coursesRowsHtml = courses
@@ -392,11 +425,57 @@ export function exportReportToPdf(payload: ReportExportPayload): void {
           font-size: 10px;
           color: #64748b;
         }
+        .charts-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+          margin-bottom: 16px;
+          page-break-inside: avoid;
+        }
+        .chart-card {
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 10px 12px;
+          background: #ffffff;
+        }
+        .chart-header {
+          margin-bottom: 6px;
+          border-bottom: 1px solid #f1f5f9;
+          padding-bottom: 4px;
+        }
+        .chart-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: #0f172a;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .chart-desc {
+          font-size: 9.5px;
+          color: #64748b;
+          margin-top: 1px;
+        }
+        .chart-container {
+          width: 100%;
+          height: auto;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .page-break-section {
+          page-break-before: auto;
+        }
         table {
           width: 100%;
           border-collapse: collapse;
           font-size: 11px;
           margin-top: 6px;
+          page-break-inside: auto;
+        }
+        tr {
+          page-break-inside: avoid;
+          page-break-after: auto;
         }
         th {
           background-color: #f1f5f9;
@@ -504,7 +583,33 @@ export function exportReportToPdf(payload: ReportExportPayload): void {
       </div>
 
       <div class="section-title">
-        <span>2. Desempenho e Rentabilidade por Curso</span>
+        <span>2. Análise Gráfica: Evolução Financeira & Distribuição</span>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Evolução Temporal: Receitas vs. Despesas</div>
+            <div class="chart-desc">Comparativo de liquidação de mensalidades e custos operacionais</div>
+          </div>
+          <div class="chart-container">
+            ${evolutionChartSvg}
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Distribuição de Receitas por Categoria</div>
+            <div class="chart-desc">Origem da arrecadação líquida no período selecionado</div>
+          </div>
+          <div class="chart-container">
+            ${categoriesChartSvg}
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title page-break-section">
+        <span>3. Desempenho e Rentabilidade por Curso</span>
       </div>
 
       <table>
@@ -525,7 +630,7 @@ export function exportReportToPdf(payload: ReportExportPayload): void {
 
       <div class="footer">
         <div>${escapeHtml(portalName)} • Sistema Integrado de Gestão Acadêmica e Financeira</div>
-        <div>Página 1 de 1 • Autenticado digitalmente por ${escapeHtml(generatedBy.email)}</div>
+        <div>Documento Oficial • Autenticado digitalmente por ${escapeHtml(generatedBy.email)}</div>
       </div>
 
       <script>
@@ -543,6 +648,218 @@ export function exportReportToPdf(payload: ReportExportPayload): void {
   printWindow.document.open()
   printWindow.document.write(htmlContent)
   printWindow.document.close()
+}
+
+const CATEGORY_COLORS = [
+  '#0284c7', // sky-600
+  '#0d9488', // teal-600
+  '#f59e0b', // amber-500
+  '#8b5cf6', // purple-500
+  '#ec4899', // pink-500
+  '#64748b', // slate-500
+  '#10b981', // emerald-500
+]
+
+/**
+ * Gera um SVG vetorial de alta nitidez para a Evolução Temporal (Receitas vs Despesas e Lucro).
+ * Suporta barras comparativas lado a lado e linha pontilhada de lucro operacional.
+ */
+function generateEvolutionChartSvg(data: ReportMonthlyEvolutionData[]): string {
+  if (!data || data.length === 0) {
+    return `<div style="height: 180px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 11px;">Sem dados de evolução financeira disponíveis.</div>`
+  }
+
+  const width = 450
+  const height = 200
+  const padding = { top: 22, right: 15, bottom: 42, left: 48 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  // Encontra valor máximo para a escala do eixo Y
+  const maxVal = Math.max(
+    1000,
+    ...data.map((d) => Math.max(d.receitas, d.despesas, Math.max(0, d.lucro))),
+  )
+  // Arredonda para cima em múltiplos amigáveis
+  const yMax = Math.ceil(maxVal * 1.15)
+  const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax]
+
+  const getY = (val: number) => {
+    const clamped = Math.max(0, val)
+    return padding.top + chartH - (clamped / yMax) * chartH
+  }
+
+  // Linhas horizontais de grade e rótulos do eixo Y
+  const gridLines = yTicks
+    .map((tickVal) => {
+      const y = getY(tickVal)
+      const formatted =
+        tickVal >= 1000 ? `R$ ${(tickVal / 1000).toFixed(0)}k` : `R$ ${tickVal.toFixed(0)}`
+      return `
+        <line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${padding.left + chartW}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1" />
+        <text x="${padding.left - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, sans-serif">${formatted}</text>
+      `
+    })
+    .join('')
+
+  const n = data.length
+  const slotW = chartW / n
+  const barW = Math.max(8, Math.min(22, slotW * 0.3))
+  const barGap = 2
+
+  let barsHtml = ''
+  let xAxisHtml = ''
+  const profitPoints: Array<{ x: number; y: number; val: number }> = []
+
+  data.forEach((d, idx) => {
+    const slotCenterX = padding.left + idx * slotW + slotW / 2
+    const receitaX = slotCenterX - barW - barGap / 2
+    const despesaX = slotCenterX + barGap / 2
+
+    const receitaY = getY(d.receitas)
+    const receitaH = Math.max(0, padding.top + chartH - receitaY)
+
+    const despesaY = getY(d.despesas)
+    const despesaH = Math.max(0, padding.top + chartH - despesaY)
+
+    const profitY = getY(d.lucro)
+    profitPoints.push({ x: slotCenterX, y: profitY, val: d.lucro })
+
+    barsHtml += `
+      <!-- Barra Receita -->
+      <rect x="${receitaX.toFixed(1)}" y="${receitaY.toFixed(1)}" width="${barW}" height="${receitaH.toFixed(1)}" fill="#0284c7" rx="2" />
+      <!-- Barra Despesa -->
+      <rect x="${despesaX.toFixed(1)}" y="${despesaY.toFixed(1)}" width="${barW}" height="${despesaH.toFixed(1)}" fill="#e11d48" rx="2" />
+    `
+
+    // Rótulo do Eixo X
+    xAxisHtml += `
+      <text x="${slotCenterX.toFixed(1)}" y="${(padding.top + chartH + 13).toFixed(1)}" text-anchor="middle" font-size="8.5" font-weight="600" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+        ${escapeHtml(d.monthLabel)}
+      </text>
+    `
+  })
+
+  // Linha de lucro pontilhada
+  let profitLinePath = ''
+  let profitDotsHtml = ''
+  if (profitPoints.length > 1) {
+    profitLinePath = profitPoints.reduce((acc, pt, i) => {
+      return i === 0
+        ? `M ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`
+        : `${acc} L ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`
+    }, '')
+
+    profitDotsHtml = profitPoints
+      .map(
+        (pt) =>
+          `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.5" fill="#10b981" stroke="#ffffff" stroke-width="1" />`,
+      )
+      .join('')
+  }
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" style="display: block; max-width: 100%; overflow: visible;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Grade de Fundo -->
+      ${gridLines}
+
+      <!-- Eixo X Base -->
+      <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${padding.left + chartW}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+
+      <!-- Barras de Receita e Despesa -->
+      ${barsHtml}
+
+      <!-- Linha de Lucro -->
+      ${profitLinePath ? `<path d="${profitLinePath}" fill="none" stroke="#10b981" stroke-width="1.8" stroke-dasharray="3,3" />` : ''}
+      ${profitDotsHtml}
+
+      <!-- Rótulos X -->
+      ${xAxisHtml}
+
+      <!-- Legenda Superior -->
+      <g transform="translate(${padding.left}, 10)">
+        <rect x="0" y="0" width="8" height="8" rx="1.5" fill="#0284c7" />
+        <text x="12" y="7" font-size="8" fill="#334155" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, sans-serif">Receita</text>
+
+        <rect x="70" y="0" width="8" height="8" rx="1.5" fill="#e11d48" />
+        <text x="82" y="7" font-size="8" fill="#334155" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, sans-serif">Despesas</text>
+
+        <line x1="145" y1="4" x2="160" y2="4" stroke="#10b981" stroke-width="2" stroke-dasharray="3,2" />
+        <circle cx="152.5" cy="4" r="2" fill="#10b981" />
+        <text x="165" y="7" font-size="8" fill="#334155" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, sans-serif">Lucro Líquido</text>
+      </g>
+    </svg>
+  `
+}
+
+/**
+ * Gera um SVG vetorial de alta nitidez para a Distribuição de Receitas por Categoria
+ * (barras horizontais proporcionais com valores e percentuais fiéis ao período selecionado).
+ */
+function generateCategoriesChartSvg(data: ReportCategoryData[]): string {
+  if (!data || data.length === 0) {
+    return `<div style="height: 180px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 11px;">Sem dados de receita no período selecionado.</div>`
+  }
+
+  const width = 450
+  const height = 200
+  const padding = { top: 18, right: 80, bottom: 20, left: 105 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  // Considera até as 5 categorias mais relevantes para caber perfeitamente no quadro
+  const displayData = data.slice(0, 5)
+  const maxAmount = Math.max(1, ...displayData.map((d) => d.amount))
+  const totalAmount = displayData.reduce((acc, d) => acc + d.amount, 0) || 1
+
+  const rowCount = displayData.length
+  const rowH = chartH / rowCount
+  const barH = Math.min(16, rowH * 0.55)
+
+  let rowsHtml = ''
+
+  displayData.forEach((d, idx) => {
+    const yCenter = padding.top + idx * rowH + rowH / 2
+    const barY = yCenter - barH / 2
+    const barWidth = Math.max(2, (d.amount / maxAmount) * chartW)
+    const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length]
+    const pct = d.percentage || (d.amount / totalAmount) * 100
+    const formattedVal = `R$ ${d.amount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+
+    rowsHtml += `
+      <!-- Linha guia sutil -->
+      <line x1="${padding.left}" y1="${(padding.top + (idx + 1) * rowH).toFixed(1)}" x2="${padding.left + chartW}" y2="${(padding.top + (idx + 1) * rowH).toFixed(1)}" stroke="#f8fafc" stroke-width="1" />
+
+      <!-- Rótulo da Categoria (Y) -->
+      <text x="${padding.left - 8}" y="${(yCenter + 3.5).toFixed(1)}" text-anchor="end" font-size="8.5" font-weight="600" fill="#334155" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+        ${escapeHtml(d.label)}
+      </text>
+
+      <!-- Fundo sutil da barra (trilho) -->
+      <rect x="${padding.left}" y="${barY.toFixed(1)}" width="${chartW}" height="${barH}" fill="#f1f5f9" rx="3" />
+
+      <!-- Barra de Valor -->
+      <rect x="${padding.left}" y="${barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH}" fill="${color}" rx="3" />
+
+      <!-- Valor monetário e percentual à direita da barra -->
+      <text x="${(padding.left + barWidth + 6).toFixed(1)}" y="${(yCenter + 3.5).toFixed(1)}" font-size="8.5" font-weight="700" fill="#1e293b" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+        ${formattedVal} <tspan fill="#64748b" font-weight="normal" font-size="7.5">(${pct.toFixed(1)}%)</tspan>
+      </text>
+    `
+  })
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" style="display: block; max-width: 100%;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Eixo Vertical -->
+      <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+
+      <!-- Linhas e Barras -->
+      ${rowsHtml}
+
+      <!-- Eixo Inferior de Fundo -->
+      <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${padding.left + chartW}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+    </svg>
+  `
 }
 
 /** Helper para escapar HTML em strings */
