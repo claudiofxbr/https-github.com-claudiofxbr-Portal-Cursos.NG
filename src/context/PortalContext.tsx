@@ -20,6 +20,7 @@ import {
   CalendarEvent,
   StudentNotification,
   StudentSupportTicket,
+  Certificate,
 } from '@/types/portal'
 import {
   PORTAL_GATE_PASSCODE,
@@ -1378,9 +1379,17 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   // --- Gestão de Certificados ---
   const getStudentCertificate = useCallback(
     (studentId: string): Certificate | undefined => {
-      return certificates.find((c) => c.studentId === studentId && c.status === 'ativo')
+      const student = students.find((s) => s.id === studentId)
+      const cleanCpf = student?.cpfRaw || student?.cpf.replace(/\D/g, '')
+      return certificates.find((c) => {
+        if (c.status !== 'ativo') return false
+        if (c.studentId === studentId) return true
+        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+        if (student && c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
+        return false
+      })
     },
-    [certificates],
+    [certificates, students],
   )
 
   const issueCertificate = async (params: {
@@ -1407,7 +1416,14 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
 
     // 3. Verifica se já existe certificado ativo
-    const existing = certificates.find((c) => c.studentId === student.id && c.status === 'ativo')
+    const cleanStudentCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
+    const existing = certificates.find((c) => {
+      if (c.status !== 'ativo') return false
+      if (c.studentId === student.id) return true
+      if (c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf) return true
+      if (c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
+      return false
+    })
     if (existing) {
       return { certificate: existing }
     }
@@ -1421,9 +1437,20 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         c.name.toLowerCase() === student.courseName.toLowerCase(),
     )
 
-    // 5. Calcula resumo acadêmico com as notas e presenças do aluno
-    const studentGrades = grades.filter((g) => g.studentId === student.id)
-    const studentAttendance = attendance.filter((a) => a.studentId === student.id)
+    // 5. Calcula resumo acadêmico com as notas e presenças do aluno (por studentId, CPF ou nome)
+    const cleanCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
+    const studentGrades = grades.filter(
+      (g) =>
+        g.studentId === student.id ||
+        (g.studentCpf && g.studentCpf.replace(/\D/g, '') === cleanCpf) ||
+        (g.studentName && g.studentName.toLowerCase() === student.fullName.toLowerCase()),
+    )
+    const studentAttendance = attendance.filter(
+      (a) =>
+        a.studentId === student.id ||
+        (a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf) ||
+        (a.studentName && a.studentName.toLowerCase() === student.fullName.toLowerCase()),
+    )
 
     // Cálculo consolidado
     let totalGrade = 0

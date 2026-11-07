@@ -20,6 +20,7 @@ import {
   CalendarEvent,
   StudentNotification,
   StudentSupportTicket,
+  Certificate,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,

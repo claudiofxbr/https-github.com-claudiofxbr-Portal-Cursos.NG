@@ -65,7 +65,12 @@ import {
   ArrowUpDown,
   X,
   ExternalLink,
+  Award,
+  Download,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react'
+import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 
 interface AlunosModuleProps {
   initialStudentId?: string | null
@@ -95,15 +100,20 @@ export function AlunosModule({
     deleteAttendance,
     certificates,
     issueCertificate,
+    revokeCertificate,
   } = usePortal()
   const { toast } = useToast()
 
   // Permissões
   // root, admin, secretaria, matricula: gerenciar (criar/editar/status)
   // coordenador, professor: apenas visualizar
+  // root, admin, secretaria, coordenador: emitir certificado
+  // root, admin, secretaria: revogar certificado
   const role = currentUser?.role || 'aluno'
   const canManage = ['root', 'admin', 'secretaria', 'matricula'].includes(role)
   const canDelete = ['root', 'admin'].includes(role)
+  const canIssueCertificate = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
+  const canRevokeCertificate = ['root', 'admin', 'secretaria'].includes(role)
 
   // Filtros e busca
   const [searchTerm, setSearchTerm] = useState('')
@@ -127,6 +137,9 @@ export function AlunosModule({
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isIssuingCert, setIsIssuingCert] = useState(false)
+  const [isRevokingCert, setIsRevokingCert] = useState(false)
+  const [certToRevoke, setCertToRevoke] = useState<string | null>(null)
 
   // Formulário de Edição
   const [editForm, setEditForm] = useState<{
@@ -171,6 +184,81 @@ export function AlunosModule({
         (c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf),
     )
   }, [viewStudent, charges])
+
+  // Certificado ativo do aluno selecionado
+  const selectedStudentCertificate = useMemo(() => {
+    if (!viewStudent) return null
+    const cleanCpf = viewStudent.cpfRaw || viewStudent.cpf.replace(/\D/g, '')
+    return (
+      certificates.find((c) => {
+        if (c.status !== 'ativo') return false
+        if (c.studentId === viewStudent.id) return true
+        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+        if (c.studentName.toLowerCase() === viewStudent.fullName.toLowerCase()) return true
+        return false
+      }) || null
+    )
+  }, [viewStudent, certificates])
+
+  // Manipulador de emissão de certificado
+  const handleIssueCertificate = async () => {
+    if (!viewStudent) return
+    setIsIssuingCert(true)
+    try {
+      const res = await issueCertificate({ studentId: viewStudent.id })
+      if (res.certificate) {
+        toast({
+          title: 'Certificado Emitido com Sucesso!',
+          description: `Código ${res.certificate.verificationCode}. Abrindo visualização para impressão/download...`,
+        })
+        generateCertificatePdf(res.certificate)
+      } else if (res.error) {
+        toast({
+          variant: 'destructive',
+          title: 'Não foi possível emitir o certificado',
+          description: res.error,
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao emitir certificado',
+        description: err instanceof Error ? err.message : 'Falha inesperada ao processar emissão.',
+      })
+    } finally {
+      setIsIssuingCert(false)
+    }
+  }
+
+  // Manipulador de revogação de certificado
+  const handleConfirmRevokeCertificate = async () => {
+    if (!certToRevoke) return
+    setIsRevokingCert(true)
+    try {
+      const ok = await revokeCertificate(certToRevoke)
+      if (ok) {
+        toast({
+          title: 'Certificado Revogado',
+          description: 'O certificado foi revogado com sucesso e não é mais válido.',
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao revogar',
+          description: 'Você não tem permissão ou o certificado não pôde ser atualizado.',
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao revogar certificado',
+        description: err instanceof Error ? err.message : 'Falha inesperada.',
+      })
+    } finally {
+      setIsRevokingCert(false)
+      setCertToRevoke(null)
+    }
+  }
 
   // Notas e frequência do aluno selecionado
   const selectedStudentGrades = useMemo(() => {
@@ -1005,6 +1093,109 @@ export function AlunosModule({
                     </div>
                   </div>
 
+                  {/* Seção de Certificado de Conclusão de Curso */}
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/30 border border-blue-900/40 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                          <Award className="w-5 h-5 text-amber-400" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                            Certificado Oficial de Conclusão
+                            {selectedStudentCertificate ? (
+                              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] px-2 py-0.2">
+                                Emitido: {selectedStudentCertificate.verificationCode}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-slate-400 border-slate-700"
+                              >
+                                Não emitido
+                              </Badge>
+                            )}
+                          </h4>
+                          <p className="text-[11px] text-slate-400">
+                            Regras MEC: Média geral ≥ 6,0 e frequência acumulada ≥ 75%.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Botões de Ação de Certificado */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {selectedStudentCertificate ? (
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-8 gap-1.5 shadow-sm"
+                              onClick={() => generateCertificatePdf(selectedStudentCertificate)}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Ver / Baixar Certificado
+                            </Button>
+
+                            {canRevokeCertificate && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-rose-900/50 text-rose-300 hover:bg-rose-950/50 hover:text-rose-200 text-xs h-8 gap-1"
+                                onClick={() => setCertToRevoke(selectedStudentCertificate.id)}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                                Revogar
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          canIssueCertificate && (
+                            <Button
+                              size="sm"
+                              disabled={isIssuingCert}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 gap-1.5 shadow-sm font-semibold"
+                              onClick={handleIssueCertificate}
+                            >
+                              <Award className="w-3.5 h-3.5 text-amber-300" />
+                              {isIssuingCert ? 'Emitindo...' : 'Emitir Certificado'}
+                            </Button>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Detalhes do certificado emitido */}
+                    {selectedStudentCertificate && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">
+                            Código de Verificação
+                          </span>
+                          <span className="text-blue-300 font-mono font-bold">
+                            {selectedStudentCertificate.verificationCode}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Data de Emissão</span>
+                          <span className="text-slate-200 font-medium">
+                            {selectedStudentCertificate.issueDate}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Emitido por</span>
+                          <span className="text-slate-200 font-medium">
+                            {selectedStudentCertificate.issuedBy}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Carga Horária</span>
+                          <span className="text-slate-200 font-medium">
+                            {selectedStudentCertificate.workloadHours} horas
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Resumo Consolidado por Disciplina */}
                   <div className="space-y-2">
                     <h4 className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
@@ -1567,6 +1758,44 @@ export function AlunosModule({
               className="bg-rose-600 hover:bg-rose-500 text-white text-xs"
             >
               {isDeleting ? 'Excluindo...' : 'Sim, Excluir Aluno'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* =========================================================================
+          ALERT DIALOG: CONFIRMAÇÃO DE REVOGAÇÃO DE CERTIFICADO (Root / Admin / Secretaria)
+         ========================================================================= */}
+      <AlertDialog open={!!certToRevoke} onOpenChange={(open) => !open && setCertToRevoke(null)}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-bold text-white flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-rose-400" /> Confirmar Revogação de Certificado
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-300 space-y-2">
+              <p>
+                Tem certeza que deseja revogar o certificado do aluno{' '}
+                <strong className="text-white">{viewStudent?.fullName}</strong>?
+              </p>
+              <p className="text-rose-300">
+                Uma vez revogado, o código de autenticidade deixará de ser válido para emissão ou
+                comprovação perante órgãos e o MEC.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isRevokingCert}
+              className="bg-slate-800 border-slate-700 text-xs text-slate-300 hover:bg-slate-700"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmRevokeCertificate}
+              disabled={isRevokingCert}
+              className="bg-rose-600 hover:bg-rose-500 text-white text-xs"
+            >
+              {isRevokingCert ? 'Revogando...' : 'Sim, Revogar Certificado'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

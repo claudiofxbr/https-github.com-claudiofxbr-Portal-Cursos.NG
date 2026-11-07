@@ -8,6 +8,7 @@ import {
 import { ACADEMIC_RULES, Student } from '@/types/portal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   GraduationCap,
   Award,
@@ -20,10 +21,14 @@ import {
   TrendingUp,
   AlertCircle,
   FileCheck,
+  Download,
+  ShieldCheck,
+  ExternalLink,
 } from 'lucide-react'
+import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 
 export function AlunoMinhasNotasModule() {
-  const { currentUser, students, grades, attendance } = usePortal()
+  const { currentUser, students, grades, attendance, certificates } = usePortal()
 
   // Localiza o aluno correspondente ao usuário logado
   const currentStudent = useMemo<Student | null>(() => {
@@ -89,6 +94,21 @@ export function AlunoMinhasNotasModule() {
   const summaries = useMemo(() => {
     return calculateAcademicSummary(myGrades, myAttendance)
   }, [myGrades, myAttendance])
+
+  // Certificado emitido para o aluno autenticado
+  const myCertificate = useMemo(() => {
+    if (!currentStudent) return null
+    const cleanCpf = currentStudent.cpfRaw || currentStudent.cpf.replace(/\D/g, '')
+    return (
+      certificates.find((c) => {
+        if (c.status !== 'ativo') return false
+        if (c.studentId === currentStudent.id) return true
+        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+        if (c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()) return true
+        return false
+      }) || null
+    )
+  }, [currentStudent, certificates])
 
   // Métricas globais
   const overallMetrics = useMemo(() => {
@@ -177,6 +197,98 @@ export function AlunoMinhasNotasModule() {
           </div>
         </div>
       </div>
+
+      {/* Card Especial de Certificado de Conclusão */}
+      {myCertificate ? (
+        <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-blue-950/40 border-2 border-emerald-500/40 rounded-2xl p-5 sm:p-6 shadow-lg space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-inner">
+                <Award className="w-7 h-7 text-amber-300" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                    🎓 Certificado Oficial de Conclusão de Curso
+                  </h2>
+                  <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-mono text-xs px-2.5 py-0.5">
+                    {myCertificate.verificationCode}
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Parabéns! Você concluiu todos os requisitos pedagógicos do curso{' '}
+                  <strong className="text-white">{myCertificate.courseName}</strong> com aprovação
+                  pelo e-MEC.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => generateCertificatePdf(myCertificate)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm h-10 px-5 gap-2 shadow-md hover:shadow-emerald-500/20 transition-all shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              Visualizar / Baixar Certificado (PDF)
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800 text-xs">
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">
+                Código Autenticidade
+              </span>
+              <span className="text-emerald-400 font-mono font-bold">
+                {myCertificate.verificationCode}
+              </span>
+            </div>
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">Data de Emissão</span>
+              <span className="text-slate-200 font-medium">{myCertificate.issueDate}</span>
+            </div>
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">Carga Horária</span>
+              <span className="text-slate-200 font-medium">
+                {myCertificate.workloadHours} horas letivas
+              </span>
+            </div>
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">Validação MEC</span>
+              <span className="text-slate-200 font-medium flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                Válido Nacionalmente
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-950/40 text-blue-400 border border-blue-900/50">
+              <Award className="w-5 h-5 text-slate-400" />
+            </div>
+            <div>
+              <p className="text-slate-200 font-semibold flex items-center gap-1.5">
+                Certificado de Conclusão
+                <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-700">
+                  Em Andamento
+                </Badge>
+              </p>
+              <p className="text-[11px] text-slate-400">
+                O certificado oficial será liberado pela Secretaria Acadêmica assim que você atingir
+                os critérios regulatórios do MEC: <strong>Média geral ≥ 6,0</strong> e{' '}
+                <strong>Frequência acumulada ≥ 75%</strong>.
+              </p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <span className="text-[10px] text-slate-500 block">Status Atual</span>
+            <span className="text-xs text-blue-400 font-medium">
+              Média {overallMetrics.overallAverage.toFixed(1)} • Freq.{' '}
+              {overallMetrics.overallAttendance}%
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Cards de Métricas Acadêmicas Gerais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
