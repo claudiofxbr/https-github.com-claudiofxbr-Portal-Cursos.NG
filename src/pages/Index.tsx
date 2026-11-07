@@ -14,6 +14,7 @@ import { LgpdModule } from '@/components/lgpd/LgpdModule'
 import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
 import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
+import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -38,6 +39,7 @@ export default function Index() {
           {safeActiveModule === 'dashboard' && (
             <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
           )}
+          {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
           {safeActiveModule === 'alunos' && <AlunosModule />}
           {safeActiveModule === 'matriculas' && <MatriculaModule />}
           {safeActiveModule === 'cursos' && <CursosModule />}

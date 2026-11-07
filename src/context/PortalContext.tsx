@@ -12,6 +12,9 @@ import {
   LgpdRequest,
   SystemDiagnostic,
   ModuleKey,
+  Expense,
+  Grade,
+  AttendanceRecord,
 } from '@/types/portal'
 import {
   PORTAL_GATE_PASSCODE,
@@ -27,8 +30,9 @@ import {
   INITIAL_LGPD_REQUESTS,
   INITIAL_EXPENSES,
   INITIAL_DIAGNOSTIC,
+  INITIAL_GRADES,
+  INITIAL_ATTENDANCE,
 } from '@/data/portalMockData'
-import { Expense } from '@/types/portal'
 import { generateId } from '@/lib/id'
 import pb from '@/lib/pocketbase/client'
 import {
@@ -111,6 +115,21 @@ interface PortalContextType {
   expenses: Expense[]
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Promise<Expense>
   deleteExpense: (id: string) => Promise<boolean>
+
+  // Notas e Frequência
+  grades: Grade[]
+  attendance: AttendanceRecord[]
+  addGrade: (grade: Omit<Grade, 'id' | 'created' | 'updated'>) => Promise<Grade>
+  updateGrade: (id: string, updates: Partial<Grade>) => Promise<Grade | null>
+  deleteGrade: (id: string) => Promise<boolean>
+  addAttendance: (
+    att: Omit<AttendanceRecord, 'id' | 'created' | 'updated'>,
+  ) => Promise<AttendanceRecord>
+  updateAttendance: (
+    id: string,
+    updates: Partial<AttendanceRecord>,
+  ) => Promise<AttendanceRecord | null>
+  deleteAttendance: (id: string) => Promise<boolean>
 
   // Diagnostic
   diagnostic: SystemDiagnostic
@@ -277,6 +296,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>(INITIAL_TICKETS)
   const [lgpdRequests, setLgpdRequests] = useState<LgpdRequest[]>(INITIAL_LGPD_REQUESTS)
   const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES)
+  const [grades, setGrades] = useState<Grade[]>(INITIAL_GRADES)
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE)
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -303,6 +324,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.tickets && data.tickets.length > 0) setTickets(data.tickets)
       if (data.lgpdRequests && data.lgpdRequests.length > 0) setLgpdRequests(data.lgpdRequests)
       if (data.expenses && data.expenses.length > 0) setExpenses(data.expenses)
+      if (data.grades && data.grades.length > 0) setGrades(data.grades)
+      if (data.attendance && data.attendance.length > 0) setAttendance(data.attendance)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -1067,6 +1090,113 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Notas
+  const addGrade = async (gradeData: Omit<Grade, 'id' | 'created' | 'updated'>): Promise<Grade> => {
+    const tempId = generateId('grd-')
+    const now = new Date().toISOString()
+    const newGrade: Grade = {
+      ...gradeData,
+      id: tempId,
+      created: now,
+      updated: now,
+    }
+    setGrades((prev) => [newGrade, ...prev])
+
+    try {
+      const created = await portalDb.createGrade(newGrade)
+      if (created) {
+        setGrades((prev) => prev.map((g) => (g.id === tempId ? created : g)))
+        return created
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao salvar nota no banco:', err)
+    }
+    return newGrade
+  }
+
+  const updateGrade = async (id: string, updates: Partial<Grade>): Promise<Grade | null> => {
+    setGrades((prev) =>
+      prev.map((g) => (g.id === id ? { ...g, ...updates, updated: new Date().toISOString() } : g)),
+    )
+    try {
+      const updated = await portalDb.updateGrade(id, updates)
+      if (updated) {
+        setGrades((prev) => prev.map((g) => (g.id === id ? updated : g)))
+        return updated
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao atualizar nota no banco:', err)
+    }
+    return null
+  }
+
+  const deleteGrade = async (id: string): Promise<boolean> => {
+    setGrades((prev) => prev.filter((g) => g.id !== id))
+    try {
+      const ok = await portalDb.deleteGrade(id)
+      return ok
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao excluir nota do banco:', err)
+      return false
+    }
+  }
+
+  // Frequência
+  const addAttendance = async (
+    attData: Omit<AttendanceRecord, 'id' | 'created' | 'updated'>,
+  ): Promise<AttendanceRecord> => {
+    const tempId = generateId('att-')
+    const now = new Date().toISOString()
+    const newAtt: AttendanceRecord = {
+      ...attData,
+      id: tempId,
+      created: now,
+      updated: now,
+    }
+    setAttendance((prev) => [newAtt, ...prev])
+
+    try {
+      const created = await portalDb.createAttendance(newAtt)
+      if (created) {
+        setAttendance((prev) => prev.map((a) => (a.id === tempId ? created : a)))
+        return created
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao salvar frequência no banco:', err)
+    }
+    return newAtt
+  }
+
+  const updateAttendance = async (
+    id: string,
+    updates: Partial<AttendanceRecord>,
+  ): Promise<AttendanceRecord | null> => {
+    setAttendance((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, ...updates, updated: new Date().toISOString() } : a)),
+    )
+    try {
+      const updated = await portalDb.updateAttendance(id, updates)
+      if (updated) {
+        setAttendance((prev) => prev.map((a) => (a.id === id ? updated : a)))
+        return updated
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao atualizar frequência no banco:', err)
+    }
+    return null
+  }
+
+  const deleteAttendance = async (id: string): Promise<boolean> => {
+    setAttendance((prev) => prev.filter((a) => a.id !== id))
+    try {
+      const ok = await portalDb.deleteAttendance(id)
+      return ok
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao excluir frequência do banco:', err)
+      return false
+    }
+  }
+
   // Diagnostic
   const refreshDiagnostic = () => {
     setDiagnostic((prev) => ({
@@ -1125,6 +1255,14 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         expenses,
         addExpense,
         deleteExpense,
+        grades,
+        attendance,
+        addGrade,
+        updateGrade,
+        deleteGrade,
+        addAttendance,
+        updateAttendance,
+        deleteAttendance,
         diagnostic,
         refreshDiagnostic,
         isBackendReady,

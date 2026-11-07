@@ -13,20 +13,23 @@ import {
   MaintenanceTicket,
   LgpdRequest,
   Expense,
+  Grade,
+  AttendanceRecord,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
-  INITIAL_COURSES,
-  INITIAL_CHARGES,
-  INITIAL_PRICE_TABLE,
-  INITIAL_PRICE_AUDIT_LOGS,
   INITIAL_BILLING_EXCEPTIONS,
+  INITIAL_CHARGES,
+  INITIAL_COURSES,
+  INITIAL_PRICE_AUDIT_LOGS,
+  INITIAL_PRICE_TABLE,
   INITIAL_TICKETS,
   INITIAL_LGPD_REQUESTS,
   INITIAL_EXPENSES,
   INITIAL_STUDENTS,
+  INITIAL_GRADES,
+  INITIAL_ATTENDANCE,
 } from '@/data/portalMockData'
-
 export const COLLECTIONS = {
   students: 'students',
   courses: 'courses',
@@ -37,6 +40,8 @@ export const COLLECTIONS = {
   tickets: 'maintenance_tickets',
   lgpd: 'lgpd_requests',
   expenses: 'expenses',
+  grades: 'grades',
+  attendance: 'attendance',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -517,6 +522,47 @@ function mapExpense(rec: AnyRec): Expense {
   }
 }
 
+function mapGrade(rec: AnyRec): Grade {
+  return {
+    id: str(rec.id),
+    studentId: str(rec.studentId),
+    studentName: str(rec.studentName) || undefined,
+    studentCpf: str(rec.studentCpf) || undefined,
+    courseId: str(rec.courseId) || undefined,
+    subject: str(rec.subject),
+    term: str(rec.term) || undefined,
+    assessmentType: str(rec.assessmentType) || undefined,
+    weight: typeof rec.weight === 'number' ? rec.weight : undefined,
+    value: num(rec.value),
+    date: str(rec.date) || undefined,
+    teacherId: str(rec.teacherId) || undefined,
+    teacherName: str(rec.teacherName) || undefined,
+    observations: str(rec.observations) || undefined,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+function mapAttendance(rec: AnyRec): AttendanceRecord {
+  return {
+    id: str(rec.id),
+    studentId: str(rec.studentId),
+    studentName: str(rec.studentName) || undefined,
+    studentCpf: str(rec.studentCpf) || undefined,
+    courseId: str(rec.courseId) || undefined,
+    subject: str(rec.subject),
+    term: str(rec.term) || undefined,
+    date: str(rec.date),
+    status: str(rec.status, 'presente') as AttendanceRecord['status'],
+    hours: num(rec.hours, 2),
+    teacherId: str(rec.teacherId) || undefined,
+    teacherName: str(rec.teacherName) || undefined,
+    justification: str(rec.justification) || undefined,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
 function mapAppUser(rec: AnyRec): UserAccount {
   return {
     id: str(rec.id),
@@ -549,6 +595,8 @@ export async function loadAllData(): Promise<{
   tickets: MaintenanceTicket[]
   lgpdRequests: LgpdRequest[]
   expenses: Expense[]
+  grades: Grade[]
+  attendance: AttendanceRecord[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -564,6 +612,8 @@ export async function loadAllData(): Promise<{
     tickets,
     lgpdRequests,
     expenses,
+    grades,
+    attendance,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -631,6 +681,18 @@ export async function loadAllData(): Promise<{
         (await pb.collection(COLLECTIONS.expenses).getFullList({ sort: '-date' })).map(mapExpense),
       INITIAL_EXPENSES,
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.grades).getFullList({ sort: '-created' })).map(mapGrade),
+      INITIAL_GRADES,
+    ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.attendance).getFullList({ sort: '-date' })).map(
+          mapAttendance,
+        ),
+      INITIAL_ATTENDANCE,
+    ),
   ])
 
   return {
@@ -644,6 +706,8 @@ export async function loadAllData(): Promise<{
     tickets,
     lgpdRequests,
     expenses,
+    grades,
+    attendance,
   }
 }
 
@@ -1282,6 +1346,148 @@ export const portalDb = {
           return true
         }
         throw new Error('Expense not found')
+      }
+    }, false),
+
+  createGrade: (grade: Omit<Grade, 'id' | 'created' | 'updated'> & { id?: string }) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          studentId: grade.studentId,
+          studentName: grade.studentName || '',
+          studentCpf: grade.studentCpf || '',
+          courseId: grade.courseId || '',
+          subject: grade.subject,
+          term: grade.term || '',
+          assessmentType: grade.assessmentType || 'P1',
+          weight: typeof grade.weight === 'number' ? grade.weight : 1,
+          value: Number(grade.value),
+          date: grade.date || '',
+          teacherId: grade.teacherId || '',
+          teacherName: grade.teacherName || '',
+          observations: grade.observations || '',
+        }
+        if (grade.id && grade.id.length >= 15) {
+          payload.id = grade.id
+        }
+        const rec = await pb.collection(COLLECTIONS.grades).create(payload)
+        return mapGrade(rec as unknown as AnyRec)
+      },
+      null as Grade | null,
+    ),
+
+  updateGrade: (gradeId: string, updates: Partial<Grade>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.subject !== undefined) payload.subject = updates.subject
+        if (updates.term !== undefined) payload.term = updates.term
+        if (updates.assessmentType !== undefined) payload.assessmentType = updates.assessmentType
+        if (updates.weight !== undefined) payload.weight = updates.weight
+        if (updates.value !== undefined) payload.value = Number(updates.value)
+        if (updates.date !== undefined) payload.date = updates.date
+        if (updates.teacherName !== undefined) payload.teacherName = updates.teacherName
+        if (updates.observations !== undefined) payload.observations = updates.observations
+        try {
+          const rec = await pb.collection(COLLECTIONS.grades).update(gradeId, payload)
+          return mapGrade(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.grades)
+            .getFirstListItem(`id = "${gradeId}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.grades).update(found.id, payload)
+            return mapGrade(rec as unknown as AnyRec)
+          }
+          throw new Error('Grade not found')
+        }
+      },
+      null as Grade | null,
+    ),
+
+  deleteGrade: (gradeId: string) =>
+    safeWrite(async () => {
+      try {
+        await pb.collection(COLLECTIONS.grades).delete(gradeId)
+        return true
+      } catch {
+        const found = await pb.collection(COLLECTIONS.grades).getFirstListItem(`id = "${gradeId}"`)
+        if (found) {
+          await pb.collection(COLLECTIONS.grades).delete(found.id)
+          return true
+        }
+        throw new Error('Grade not found')
+      }
+    }, false),
+
+  createAttendance: (att: Omit<AttendanceRecord, 'id' | 'created' | 'updated'> & { id?: string }) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          studentId: att.studentId,
+          studentName: att.studentName || '',
+          studentCpf: att.studentCpf || '',
+          courseId: att.courseId || '',
+          subject: att.subject,
+          term: att.term || '',
+          date: att.date,
+          status: att.status || 'presente',
+          hours: Number(att.hours || 2),
+          teacherId: att.teacherId || '',
+          teacherName: att.teacherName || '',
+          justification: att.justification || '',
+        }
+        if (att.id && att.id.length >= 15) {
+          payload.id = att.id
+        }
+        const rec = await pb.collection(COLLECTIONS.attendance).create(payload)
+        return mapAttendance(rec as unknown as AnyRec)
+      },
+      null as AttendanceRecord | null,
+    ),
+
+  updateAttendance: (attId: string, updates: Partial<AttendanceRecord>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.subject !== undefined) payload.subject = updates.subject
+        if (updates.term !== undefined) payload.term = updates.term
+        if (updates.date !== undefined) payload.date = updates.date
+        if (updates.status !== undefined) payload.status = updates.status
+        if (updates.hours !== undefined) payload.hours = Number(updates.hours)
+        if (updates.teacherName !== undefined) payload.teacherName = updates.teacherName
+        if (updates.justification !== undefined) payload.justification = updates.justification
+        try {
+          const rec = await pb.collection(COLLECTIONS.attendance).update(attId, payload)
+          return mapAttendance(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.attendance)
+            .getFirstListItem(`id = "${attId}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.attendance).update(found.id, payload)
+            return mapAttendance(rec as unknown as AnyRec)
+          }
+          throw new Error('Attendance not found')
+        }
+      },
+      null as AttendanceRecord | null,
+    ),
+
+  deleteAttendance: (attId: string) =>
+    safeWrite(async () => {
+      try {
+        await pb.collection(COLLECTIONS.attendance).delete(attId)
+        return true
+      } catch {
+        const found = await pb
+          .collection(COLLECTIONS.attendance)
+          .getFirstListItem(`id = "${attId}"`)
+        if (found) {
+          await pb.collection(COLLECTIONS.attendance).delete(found.id)
+          return true
+        }
+        throw new Error('Attendance not found')
       }
     }, false),
 }

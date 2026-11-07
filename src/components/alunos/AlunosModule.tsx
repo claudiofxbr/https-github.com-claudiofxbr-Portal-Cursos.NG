@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Student, Charge, StudentDocument } from '@/types/portal'
+import { StudentGradesAndAttendanceTab } from '@/components/alunos/StudentGradesAndAttendanceTab'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -62,7 +63,22 @@ import {
 } from 'lucide-react'
 
 export function AlunosModule() {
-  const { currentUser, students, courses, charges, updateStudent, deleteStudent } = usePortal()
+  const {
+    currentUser,
+    students,
+    courses,
+    charges,
+    updateStudent,
+    deleteStudent,
+    grades,
+    attendance,
+    addGrade,
+    updateGrade,
+    deleteGrade,
+    addAttendance,
+    updateAttendance,
+    deleteAttendance,
+  } = usePortal()
   const { toast } = useToast()
 
   // Permissões
@@ -759,11 +775,14 @@ export function AlunosModule() {
                 </div>
               )}
 
-              {/* Abas da Ficha: Dados Pessoais, Documentos, Cobranças */}
+              {/* Abas da Ficha: Dados Pessoais, Documentos, Cobranças, Notas e Frequência */}
               <Tabs defaultValue="dados" className="w-full">
-                <TabsList className="grid grid-cols-3 bg-slate-950 border border-slate-800 text-xs">
+                <TabsList className="grid grid-cols-4 bg-slate-950 border border-slate-800 text-xs">
                   <TabsTrigger value="dados" className="text-xs">
                     Dados Pessoais
+                  </TabsTrigger>
+                  <TabsTrigger value="notas" className="text-xs">
+                    Notas & Freq.
                   </TabsTrigger>
                   <TabsTrigger value="documentos" className="text-xs">
                     Documentos ({viewStudent.documents?.length || 0})
@@ -772,6 +791,22 @@ export function AlunosModule() {
                     Cobranças ({selectedStudentCharges.length})
                   </TabsTrigger>
                 </TabsList>
+
+                {/* Aba Nova: Notas e Frequência */}
+                <TabsContent value="notas" className="space-y-4 pt-2">
+                  <StudentGradesAndAttendanceTab
+                    student={viewStudent}
+                    grades={grades}
+                    attendance={attendance}
+                    currentUser={currentUser}
+                    onAddGrade={addGrade}
+                    onUpdateGrade={updateGrade}
+                    onDeleteGrade={deleteGrade}
+                    onAddAttendance={addAttendance}
+                    onUpdateAttendance={updateAttendance}
+                    onDeleteAttendance={deleteAttendance}
+                  />
+                </TabsContent>
 
                 {/* Aba 1: Dados Pessoais */}
                 <TabsContent value="dados" className="space-y-4 pt-3">

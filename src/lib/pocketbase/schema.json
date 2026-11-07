@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T16:09:59.423Z",
+  "generatedAt": "2026-11-07T16:19:09.338Z",
   "collections": [
     {
       "name": "users",
@@ -1028,6 +1028,221 @@
       "indexes": [
         "CREATE INDEX idx_expenses_date ON expenses (date)",
         "CREATE INDEX idx_expenses_category ON expenses (category)"
+      ]
+    },
+    {
+      "name": "grades",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentCpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "term",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assessmentType",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "weight",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "date",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "teacherId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "teacherName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_grades_student ON grades (studentId)",
+        "CREATE INDEX idx_grades_subject ON grades (subject)",
+        "CREATE INDEX idx_grades_course ON grades (courseId)"
+      ]
+    },
+    {
+      "name": "attendance",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentCpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "term",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "date",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["presente", "falta", "falta_justificada"]
+        },
+        {
+          "name": "hours",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "teacherId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "teacherName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "justification",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_attendance_student ON attendance (studentId)",
+        "CREATE INDEX idx_attendance_subject ON attendance (subject)",
+        "CREATE INDEX idx_attendance_date ON attendance (date)"
       ]
     }
   ]

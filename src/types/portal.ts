@@ -35,6 +35,7 @@ export type ModuleKey =
   | 'manutencao'
   | 'lgpd'
   | 'diagnostico'
+  | 'minhas_notas'
 
 export interface ModulePermission {
   key: ModuleKey
@@ -216,6 +217,76 @@ export interface Expense {
   courseId?: string
   notes?: string
   createdAt?: string
+}
+
+export type GradeAssessmentType =
+  | 'P1'
+  | 'P2'
+  | 'P3'
+  | 'Trabalho'
+  | 'Projeto'
+  | 'Seminário'
+  | 'Exame Final'
+  | 'Outro'
+
+export interface Grade {
+  id: string
+  studentId: string
+  studentName?: string
+  studentCpf?: string
+  courseId?: string
+  subject: string
+  term?: string // ex: "2024.2"
+  assessmentType?: string
+  weight?: number // peso opcional (ex: 5)
+  value: number // valor de 0 a 10
+  date?: string // YYYY-MM-DD
+  teacherId?: string
+  teacherName?: string
+  observations?: string
+  created?: string
+  updated?: string
+}
+
+export type AttendanceStatus = 'presente' | 'falta' | 'falta_justificada'
+
+export interface AttendanceRecord {
+  id: string
+  studentId: string
+  studentName?: string
+  studentCpf?: string
+  courseId?: string
+  subject: string
+  term?: string
+  date: string // YYYY-MM-DD
+  status: AttendanceStatus
+  hours: number // horas de aula
+  teacherId?: string
+  teacherName?: string
+  justification?: string
+  created?: string
+  updated?: string
+}
+
+// Parâmetros acadêmicos institucionais
+export const ACADEMIC_RULES = {
+  MIN_PASSING_GRADE: 6.0,
+  MIN_PASSING_ATTENDANCE_PERCENT: 75.0,
+} as const
+
+// Resumo consolidado por disciplina para um aluno
+export interface SubjectAcademicSummary {
+  subject: string
+  term?: string
+  grades: Grade[]
+  attendance: AttendanceRecord[]
+  averageGrade: number
+  totalClasses: number
+  presentsCount: number
+  absencesCount: number
+  justifiedAbsencesCount: number
+  attendancePercent: number
+  status: 'aprovado' | 'reprovado_nota' | 'reprovado_frequencia' | 'reprovado_ambos' | 'em_curso'
 }
 
 export interface SystemDiagnostic {
