@@ -42,17 +42,23 @@ export function AlunoMinhasNotasModule() {
       if (match) return match
     }
 
-    // 3. Procura por nome
+    // 3. Procura por CPF correspondente (limpo ou formatado)
+    if (currentUser.cpf) {
+      const userCpfRaw = currentUser.cpf.replace(/\D/g, '')
+      const match = students.find(
+        (s) =>
+          s.cpf === currentUser.cpf ||
+          s.cpfRaw === userCpfRaw ||
+          s.cpf.replace(/\D/g, '') === userCpfRaw,
+      )
+      if (match) return match
+    }
+
+    // 4. Procura por nome
     if (currentUser.name) {
       const nameLower = currentUser.name.toLowerCase()
       const match = students.find((s) => s.fullName.toLowerCase() === nameLower)
       if (match) return match
-    }
-
-    // 4. Fallback de demonstração para o perfil aluno caso nenhum bata:
-    // Pega o primeiro aluno cadastrado (ex: Beatriz Silva Ramos / RA-2024-001)
-    if (currentUser.role === 'aluno' && students.length > 0) {
-      return students[0]
     }
 
     return null
@@ -103,9 +109,12 @@ export function AlunoMinhasNotasModule() {
 
     const approvedCount = summaries.filter((s) => s.status === 'aprovado').length
     const failedCount = summaries.filter(
-      (s) => s.status === 'reprovado_nota' || s.status === 'reprovado_frequencia',
+      (s) =>
+        s.status === 'reprovado_nota' ||
+        s.status === 'reprovado_frequencia' ||
+        s.status === 'reprovado_ambos',
     ).length
-    const inProgressCount = summaries.filter((s) => s.status === 'em_andamento').length
+    const inProgressCount = summaries.filter((s) => s.status === 'em_curso').length
 
     return {
       overallAverage: Math.round(totalAvg * 10) / 10,
@@ -312,7 +321,7 @@ export function AlunoMinhasNotasModule() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400">{statusBadge.description}</p>
+                      <p className="text-[11px] text-slate-400">{statusBadge.label}</p>
                     </div>
 
                     <div className="flex items-center gap-3">

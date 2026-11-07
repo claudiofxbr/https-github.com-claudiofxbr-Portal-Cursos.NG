@@ -75,13 +75,16 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
 }) => {
   const { toast } = useToast()
 
-  // Permissões
+  // Permissões:
+  // - Lançamento: professor, coordenador, root, admin, secretaria, matricula
+  // - Edição e Exclusão: root, admin, secretaria, matricula
+  // - Demais perfis (aluno, financeiro, academico): somente leitura
   const userRole = currentUser?.role || 'aluno'
-  const canEditOrDelete =
-    !readOnly && ['root', 'admin', 'secretaria', 'coordenador', 'professor'].includes(userRole)
-  const canDelete = !readOnly && ['root', 'admin', 'secretaria'].includes(userRole)
   const canRegister =
-    !readOnly && ['root', 'admin', 'secretaria', 'coordenador', 'professor'].includes(userRole)
+    !readOnly &&
+    ['professor', 'coordenador', 'root', 'admin', 'secretaria', 'matricula'].includes(userRole)
+  const canEdit = !readOnly && ['root', 'admin', 'secretaria', 'matricula'].includes(userRole)
+  const canDelete = !readOnly && ['root', 'admin', 'secretaria', 'matricula'].includes(userRole)
 
   // Filtra notas e frequência do aluno corrente
   const studentGrades = grades.filter(
@@ -603,17 +606,19 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
                                   <span className="text-[10px] text-slate-500 block">/ 10.0</span>
                                 </div>
 
-                                {canEditOrDelete && (
+                                {(canEdit || canDelete) && (
                                   <div className="flex items-center">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 text-slate-400 hover:text-white"
-                                      onClick={() => handleOpenEditGrade(grd)}
-                                      title="Editar nota"
-                                    >
-                                      <Edit2 className="w-3 h-3" />
-                                    </Button>
+                                    {canEdit && (
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-slate-400 hover:text-white"
+                                        onClick={() => handleOpenEditGrade(grd)}
+                                        title="Editar nota"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </Button>
+                                    )}
                                     {canDelete && (
                                       <Button
                                         size="icon"
@@ -699,17 +704,19 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
                                     : 'Falta'}
                               </Badge>
 
-                              {canEditOrDelete && (
+                              {(canEdit || canDelete) && (
                                 <div className="flex items-center">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 text-slate-400 hover:text-white"
-                                    onClick={() => handleOpenEditAtt(att)}
-                                    title="Editar frequência"
-                                  >
-                                    <Edit2 className="w-3 h-3" />
-                                  </Button>
+                                  {canEdit && (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 text-slate-400 hover:text-white"
+                                      onClick={() => handleOpenEditAtt(att)}
+                                      title="Editar frequência"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </Button>
+                                  )}
                                   {canDelete && (
                                     <Button
                                       size="icon"

@@ -31,6 +31,7 @@ import {
   Menu,
   X,
   UserCheck,
+  Award,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {

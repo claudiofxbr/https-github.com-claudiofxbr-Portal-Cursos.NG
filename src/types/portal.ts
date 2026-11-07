@@ -23,6 +23,7 @@ export interface UserAccount {
   createdAt?: string
   lastAccess?: string
   password?: string // Opcional no cadastro/seed demo
+  studentId?: string // Vínculo explícito com cadastro de aluno (Student.id)
 }
 export type ModuleKey =
   | 'dashboard'

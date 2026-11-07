@@ -173,6 +173,7 @@ export function mapAuthUser(rec: AnyRec): UserAccount {
       str(rec.created).split('T')[0] ||
       new Date().toISOString().split('T')[0],
     lastAccess: str(rec.lastAccessText) || 'Recente',
+    studentId: str(rec.studentId) || undefined,
   }
 }
 

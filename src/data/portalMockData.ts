@@ -238,6 +238,7 @@ export const DEMO_ACCOUNTS: UserAccount[] = [
     avatar: 'https://img.usecurling.com/ppl/medium?gender=male&seed=109',
     cpf: '890.123.456-78',
     phone: '(11) 91098-7654',
+    studentId: 'std-001',
     status: 'ativo',
     createdAt: '2024-02-01',
     lastAccess: 'Hoje às 07:45',
