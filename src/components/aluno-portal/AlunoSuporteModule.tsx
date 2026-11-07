@@ -73,12 +73,13 @@ export function AlunoSuporteModule() {
     try {
       setIsSubmitting(true)
       await createStudentSupportTicket({
-        studentId: effectiveStudentId,
         studentName: currentUser?.name || currentStudent?.fullName || 'Aluno',
         studentEmail: currentUser?.email || currentStudent?.email || 'aluno@portalcursos.ng',
         subject: subject.trim(),
         category,
         priority,
+        status: 'aberto',
+        message: description.trim(),
         description: description.trim(),
       })
 
@@ -108,7 +109,8 @@ export function AlunoSuporteModule() {
           <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px] uppercase">
             {status === 'em_analise' ? 'Em Análise' : 'Em Atendimento'}
           </Badge>
-        )      case 'resolvido':
+        )
+      case 'resolvido':
         return (
           <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px]">
             Resolvido

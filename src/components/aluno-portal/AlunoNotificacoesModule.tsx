@@ -37,13 +37,15 @@ export function AlunoNotificacoesModule() {
     return true
   })
 
-  const getCategoryIcon = (category?: string) => {
-    switch (category) {
+  const getCategoryIcon = (type?: StudentNotification['type']) => {
+    switch (type) {
       case 'academico':
         return <GraduationCap className="w-5 h-5 text-blue-400" />
       case 'financeiro':
         return <DollarSign className="w-5 h-5 text-emerald-400" />
-      case 'prazo':
+      case 'urgente':
+        return <AlertCircle className="w-5 h-5 text-rose-400" />
+      case 'sistema':
         return <Calendar className="w-5 h-5 text-amber-400" />
       default:
         return <AlertCircle className="w-5 h-5 text-indigo-400" />
@@ -148,7 +150,7 @@ export function AlunoNotificacoesModule() {
                           : 'bg-blue-600/20 border-blue-500/40 text-blue-400'
                       }`}
                     >
-                      {getCategoryIcon(notif.category)}
+                      {getCategoryIcon(notif.type)}
                     </div>
 
                     <div className="space-y-1">
@@ -165,12 +167,12 @@ export function AlunoNotificacoesModule() {
                             Nova
                           </Badge>
                         )}
-                        {notif.category && (
+                        {notif.type && (
                           <Badge
                             variant="outline"
                             className="border-slate-700 text-slate-400 text-[10px] uppercase"
                           >
-                            {notif.category}
+                            {notif.type}
                           </Badge>
                         )}
                       </div>

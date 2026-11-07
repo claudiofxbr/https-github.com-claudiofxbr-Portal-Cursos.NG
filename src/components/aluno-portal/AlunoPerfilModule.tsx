@@ -35,21 +35,17 @@ export function AlunoPerfilModule() {
     currentUser?.name || currentStudent?.fullName || 'Aluno Demonstração',
   )
   const [phone, setPhone] = useState(currentStudent?.phone || '(11) 98765-4321')
-  const [emergencyPhone, setEmergencyPhone] = useState(
-    currentStudent?.emergencyContact?.phone || '(11) 91234-5678',
-  )
-  const [emergencyName, setEmergencyName] = useState(
-    currentStudent?.emergencyContact?.name || 'Contato de Emergência',
-  )
+  const [emergencyPhone, setEmergencyPhone] = useState('(11) 91234-5678')
+  const [emergencyName, setEmergencyName] = useState('Contato de Emergência')
   const [addressStreet, setAddressStreet] = useState(
     currentStudent?.address?.street || 'Av. Paulista, 1000',
   )
   const [addressCity, setAddressCity] = useState(currentStudent?.address?.city || 'São Paulo')
   const [addressState, setAddressState] = useState(currentStudent?.address?.state || 'SP')
-  const [addressZip, setAddressZip] = useState(currentStudent?.address?.zipCode || '01310-100')
+  const [addressZip, setAddressZip] = useState(currentStudent?.address?.zip || '01310-100')
   const [avatarUrl, setAvatarUrl] = useState(
     currentUser?.avatar ||
-      currentStudent?.avatarUrl ||
+      currentStudent?.photoUrl ||
       'https://img.usecurling.com/ppl/medium?gender=male&seed=42',
   )
 
@@ -60,8 +56,9 @@ export function AlunoPerfilModule() {
   } | null>(null)
 
   const myCourse =
-    courses.find((c) => c.id === currentStudent?.courseId || c.title.includes('Software')) ||
-    courses[0]
+    courses.find(
+      (c) => c.id === currentStudent?.courseId || (c.name && c.name.includes('Software')),
+    ) || courses[0]
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,23 +67,14 @@ export function AlunoPerfilModule() {
 
     try {
       await updateStudentProfile({
-        fullName: fullName.trim(),
-        avatarUrl: avatarUrl.trim(),
+        name: fullName.trim(),
+        photoUrl: avatarUrl.trim(),
         phone: phone.trim(),
-        emergencyContact: {
-          name: emergencyName.trim(),
-          phone: emergencyPhone.trim(),
-          relationship: currentStudent?.emergencyContact?.relationship || 'Familiar',
-        },
-        address: {
-          street: addressStreet.trim(),
-          number: currentStudent?.address?.number || '1000',
-          complement: currentStudent?.address?.complement || 'Apto 12',
-          neighborhood: currentStudent?.address?.neighborhood || 'Bela Vista',
-          city: addressCity.trim(),
-          state: addressState.trim(),
-          zipCode: addressZip.trim(),
-        },
+        street: addressStreet.trim(),
+        city: addressCity.trim(),
+        state: addressState.trim(),
+        zip: addressZip.trim(),
+        observations: currentStudent?.observations,
       })
 
       setFeedbackMessage({
@@ -121,7 +109,10 @@ export function AlunoPerfilModule() {
           variant="outline"
           className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 px-3 py-1 text-xs self-start sm:self-auto"
         >
-          Matrícula Ativa: {currentStudent?.registrationNumber || '2026-ENG-001'}
+          Matrícula Ativa:{' '}
+          {currentStudent?.id
+            ? `MAT-${currentStudent.id.substring(0, 8).toUpperCase()}`
+            : '2026-ENG-001'}
         </Badge>
       </div>
 
@@ -263,7 +254,7 @@ export function AlunoPerfilModule() {
             <div className="space-y-1">
               <span className="text-xs text-slate-400">Curso:</span>
               <p className="text-sm font-semibold text-white">
-                {currentStudent?.courseName || myCourse?.title || 'Engenharia de Software'}
+                {currentStudent?.courseName || myCourse?.name || 'Engenharia de Software'}
               </p>
               <Badge className="bg-blue-600/20 text-blue-300 border-blue-500/30 text-[10px] mt-1 font-mono">
                 {myCourse?.code || 'ENG-SOFT-01'}
