@@ -21,6 +21,17 @@ import {
 } from 'lucide-react'
 import { Course, PriceTableItem, StudentDocument } from '@/types/portal'
 import { MatchedPrice } from './matriculaPriceHelper'
+import {
+  detectCardBrand,
+  formatCardNumber,
+  formatCardExpiry,
+  validateLuhn,
+  validateExpiry,
+  validateCvv,
+  validateCardHolder,
+  calculateInstallments,
+  CARD_BRANDS,
+} from './simuladoCardHelper'
 
 export interface StudentFormData {
   fullName: string
@@ -55,6 +66,8 @@ export interface PaymentOutcome {
   pixQrUrl?: string
   cardLast4?: string
   cardHolder?: string
+  cardBrand?: string
+  installments?: number
 }
 
 interface MatriculaCheckoutStepProps {
@@ -102,11 +115,18 @@ export function MatriculaCheckoutStep({
   const copyTimerRef = useRef<number | null>(null)
 
   // Cartão state
-  const [cardNumber, setCardNumber] = useState('4532 8920 1123 8821')
+  const [cardNumber, setCardNumber] = useState('4532 1122 3344 8821')
   const [cardHolder, setCardHolder] = useState(formData.fullName.toUpperCase())
   const [cardExpiry, setCardExpiry] = useState('11/29')
   const [cardCvv, setCardCvv] = useState('789')
+  const [selectedInstallments, setSelectedInstallments] = useState(1)
   const [cardProcessing, setCardProcessing] = useState(false)
+  const [cardErrors, setCardErrors] = useState<{
+    number?: string
+    holder?: string
+    expiry?: string
+    cvv?: string
+  }>({})
   const cardTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -119,6 +139,14 @@ export function MatriculaCheckoutStep({
   const currentPriceItem = matchedPrice?.item
   const enrollmentFee = matchedPrice ? matchedPrice.suggestedFee : 0
   const monthlyFee = matchedPrice ? matchedPrice.monthlyFee : 0
+
+  const installmentOptions = calculateInstallments(enrollmentFee)
+  const currentInstallment =
+    installmentOptions.find((opt) => opt.installments === selectedInstallments) ||
+    installmentOptions[0]
+
+  const detectedBrand = detectCardBrand(cardNumber)
+  const brandInfo = CARD_BRANDS[detectedBrand]
 
   // Gera chave fictícia de Pix para cópia
   const pixCleanCpf = formData.cpf.replace(/\D/g, '')
@@ -151,27 +179,65 @@ export function MatriculaCheckoutStep({
     })
   }
 
+  const validateCardForm = (): boolean => {
+    const errs: {
+      number?: string
+      holder?: string
+      expiry?: string
+      cvv?: string
+    } = {}
+
+    const cleanNumber = cardNumber.replace(/\D/g, '')
+    if (cleanNumber.length < 13) {
+      errs.number = 'Número de cartão incompleto'
+    } else if (!validateLuhn(cleanNumber)) {
+      errs.number = 'Número inválido pelo dígito verificador (Luhn). Verifique a digitação.'
+    }
+
+    const holderValidation = validateCardHolder(cardHolder)
+    if (!holderValidation.valid) {
+      errs.holder = holderValidation.error
+    }
+
+    const expiryValidation = validateExpiry(cardExpiry)
+    if (!expiryValidation.valid) {
+      errs.expiry = expiryValidation.error
+    }
+
+    const cvvValidation = validateCvv(cardCvv, detectedBrand)
+    if (!cvvValidation.valid) {
+      errs.cvv = cvvValidation.error
+    }
+
+    setCardErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
   const handleCardSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!validateCardForm()) return
+
     setCardProcessing(true)
     if (cardTimerRef.current !== null) window.clearTimeout(cardTimerRef.current)
     cardTimerRef.current = window.setTimeout(() => {
       setCardProcessing(false)
       const last4 = cardNumber.replace(/\D/g, '').slice(-4) || '8821'
-      const receiptNumber = `REC-CARD-${Date.now().toString().slice(-6)}`
+      const receiptNumber = `REC-SIM-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`
       const paidAt = new Date().toISOString().replace('T', ' ').slice(0, 16)
       onConfirmPayment({
         type: 'cartao',
-        amount: enrollmentFee,
+        amount: currentInstallment.totalAmount,
         status: 'pago',
         method: 'cartao',
         paidAt,
         receiptNumber,
         priceCategory: currentPriceItem?.category,
         cardLast4: last4,
-        cardHolder: cardHolder.trim() || formData.fullName,
+        cardHolder: cardHolder.trim().toUpperCase() || formData.fullName.toUpperCase(),
+        cardBrand: brandInfo.label,
+        installments: currentInstallment.installments,
       })
-    }, 1100)
+    }, 2400)
   }
 
   const handleLater = () => {
@@ -464,93 +530,192 @@ export function MatriculaCheckoutStep({
 
             {/* ABA CARTÃO */}
             <TabsContent value="cartao" className="space-y-4 pt-4">
-              <form
-                onSubmit={handleCardSubmit}
-                className="p-4 rounded-lg bg-slate-950 border border-slate-800 max-w-xl mx-auto space-y-3.5"
-              >
-                <div className="flex items-center justify-between pb-1 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-blue-400" />
-                    <span className="text-xs font-semibold text-white">
-                      Checkout com Cartão de Teste
-                    </span>
+              {cardProcessing ? (
+                <div className="p-8 rounded-lg bg-slate-950 border border-slate-800 max-w-xl mx-auto flex flex-col items-center justify-center text-center space-y-4">
+                  <div className="w-14 h-14 rounded-full bg-blue-600/10 border-2 border-blue-500/30 flex items-center justify-center animate-pulse">
+                    <CreditCard className="w-6 h-6 text-blue-400" />
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] border-blue-500/40 text-blue-300 bg-blue-950/40"
-                  >
-                    APROVAÇÃO INSTANTÂNEA DEMO
-                  </Badge>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-white">
+                      Processando pagamento de matrícula simulado...
+                    </h4>
+                    <p className="text-xs text-slate-400 max-w-sm">
+                      Validando adquirente demonstrativa e registrando cobrança com{' '}
+                      {currentInstallment.installments}x de{' '}
+                      {formatCurrency(currentInstallment.installmentAmount)}.
+                    </p>
+                  </div>
+                  <div className="text-[11px] text-blue-400 bg-blue-950/40 border border-blue-800/40 px-3 py-1 rounded-full">
+                    Aguarde a confirmação institucional
+                  </div>
                 </div>
+              ) : (
+                <form
+                  onSubmit={handleCardSubmit}
+                  className="p-4 rounded-lg bg-slate-950 border border-slate-800 max-w-xl mx-auto space-y-3.5"
+                >
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs font-semibold text-white">
+                        Checkout de Cartão de Teste
+                      </span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] py-0 px-1.5 ${brandInfo.color}`}
+                    >
+                      {brandInfo.label}
+                    </Badge>
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Número do Cartão</label>
-                  <Input
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(maskCardNumber(e.target.value))}
-                    placeholder="0000 0000 0000 0000"
-                    maxLength={19}
-                    className="bg-slate-900 border-slate-700 text-white text-xs font-mono"
-                    required
-                  />
-                  <p className="text-[10px] text-slate-500">
-                    Número simulado com máscara automática (cartão de teste).
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Nome do Titular (Como no cartão)</label>
-                  <Input
-                    value={cardHolder}
-                    onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
-                    placeholder="NOME COMPLETO"
-                    className="bg-slate-900 border-slate-700 text-white text-xs uppercase"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+                  {/* Parcelamento */}
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300">Validade</label>
-                    <Input
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(maskCardExpiry(e.target.value))}
-                      placeholder="MM/AA"
-                      maxLength={5}
-                      className="bg-slate-900 border-slate-700 text-white text-xs font-mono"
-                      required
-                    />
+                    <label className="text-xs text-slate-300 font-medium flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-blue-400" />
+                        Opções de Parcelamento
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-normal">
+                        Até 6x sem juros • 7x a 12x (2% a.m.)
+                      </span>
+                    </label>
+                    <select
+                      value={selectedInstallments}
+                      onChange={(e) => setSelectedInstallments(Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-md bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      {installmentOptions.map((opt) => (
+                        <option key={opt.installments} value={opt.installments}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300">CVV</label>
-                    <Input
-                      value={cardCvv}
-                      onChange={(e) => setCardCvv(maskCardCvv(e.target.value))}
-                      placeholder="123"
-                      maxLength={4}
-                      className="bg-slate-900 border-slate-700 text-white text-xs font-mono"
-                      required
-                    />
-                  </div>
-                </div>
 
-                <div className="pt-2">
-                  <Button
-                    type="submit"
-                    disabled={cardProcessing || isSubmitting}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs h-10 font-semibold shadow-md shadow-blue-600/20"
-                  >
-                    {cardProcessing || isSubmitting ? (
-                      'Autorizando pagamento simulado...'
+                  {/* Número do Cartão */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">Número do Cartão</label>
+                    <div className="relative">
+                      <Input
+                        value={cardNumber}
+                        onChange={(e) => {
+                          setCardNumber(formatCardNumber(e.target.value))
+                          if (cardErrors.number)
+                            setCardErrors((prev) => ({ ...prev, number: undefined }))
+                        }}
+                        placeholder="0000 0000 0000 0000"
+                        maxLength={19}
+                        className={`bg-slate-900 text-white text-xs font-mono pr-10 ${
+                          cardErrors.number
+                            ? 'border-red-500 focus-visible:ring-red-500'
+                            : 'border-slate-700'
+                        }`}
+                      />
+                      <CreditCard className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                    </div>
+                    {cardErrors.number ? (
+                      <p className="text-[11px] text-red-400 mt-1">{cardErrors.number}</p>
                     ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                        Pagar {formatCurrency(enrollmentFee)} e Concluir Matrícula
-                      </>
+                      <p className="text-[10px] text-slate-500">
+                        Número validado via algoritmo de Luhn (dígito verificador real).
+                      </p>
                     )}
-                  </Button>
-                </div>
-              </form>
+                  </div>
+
+                  {/* Nome do Titular */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">
+                      Nome do Titular (Como no cartão)
+                    </label>
+                    <Input
+                      value={cardHolder}
+                      onChange={(e) => {
+                        setCardHolder(e.target.value.toUpperCase())
+                        if (cardErrors.holder)
+                          setCardErrors((prev) => ({ ...prev, holder: undefined }))
+                      }}
+                      placeholder="NOME SOBRENOME"
+                      className={`bg-slate-900 text-white text-xs uppercase ${
+                        cardErrors.holder
+                          ? 'border-red-500 focus-visible:ring-red-500'
+                          : 'border-slate-700'
+                      }`}
+                    />
+                    {cardErrors.holder && (
+                      <p className="text-[11px] text-red-400 mt-1">{cardErrors.holder}</p>
+                    )}
+                  </div>
+
+                  {/* Validade e CVV */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-slate-300">Validade</label>
+                      <Input
+                        value={cardExpiry}
+                        onChange={(e) => {
+                          setCardExpiry(formatCardExpiry(e.target.value))
+                          if (cardErrors.expiry)
+                            setCardErrors((prev) => ({ ...prev, expiry: undefined }))
+                        }}
+                        placeholder="MM/AA"
+                        maxLength={5}
+                        className={`bg-slate-900 text-white text-xs font-mono ${
+                          cardErrors.expiry
+                            ? 'border-red-500 focus-visible:ring-red-500'
+                            : 'border-slate-700'
+                        }`}
+                      />
+                      {cardErrors.expiry && (
+                        <p className="text-[11px] text-red-400 mt-1">{cardErrors.expiry}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-300">CVV</label>
+                        <span className="text-[10px] text-slate-400">
+                          {brandInfo.cvvLength} dígitos
+                        </span>
+                      </div>
+                      <Input
+                        value={cardCvv}
+                        onChange={(e) => {
+                          const clean = e.target.value
+                            .replace(/\D/g, '')
+                            .slice(0, brandInfo.cvvLength)
+                          setCardCvv(clean)
+                          if (cardErrors.cvv) setCardErrors((prev) => ({ ...prev, cvv: undefined }))
+                        }}
+                        placeholder={brandInfo.cvvPlaceholder}
+                        maxLength={brandInfo.cvvLength}
+                        className={`bg-slate-900 text-white text-xs font-mono ${
+                          cardErrors.cvv
+                            ? 'border-red-500 focus-visible:ring-red-500'
+                            : 'border-slate-700'
+                        }`}
+                      />
+                      {cardErrors.cvv && (
+                        <p className="text-[11px] text-red-400 mt-1">{cardErrors.cvv}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      type="submit"
+                      disabled={cardProcessing || isSubmitting}
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs h-10 font-semibold shadow-md shadow-blue-600/20"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                      Pagar {currentInstallment.installments}x de{' '}
+                      {formatCurrency(currentInstallment.installmentAmount)}{' '}
+                      {currentInstallment.installments > 1 &&
+                        `(Total: ${formatCurrency(currentInstallment.totalAmount)})`}{' '}
+                      (Simulado)
+                    </Button>
+                  </div>
+                </form>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Charge, PriceTableItem, BillingException } from '@/types/portal'
+import {
+  SimuladoCardCheckoutModal,
+  CardPaymentResult,
+} from '@/components/matricula/SimuladoCardCheckoutModal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,15 +58,12 @@ export function FinanceiroModule() {
   // Modais de pagamento
   const [selectedCharge, setSelectedCharge] = useState<Charge | null>(null)
   const [pixModalOpen, setPixModalOpen] = useState(false)
-  const [cardModalOpen, setCardModalOpen] = useState(false)
   const [copiedPix, setCopiedPix] = useState(false)
 
-  // Card Checkout form
-  const [cardNumber, setCardNumber] = useState('')
-  const [cardHolder, setCardHolder] = useState('')
-  const [cardExpiry, setCardExpiry] = useState('')
-  const [cardCvv, setCardCvv] = useState('')
-  const [cardProcessing, setCardProcessing] = useState(false)
+  // Card Checkout aprimorado
+  const [cardModalOpen, setCardModalOpen] = useState(false)
+  const [receiptCharge, setReceiptCharge] = useState<Charge | null>(null)
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
 
   // Edit Preço form
   const [editPriceItem, setEditPriceItem] = useState<PriceTableItem | null>(null)
@@ -170,32 +171,23 @@ export function FinanceiroModule() {
   // Abertura Modal Cartão
   const handleOpenCard = (charge: Charge) => {
     setSelectedCharge(charge)
-    setCardNumber('4532 •••• •••• 8821')
-    setCardHolder(charge.studentName.toUpperCase())
-    setCardExpiry('11/29')
-    setCardCvv('789')
     setCardModalOpen(true)
   }
 
-  // Checkout Cartão simulado
-  const handleCardPayment = (e: React.FormEvent) => {
-    e.preventDefault()
+  // Sucesso no checkout aprimorado
+  const handleSimulatedCardSuccess = (res: CardPaymentResult) => {
     if (!selectedCharge) return
-
-    setCardProcessing(true)
-    if (cardTimerRef.current !== null) window.clearTimeout(cardTimerRef.current)
-    cardTimerRef.current = window.setTimeout(() => {
-      setCardProcessing(false)
-      payChargeCard(selectedCharge.id, {
-        last4: cardNumber.replace(/\D/g, '').slice(-4) || '8821',
-        holder: cardHolder,
-      })
-      setCardModalOpen(false)
-      toast({
-        title: 'Transação de Cartão Aprovada!',
-        description: `Cobrança de ${formatCurrency(selectedCharge.amount)} autorizada com sucesso.`,
-      })
-    }, 1200)
+    payChargeCard(selectedCharge.id, {
+      last4: res.last4,
+      holder: res.cardHolder,
+      cardBrand: res.cardBrand,
+      installments: res.installments,
+      totalAmount: res.totalAmount,
+    })
+    toast({
+      title: 'Transação de Cartão Aprovada!',
+      description: `Cobrança ${selectedCharge.code} autorizada em ${res.installments}x de ${formatCurrency(res.installmentAmount)}. Recibo: ${res.receiptNumber}.`,
+    })
   }
 
   // Abrir modal preço
@@ -393,10 +385,31 @@ export function FinanceiroModule() {
                       </div>
 
                       {isPaid && (
-                        <p className="text-[11px] text-emerald-400 font-mono">
-                          ✓ Pago via {charge.method?.toUpperCase()} em {charge.paidAt} • Recibo:{' '}
-                          {charge.receiptNumber}
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-[11px] text-emerald-400 font-mono flex flex-wrap items-center gap-1.5">
+                            <span>
+                              ✓ Pago via {charge.method?.toUpperCase()} em {charge.paidAt}
+                            </span>
+                            <span>
+                              • Recibo: <strong>{charge.receiptNumber}</strong>
+                            </span>
+                            {charge.installments && charge.installments > 1 && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-emerald-500/30 text-emerald-300 py-0"
+                              >
+                                {charge.installments}x de{' '}
+                                {formatCurrency(charge.amount / charge.installments)}
+                              </Badge>
+                            )}
+                            {charge.cardLast4 && (
+                              <span className="text-slate-400 text-[10px]">
+                                ({charge.cardBrand ? `${charge.cardBrand} ` : ''}final{' '}
+                                {charge.cardLast4})
+                              </span>
+                            )}
+                          </p>
+                        </div>
                       )}
                     </div>
 
@@ -408,27 +421,42 @@ export function FinanceiroModule() {
                         </span>
                       </div>
 
-                      {!isPaid && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenPix(charge)}
-                            className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
-                          >
-                            <QrCode className="w-3.5 h-3.5 mr-1" />
-                            Pagar com Pix
-                          </Button>
+                      <div className="flex items-center gap-2">
+                        {!isPaid ? (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenPix(charge)}
+                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                            >
+                              <QrCode className="w-3.5 h-3.5 mr-1" />
+                              Pagar com Pix
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenCard(charge)}
+                              className="h-8 text-xs border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200"
+                            >
+                              <CreditCard className="w-3.5 h-3.5 mr-1" />
+                              Cartão (Simulado)
+                            </Button>
+                          </>
+                        ) : (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleOpenCard(charge)}
-                            className="h-8 text-xs border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200"
+                            onClick={() => {
+                              setReceiptCharge(charge)
+                              setReceiptModalOpen(true)
+                            }}
+                            className="h-8 text-xs border-emerald-500/40 text-emerald-300 bg-emerald-950/20 hover:bg-emerald-950/40"
                           >
-                            <CreditCard className="w-3.5 h-3.5 mr-1" />
-                            Cartão
+                            <FileText className="w-3.5 h-3.5 mr-1" />
+                            Ver Recibo
                           </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -729,88 +757,110 @@ export function FinanceiroModule() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL CARTÃO DEMONSTRATIVO */}
-      <Dialog open={cardModalOpen} onOpenChange={setCardModalOpen}>
+      {/* MODAL CHECKOUT DE CARTÃO SIMULADO APRIMORADO */}
+      {selectedCharge && (
+        <SimuladoCardCheckoutModal
+          open={cardModalOpen}
+          onOpenChange={setCardModalOpen}
+          amount={selectedCharge.amount}
+          categoryLabel={
+            selectedCharge.category === 'matricula'
+              ? 'Matrícula'
+              : selectedCharge.category === 'mensalidade'
+                ? 'Mensalidade'
+                : 'Taxa / Serviço'
+          }
+          description={selectedCharge.description}
+          studentName={selectedCharge.studentName}
+          chargeCode={selectedCharge.code}
+          onPaymentSuccess={handleSimulatedCardSuccess}
+        />
+      )}
+
+      {/* MODAL DE RECIBO ENRIQUECIDO PARA COBRANÇAS JÁ PAGAS */}
+      <Dialog open={receiptModalOpen} onOpenChange={setReceiptModalOpen}>
         <DialogContent className="max-w-md bg-slate-950 border-slate-800 text-slate-100">
           <DialogHeader>
             <DialogTitle className="text-base text-white flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-blue-400" />
-              Checkout de Cartão Simulado
+              <FileText className="w-5 h-5 text-emerald-400" />
+              Comprovante de Pagamento (Demonstração)
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-400">
-              Autorização de teste com bandeiras simuladas Visa/Master
+              Recibo emitido pelo PortalCursos.NG em ambiente simulado
             </DialogDescription>
           </DialogHeader>
 
-          {selectedCharge && (
-            <form onSubmit={handleCardPayment} className="space-y-4 py-2">
-              <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
-                <div>
-                  <span className="text-slate-400 block">Total da Fatura</span>
-                  <span className="font-bold text-white text-base">
-                    {formatCurrency(selectedCharge.amount)}
+          {receiptCharge && (
+            <div className="space-y-4 py-2 text-xs">
+              <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-900/50 space-y-2">
+                <div className="flex items-center justify-between border-b border-emerald-900/40 pb-2">
+                  <span className="text-slate-400 text-[11px]">Número do Recibo</span>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {receiptCharge.receiptNumber || 'REC-SIM-0000'}
                   </span>
                 </div>
-                <Badge variant="outline" className="border-blue-500/30 text-blue-400">
-                  {selectedCharge.code}
-                </Badge>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs text-slate-300">Número do Cartão</label>
-                <Input
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value)}
-                  placeholder="0000 0000 0000 0000"
-                  className="bg-slate-900 border-slate-700 text-white text-xs font-mono"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs text-slate-300">Nome do Titular (Como no cartão)</label>
-                <Input
-                  value={cardHolder}
-                  onChange={(e) => setCardHolder(e.target.value)}
-                  placeholder="NOME SOBRENOME"
-                  className="bg-slate-900 border-slate-700 text-white text-xs uppercase"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">Validade</label>
-                  <Input
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(e.target.value)}
-                    placeholder="MM/AA"
-                    className="bg-slate-900 border-slate-700 text-white text-xs font-mono"
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block">Data de Liquidação</span>
+                    <span className="text-slate-200 font-medium">
+                      {receiptCharge.paidAt || 'N/D'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Método</span>
+                    <span className="text-slate-200 uppercase font-medium">
+                      {receiptCharge.method || 'Cartão'}
+                    </span>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-300">CVV</label>
-                  <Input
-                    value={cardCvv}
-                    onChange={(e) => setCardCvv(e.target.value)}
-                    placeholder="123"
-                    className="bg-slate-900 border-slate-700 text-white text-xs font-mono"
-                    required
-                  />
+              </div>
+
+              <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800 space-y-2 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Aluno:</span>
+                  <span className="text-white font-medium">{receiptCharge.studentName}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">CPF:</span>
+                  <span className="text-slate-300 font-mono">{receiptCharge.studentCpf}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Descrição:</span>
+                  <span className="text-slate-300 text-right max-w-[220px]">
+                    {receiptCharge.description}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Forma de Pagamento:</span>
+                  <span className="text-slate-200">
+                    {receiptCharge.cardBrand ? `${receiptCharge.cardBrand} ` : 'Cartão '}
+                    {receiptCharge.cardLast4 ? `final ${receiptCharge.cardLast4}` : ''}
+                    {receiptCharge.installments && receiptCharge.installments > 1
+                      ? ` (${receiptCharge.installments}x de ${formatCurrency(receiptCharge.amount / receiptCharge.installments)})`
+                      : ' (À vista)'}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-slate-800 pt-2 text-sm">
+                  <span className="text-white font-semibold">Valor Total Pago:</span>
+                  <span className="text-emerald-400 font-bold">
+                    {formatCurrency(receiptCharge.amount)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-amber-300/80 bg-amber-950/20 p-2 rounded border border-amber-900/40 text-center">
+                🛡️ Ambiente de demonstração — nenhum valor real foi debitado de nenhuma instituição
+                financeira.
               </div>
 
               <Button
-                type="submit"
-                disabled={cardProcessing}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs h-10 mt-2"
+                type="button"
+                onClick={() => setReceiptModalOpen(false)}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs h-9"
               >
-                {cardProcessing
-                  ? 'Processando autorização...'
-                  : `Pagar ${formatCurrency(selectedCharge.amount)} (Simulado)`}
+                Fechar Comprovante
               </Button>
-            </form>
+            </div>
           )}
         </DialogContent>
       </Dialog>

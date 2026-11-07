@@ -132,7 +132,11 @@ export function MatriculaSuccessStep({
                 {isCard && (
                   <span className="text-emerald-400 font-medium flex items-center gap-1 pt-0.5">
                     <CreditCard className="w-3.5 h-3.5" />
-                    Cartão Simulado (Final {paymentOutcome.cardLast4 || '8821'})
+                    {paymentOutcome.cardBrand ? `${paymentOutcome.cardBrand} ` : ''}Cartão Simulado
+                    (Final {paymentOutcome.cardLast4 || '8821'})
+                    {paymentOutcome.installments && paymentOutcome.installments > 1
+                      ? ` • ${paymentOutcome.installments}x`
+                      : ' • À vista'}
                   </span>
                 )}
                 {isPix && (
@@ -151,9 +155,17 @@ export function MatriculaSuccessStep({
             </div>
 
             {isCard && paymentOutcome?.receiptNumber && (
-              <div className="text-[11px] font-mono text-emerald-400 bg-emerald-950/30 p-2 rounded border border-emerald-900/50">
-                ✓ Recibo da simulação: {paymentOutcome.receiptNumber} • Pago em{' '}
-                {paymentOutcome.paidAt}
+              <div className="text-[11px] font-mono text-emerald-400 bg-emerald-950/30 p-2.5 rounded border border-emerald-900/50 space-y-1">
+                <div>
+                  ✓ Recibo da simulação: <strong>{paymentOutcome.receiptNumber}</strong> • Pago em{' '}
+                  {paymentOutcome.paidAt}
+                </div>
+                <div className="text-[10px] text-slate-300">
+                  Transação: {paymentOutcome.cardBrand || 'Cartão'} final{' '}
+                  {paymentOutcome.cardLast4 || '8821'} • {paymentOutcome.installments || 1}x de{' '}
+                  {formatCurrency(paymentOutcome.amount / (paymentOutcome.installments || 1))} •
+                  Total: {formatCurrency(paymentOutcome.amount)}
+                </div>
               </div>
             )}
 

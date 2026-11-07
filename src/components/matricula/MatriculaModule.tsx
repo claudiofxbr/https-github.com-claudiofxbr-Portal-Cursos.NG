@@ -333,6 +333,9 @@ export function MatriculaModule({ onNavigateToModule }: MatriculaModuleProps = {
         priceCategory: outcome.priceCategory,
         pixCode: outcome.pixCode,
         pixQrUrl: outcome.pixQrUrl,
+        cardLast4: outcome.cardLast4,
+        cardBrand: outcome.cardBrand,
+        installments: outcome.installments,
         skipCharge: false,
       }
 

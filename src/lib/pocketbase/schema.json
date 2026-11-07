@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T18:09:35.266Z",
+  "generatedAt": "2026-11-07T18:26:41.937Z",
   "collections": [
     {
       "name": "users",
@@ -640,6 +640,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "installments",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cardLast4",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cardBrand",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

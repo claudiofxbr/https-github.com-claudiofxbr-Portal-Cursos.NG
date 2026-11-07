@@ -129,6 +129,9 @@ export interface Charge {
   pixCode?: string
   pixQrUrl?: string
   receiptNumber?: string
+  installments?: number
+  cardLast4?: string
+  cardBrand?: string
 }
 
 export interface PriceTableItem {

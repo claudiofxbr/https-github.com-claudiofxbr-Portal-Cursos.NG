@@ -434,6 +434,9 @@ function mapCharge(rec: AnyRec): Charge {
     pixCode: str(rec.pixCode) || undefined,
     pixQrUrl: str(rec.pixQrUrl) || undefined,
     receiptNumber: str(rec.receiptNumber) || undefined,
+    installments: num(rec.installments) > 0 ? num(rec.installments) : undefined,
+    cardLast4: str(rec.cardLast4) || undefined,
+    cardBrand: str(rec.cardBrand) || undefined,
   }
 }
 
@@ -1247,6 +1250,9 @@ export const portalDb = {
           pixCode: charge.pixCode || '',
           pixQrUrl: charge.pixQrUrl || '',
           receiptNumber: charge.receiptNumber || '',
+          installments: charge.installments || 1,
+          cardLast4: charge.cardLast4 || '',
+          cardBrand: charge.cardBrand || '',
         }
         if (charge.id && charge.id.length >= 15) {
           payload.id = charge.id
@@ -1265,6 +1271,9 @@ export const portalDb = {
         if (updates.method !== undefined) payload.method = updates.method
         if (updates.paidAt !== undefined) payload.paidAt = updates.paidAt
         if (updates.receiptNumber !== undefined) payload.receiptNumber = updates.receiptNumber
+        if (updates.installments !== undefined) payload.installments = updates.installments
+        if (updates.cardLast4 !== undefined) payload.cardLast4 = updates.cardLast4
+        if (updates.cardBrand !== undefined) payload.cardBrand = updates.cardBrand
         try {
           const rec = await pb.collection(COLLECTIONS.charges).update(chargeId, payload)
           return mapCharge(rec as unknown as AnyRec)

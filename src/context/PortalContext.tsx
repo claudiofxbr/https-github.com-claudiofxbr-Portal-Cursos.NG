@@ -99,6 +99,9 @@ interface PortalContextType {
       skipCharge?: boolean
       pixCode?: string
       pixQrUrl?: string
+      installments?: number
+      cardLast4?: string
+      cardBrand?: string
     },
   ) => Promise<Student> | Student
   createCharge: (charge: Charge) => Promise<Charge>
@@ -115,7 +118,16 @@ interface PortalContextType {
   // Financial
   charges: Charge[]
   payChargePix: (chargeId: string) => void
-  payChargeCard: (chargeId: string, cardInfo: { last4: string; holder: string }) => void
+  payChargeCard: (
+    chargeId: string,
+    cardInfo: {
+      last4: string
+      holder: string
+      installments?: number
+      cardBrand?: string
+      totalAmount?: number
+    },
+  ) => void
   priceTable: PriceTableItem[]
   priceAuditLogs: PriceAuditLog[]
   updatePriceTableItem: (id: string, updates: Partial<PriceTableItem>, reason: string) => void
@@ -704,6 +716,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       skipCharge?: boolean
       pixCode?: string
       pixQrUrl?: string
+      installments?: number
+      cardLast4?: string
+      cardBrand?: string
     },
   ): Promise<Student> => {
     const rawCpf = (studentData.cpf || '').replace(/\D/g, '')
@@ -766,6 +781,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         pixQrUrl:
           chargeOptions?.pixQrUrl ||
           `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_${newStudent.id}`,
+        installments: chargeOptions?.installments,
+        cardLast4: chargeOptions?.cardLast4,
+        cardBrand: chargeOptions?.cardBrand,
       }
 
       setCharges((prev) => [newCharge, ...prev])
@@ -955,7 +973,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       })
   }
 
-  const payChargeCard = (chargeId: string, _cardInfo: { last4: string; holder: string }) => {
+  const payChargeCard = (
+    chargeId: string,
+    cardInfo: {
+      last4: string
+      holder: string
+      installments?: number
+      cardBrand?: string
+      totalAmount?: number
+    },
+  ) => {
     const paidAt = new Date().toISOString().replace('T', ' ').slice(0, 16)
     const receiptNumber = generateId('REC-CARD')
 
@@ -968,6 +995,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
               method: 'cartao',
               paidAt,
               receiptNumber,
+              installments: cardInfo.installments ?? chg.installments ?? 1,
+              cardLast4: cardInfo.last4 || chg.cardLast4,
+              cardBrand: cardInfo.cardBrand || chg.cardBrand,
             }
           : chg,
       ),
@@ -979,6 +1009,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         method: 'cartao',
         paidAt,
         receiptNumber,
+        installments: cardInfo.installments ?? 1,
+        cardLast4: cardInfo.last4,
+        cardBrand: cardInfo.cardBrand,
       })
       .catch((err) => {
         console.warn('[PortalContext] Falha ao atualizar cobrança Cartão no banco:', err)
