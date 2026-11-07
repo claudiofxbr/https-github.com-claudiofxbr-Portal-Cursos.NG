@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react'
 import {
   UserAccount,
   UserRole,
@@ -28,6 +28,7 @@ import {
   INITIAL_DIAGNOSTIC,
 } from '@/data/portalMockData'
 import { generateId } from '@/lib/id'
+import { portalDb, loadAllData } from '@/lib/portalDb'
 
 interface PortalContextType {
   // Gate
@@ -53,7 +54,7 @@ interface PortalContextType {
 
   // Students & Matricula
   students: Student[]
-  addStudent: (student: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>) => Student
+  addStudent: (student: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>) => Promise<Student> | Student
   updateStudent: (studentId: string, updates: Partial<Student>) => void
   searchStudentsByCpf: (cpfQuery: string) => Student[]
 
@@ -87,6 +88,10 @@ interface PortalContextType {
   // Diagnostic
   diagnostic: SystemDiagnostic
   refreshDiagnostic: () => void
+
+  // Estado de sincronização com o banco
+  isBackendReady: boolean
+  isSyncing: boolean
 }
 
 const PortalContext = createContext<PortalContextType | undefined>(undefined)
@@ -94,15 +99,8 @@ const PortalContext = createContext<PortalContextType | undefined>(undefined)
 const STORAGE_KEYS = {
   GATE: 'portalcursos_gate_unlocked',
   CURRENT_USER_ID: 'portalcursos_current_user_id',
-  STUDENTS: 'portalcursos_students',
-  COURSES: 'portalcursos_courses',
-  CHARGES: 'portalcursos_charges',
-  PRICES: 'portalcursos_prices',
-  PRICE_LOGS: 'portalcursos_price_logs',
-  EXCEPTIONS: 'portalcursos_exceptions',
-  TICKETS: 'portalcursos_tickets',
-  LGPD: 'portalcursos_lgpd',
-  USERS: 'portalcursos_users',
+  CURRENT_USER_EMAIL: 'portalcursos_current_user_email',
+  CURRENT_USER_ROLE: 'portalcursos_current_user_role',
   GATE_LOCK: 'portalcursos_gate_lock',
   LOGIN_LOCK: 'portalcursos_login_lock',
 }
@@ -194,20 +192,28 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const isGateLockedOut = gateLock.lockedUntil > Date.now()
   useLockExpiry(gateLock.lockedUntil, () => setGateLock(UNLOCKED_LOCK))
 
-  // Auth state
-  const [users, setUsers] = useState<UserAccount[]>(() => {
-    const loaded = loadJsonState<UserAccount>(STORAGE_KEYS.USERS, DEMO_ACCOUNTS)
-    return loaded.length > 0 ? loaded : DEMO_ACCOUNTS
-  })
+  // Auth & Session state
+  const [users, setUsers] = useState<UserAccount[]>(DEMO_ACCOUNTS)
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    // Correção de falha de controle de acesso: antes, sem sessão salva o app
-    // inicializava logado como ADMIN (DEMO_ACCOUNTS[1]) e qualquer id salvo
-    // caía de volta no admin — burlando o login e o RBAC. Agora: sem sessão
-    // válida, ninguém está logado.
-    const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
-    if (!savedId) return null
-    return users.find((u) => u.id === savedId) || null
+    try {
+      const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
+      const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
+      const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
+      if (savedEmail) {
+        const match = DEMO_ACCOUNTS.find(
+          (u) =>
+            u.email.toLowerCase() === savedEmail.toLowerCase() ||
+            (savedRole && u.role === savedRole) ||
+            u.id === savedId,
+        )
+        if (match) return match
+      }
+      return null
+    } catch {
+      return null
+    }
   })
+
   const [loginLock, setLoginLock] = useState<LockState>(() =>
     loadLockState(STORAGE_KEYS.LOGIN_LOCK),
   )
@@ -215,42 +221,79 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const isLoginLockedOut = loginLock.lockedUntil > Date.now()
   useLockExpiry(loginLock.lockedUntil, () => setLoginLock(UNLOCKED_LOCK))
 
-  // Ref com a lista de usuários sempre atualizada: o login lido por closures
-  // antigas (ex.: setTimeout do auto-login pós-cadastro) não via o usuário
-  // recém-criado e o login automático falhava silenciosamente.
+  // Domain states
+  const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS)
+  const [courses, setCourses] = useState<Course[]>(INITIAL_COURSES)
+  const [charges, setCharges] = useState<Charge[]>(INITIAL_CHARGES)
+  const [priceTable, setPriceTable] = useState<PriceTableItem[]>(INITIAL_PRICE_TABLE)
+  const [priceAuditLogs, setPriceAuditLogs] = useState<PriceAuditLog[]>(INITIAL_PRICE_AUDIT_LOGS)
+  const [billingExceptions, setBillingExceptions] = useState<BillingException[]>(
+    INITIAL_BILLING_EXCEPTIONS,
+  )
+  const [tickets, setTickets] = useState<MaintenanceTicket[]>(INITIAL_TICKETS)
+  const [lgpdRequests, setLgpdRequests] = useState<LgpdRequest[]>(INITIAL_LGPD_REQUESTS)
+  const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
+
+  const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
+  const [isSyncing, setIsSyncing] = useState<boolean>(true)
+
+  // Ref com a lista de usuários sempre atualizada
   const usersRef = useRef(users)
   usersRef.current = users
 
-  // Domain states
-  const [students, setStudents] = useState<Student[]>(() =>
-    loadJsonState<Student>(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS),
-  )
-  const [courses, setCourses] = useState<Course[]>(() =>
-    loadJsonState<Course>(STORAGE_KEYS.COURSES, INITIAL_COURSES),
-  )
-  const [charges, setCharges] = useState<Charge[]>(() =>
-    loadJsonState<Charge>(STORAGE_KEYS.CHARGES, INITIAL_CHARGES),
-  )
-  const [priceTable, setPriceTable] = useState<PriceTableItem[]>(() =>
-    loadJsonState<PriceTableItem>(STORAGE_KEYS.PRICES, INITIAL_PRICE_TABLE),
-  )
-  const [priceAuditLogs, setPriceAuditLogs] = useState<PriceAuditLog[]>(() =>
-    loadJsonState<PriceAuditLog>(STORAGE_KEYS.PRICE_LOGS, INITIAL_PRICE_AUDIT_LOGS),
-  )
-  const [billingExceptions, setBillingExceptions] = useState<BillingException[]>(() =>
-    loadJsonState<BillingException>(STORAGE_KEYS.EXCEPTIONS, INITIAL_BILLING_EXCEPTIONS),
-  )
-  const [tickets, setTickets] = useState<MaintenanceTicket[]>(() =>
-    loadJsonState<MaintenanceTicket>(STORAGE_KEYS.TICKETS, INITIAL_TICKETS),
-  )
-  const [lgpdRequests, setLgpdRequests] = useState<LgpdRequest[]>(() =>
-    loadJsonState<LgpdRequest>(STORAGE_KEYS.LGPD, INITIAL_LGPD_REQUESTS),
-  )
-  const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
+  // Carrega todos os dados do banco no boot (idempotente)
+  const bootFromDatabase = useCallback(async () => {
+    setIsSyncing(true)
+    try {
+      const data = await loadAllData()
+      if (data.users && data.users.length > 0) setUsers(data.users)
+      if (data.students && data.students.length > 0) setStudents(data.students)
+      if (data.courses && data.courses.length > 0) setCourses(data.courses)
+      if (data.charges && data.charges.length > 0) setCharges(data.charges)
+      if (data.priceTable && data.priceTable.length > 0) setPriceTable(data.priceTable)
+      if (data.priceAuditLogs && data.priceAuditLogs.length > 0)
+        setPriceAuditLogs(data.priceAuditLogs)
+      if (data.billingExceptions && data.billingExceptions.length > 0)
+        setBillingExceptions(data.billingExceptions)
+      if (data.tickets && data.tickets.length > 0) setTickets(data.tickets)
+      if (data.lgpdRequests && data.lgpdRequests.length > 0) setLgpdRequests(data.lgpdRequests)
 
-  // Sync to local storage for realistic experience during session.
-  // Toda escrita passa por persistJson (try/catch): quota cheia ou modo
-  // privado não podem derrubar o app no meio de uma ação do usuário.
+      // Re-valida sessão contra os usuários atualizados do banco
+      try {
+        const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
+        const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
+        const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
+        if (savedEmail || savedId) {
+          const list = data.users.length > 0 ? data.users : DEMO_ACCOUNTS
+          const matched = list.find(
+            (u) =>
+              (savedEmail && u.email.toLowerCase() === savedEmail.toLowerCase()) ||
+              (savedId && u.id === savedId) ||
+              (savedRole && u.role === savedRole),
+          )
+          if (matched) {
+            setCurrentUser(matched)
+          }
+        }
+      } catch {
+        // localStorage indisponível
+      }
+
+      setIsBackendReady(true)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao carregar dados do banco:', err)
+      // Mantém fallbacks locais, sem tela branca
+      setIsBackendReady(false)
+    } finally {
+      setIsSyncing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    bootFromDatabase()
+  }, [bootFromDatabase])
+
+  // Persistência local mínima apenas para portão, sessão e locks
   useEffect(() => {
     persistJson(STORAGE_KEYS.GATE, isGateUnlocked)
   }, [isGateUnlocked])
@@ -258,42 +301,19 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (currentUser) {
       persistJson(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id)
+      persistJson(STORAGE_KEYS.CURRENT_USER_EMAIL, currentUser.email)
+      persistJson(STORAGE_KEYS.CURRENT_USER_ROLE, currentUser.role)
     } else {
       try {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
       } catch {
-        // idem: falha de storage não derruba o logout
+        // falha silenciosa
       }
     }
   }, [currentUser])
 
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.STUDENTS, students)
-  }, [students])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.COURSES, courses)
-  }, [courses])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.CHARGES, charges)
-  }, [charges])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.PRICES, priceTable)
-  }, [priceTable])
-
-  // Auditoria tarifária e exceções de cobrança persistem JUNTAS com a tabela:
-  // antes só a tabela sobrevivia ao reload, quebrando a trilha de auditoria.
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.PRICE_LOGS, priceAuditLogs)
-  }, [priceAuditLogs])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.EXCEPTIONS, billingExceptions)
-  }, [billingExceptions])
-
-  // Estado de bloqueio (portão/login) persistido: reload não zera o lockout
   useEffect(() => {
     persistJson(STORAGE_KEYS.GATE_LOCK, gateLock)
   }, [gateLock])
@@ -301,18 +321,6 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     persistJson(STORAGE_KEYS.LOGIN_LOCK, loginLock)
   }, [loginLock])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.TICKETS, tickets)
-  }, [tickets])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.LGPD, lgpdRequests)
-  }, [lgpdRequests])
-
-  useEffect(() => {
-    persistJson(STORAGE_KEYS.USERS, users)
-  }, [users])
 
   // Gate functions
   const unlockGate = (code: string): boolean => {
@@ -347,10 +355,17 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const login = (email: string): boolean => {
     if (isLoginLockedOut) return false
 
-    const found = usersRef.current.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+    const clean = email.trim().toLowerCase()
+    const found =
+      usersRef.current.find((u) => u.email.toLowerCase() === clean) ||
+      DEMO_ACCOUNTS.find((u) => u.email.toLowerCase() === clean)
+
     if (found) {
       setCurrentUser(found)
       setLoginLock(UNLOCKED_LOCK)
+      // Atualiza lastAccess no banco de forma assíncrona
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16)
+      portalDb.updateAppUser(found.id, { lastAccess: nowStr }).catch(() => {})
       return true
     }
 
@@ -368,6 +383,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     if (found) {
       setCurrentUser(found)
       setLoginLock(UNLOCKED_LOCK)
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16)
+      portalDb.updateAppUser(found.id, { lastAccess: nowStr }).catch(() => {})
     }
   }
 
@@ -375,14 +392,14 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(null)
     try {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
     } catch {
-      // idem
+      // silencioso
     }
   }
 
   const updateUserRole = (userId: string, newRole: UserRole) => {
-    // Controle de escalonamento de privilégios: somente Root concede o papel
-    // Root e somente Root altera contas Root (não bastava o check na UI).
     const target = usersRef.current.find((u) => u.id === userId)
     if (!target) return
     if ((newRole === 'root' || target.role === 'root') && currentUser?.role !== 'root') return
@@ -399,13 +416,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       aluno: 'Aluno(a) Regular',
     }
 
+    const roleTitle = roleLabels[newRole]
+
+    // Atualização otimista no estado
     setUsers((prev) =>
       prev.map((u) =>
         u.id === userId
           ? {
               ...u,
               role: newRole,
-              roleTitle: roleLabels[newRole],
+              roleTitle,
             }
           : u,
       ),
@@ -417,11 +437,18 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...prev,
               role: newRole,
-              roleTitle: roleLabels[newRole],
+              roleTitle,
             }
           : null,
       )
     }
+
+    // Persiste no banco PocketBase
+    portalDb
+      .updateAppUser(userId, { role: newRole, roleTitle, email: target.email })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao persistir role do usuário:', err)
+      })
   }
 
   const createUser = (userData: Omit<UserAccount, 'id' | 'createdAt'>) => {
@@ -432,12 +459,25 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       lastAccess: 'Nunca',
     }
     setUsers((prev) => [newUser, ...prev])
+
+    // Persiste no PocketBase
+    portalDb
+      .createAppUser(newUser)
+      .then((created) => {
+        if (created) {
+          setUsers((prev) => prev.map((u) => (u.id === newUser.id ? created : u)))
+          if (currentUser?.id === newUser.id) setCurrentUser(created)
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao criar usuário no banco:', err)
+      })
   }
 
   // Permission check
   const canAccessModule = (moduleKey: ModuleKey): boolean => {
     if (!currentUser) return false
-    if (currentUser.role === 'root') return true // root pode tudo
+    if (currentUser.role === 'root') return true
 
     const moduleDef = MODULE_PERMISSIONS.find((m) => m.key === moduleKey)
     if (!moduleDef) return false
@@ -446,15 +486,19 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }
 
   // Students & Matricula
-  const addStudent = (studentData: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>): Student => {
+  const addStudent = async (
+    studentData: Omit<Student, 'id' | 'enrolledAt' | 'cpfRaw'>,
+  ): Promise<Student> => {
     const rawCpf = (studentData.cpf || '').replace(/\D/g, '')
+    const tempId = generateId('std')
     const newStudent: Student = {
       ...studentData,
-      id: generateId('std'),
+      id: tempId,
       cpfRaw: rawCpf,
       enrolledAt: new Date().toISOString().split('T')[0],
     }
 
+    // Atualização otimista imediata
     setStudents((prev) => [newStudent, ...prev])
 
     // Se houver curso correspondente, atualiza contador de inscritos
@@ -481,22 +525,50 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
     setCharges((prev) => [newCharge, ...prev])
 
+    // Persiste no PocketBase (incluindo upload real de foto e arquivos de documentos)
+    try {
+      const created = await portalDb.createStudent(newStudent)
+      if (created) {
+        setStudents((prev) => prev.map((s) => (s.id === tempId ? created : s)))
+        await portalDb.createCharge({ ...newCharge, studentId: created.id })
+        return created
+      } else {
+        await portalDb.createCharge(newCharge)
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao salvar aluno no banco:', err)
+      portalDb.createCharge(newCharge).catch(() => {})
+    }
+
     return newStudent
   }
 
   const updateStudent = (studentId: string, updates: Partial<Student>) => {
+    const rawCpf = updates.cpf ? updates.cpf.replace(/\D/g, '') : undefined
     setStudents((prev) =>
       prev.map((s) => {
         if (s.id !== studentId) return s
-        const nextCpf = updates.cpf ? updates.cpf : s.cpf
-        const rawCpf = nextCpf.replace(/\D/g, '')
         return {
           ...s,
           ...updates,
-          cpfRaw: rawCpf,
+          ...(rawCpf !== undefined ? { cpfRaw: rawCpf } : {}),
         }
       }),
     )
+
+    portalDb
+      .updateStudent(studentId, {
+        ...updates,
+        ...(rawCpf !== undefined ? { cpfRaw: rawCpf } : {}),
+      })
+      .then((updated) => {
+        if (updated) {
+          setStudents((prev) => prev.map((s) => (s.id === studentId ? updated : s)))
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar aluno no banco:', err)
+      })
   }
 
   const searchStudentsByCpf = (cpfQuery: string): Student[] => {
@@ -507,22 +579,41 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   // Courses
   const toggleCourseLock = (courseId: string) => {
+    const course = courses.find((c) => c.id === courseId)
+    const nextLocked = course ? !course.lockedForEditing : true
+
     setCourses((prev) =>
-      prev.map((c) => (c.id === courseId ? { ...c, lockedForEditing: !c.lockedForEditing } : c)),
+      prev.map((c) => (c.id === courseId ? { ...c, lockedForEditing: nextLocked } : c)),
     )
+
+    portalDb.toggleCourseLock(courseId, nextLocked).catch((err) => {
+      console.warn('[PortalContext] Falha ao alterar trava de edição do curso no banco:', err)
+    })
   }
 
   const updateCourse = (courseId: string, updates: Partial<Course>) => {
+    const target = courses.find((c) => c.id === courseId)
+    if (target?.lockedForEditing && currentUser?.role !== 'root') {
+      return
+    }
+
     setCourses((prev) =>
       prev.map((c) => {
         if (c.id !== courseId) return c
-        if (c.lockedForEditing && currentUser?.role !== 'root') {
-          // Apenas root pode burlar trava de edição
-          return c
-        }
         return { ...c, ...updates }
       }),
     )
+
+    portalDb
+      .updateCourse(courseId, updates)
+      .then((updated) => {
+        if (updated) {
+          setCourses((prev) => prev.map((c) => (c.id === courseId ? updated : c)))
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar curso no banco:', err)
+      })
   }
 
   const addCourse = (courseData: Omit<Course, 'id' | 'enrolledCount'>) => {
@@ -532,10 +623,24 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       enrolledCount: 0,
     }
     setCourses((prev) => [newCourse, ...prev])
+
+    portalDb
+      .createCourse(newCourse)
+      .then((created) => {
+        if (created) {
+          setCourses((prev) => prev.map((c) => (c.id === newCourse.id ? created : c)))
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao criar curso no banco:', err)
+      })
   }
 
   // Financial
   const payChargePix = (chargeId: string) => {
+    const paidAt = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    const receiptNumber = generateId('REC')
+
     setCharges((prev) =>
       prev.map((chg) =>
         chg.id === chargeId
@@ -543,15 +648,29 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
               ...chg,
               status: 'pago',
               method: 'pix',
-              paidAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-              receiptNumber: generateId('REC'),
+              paidAt,
+              receiptNumber,
             }
           : chg,
       ),
     )
+
+    portalDb
+      .updateCharge(chargeId, {
+        status: 'pago',
+        method: 'pix',
+        paidAt,
+        receiptNumber,
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar cobrança PIX no banco:', err)
+      })
   }
 
   const payChargeCard = (chargeId: string, _cardInfo: { last4: string; holder: string }) => {
+    const paidAt = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    const receiptNumber = generateId('REC-CARD')
+
     setCharges((prev) =>
       prev.map((chg) =>
         chg.id === chargeId
@@ -559,20 +678,29 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
               ...chg,
               status: 'pago',
               method: 'cartao',
-              paidAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-              receiptNumber: generateId('REC-CARD'),
+              paidAt,
+              receiptNumber,
             }
           : chg,
       ),
     )
+
+    portalDb
+      .updateCharge(chargeId, {
+        status: 'pago',
+        method: 'cartao',
+        paidAt,
+        receiptNumber,
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar cobrança Cartão no banco:', err)
+      })
   }
 
   const updatePriceTableItem = (id: string, updates: Partial<PriceTableItem>, reason: string) => {
     const currentItem = priceTable.find((p) => p.id === id)
     if (!currentItem) return
 
-    // Sanitiza valores monetários: NaN/undefined/negativos não podem corromper
-    // a tabela nem os registros de auditoria (ex.: "R$ NaN").
     const safeUpdates: Partial<PriceTableItem> = { ...updates }
     if ('standardMonthlyFee' in safeUpdates) {
       const v = Number(safeUpdates.standardMonthlyFee)
@@ -592,7 +720,6 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toISOString().split('T')[0]
     const updatedBy = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Administrador'
 
-    // Registra auditoria
     const logEntry: PriceAuditLog = {
       id: generateId('log'),
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
@@ -607,6 +734,22 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setPriceTable((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...safeUpdates, updatedAt: now, updatedBy } : p)),
     )
+
+    // Persistência no PocketBase: item de preço + log de auditoria
+    portalDb
+      .updatePriceItem(id, {
+        ...safeUpdates,
+        category: currentItem.category,
+        updatedAt: now,
+        updatedBy,
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar item de preço no banco:', err)
+      })
+
+    portalDb.createPriceLog(logEntry).catch((err) => {
+      console.warn('[PortalContext] Falha ao registrar log de auditoria de preço no banco:', err)
+    })
   }
 
   const createBillingException = (
@@ -619,58 +762,107 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString().split('T')[0],
     }
     setBillingExceptions((prev) => [newExc, ...prev])
+
+    portalDb
+      .createException(newExc)
+      .then((created) => {
+        if (created) {
+          setBillingExceptions((prev) => prev.map((e) => (e.id === newExc.id ? created : e)))
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao gravar exceção de cobrança no banco:', err)
+      })
   }
 
   const updateBillingExceptionStatus = (id: string, status: 'aprovado' | 'rejeitado') => {
+    const approvedBy = currentUser?.name || 'Diretoria Financeira'
     setBillingExceptions((prev) =>
       prev.map((exc) =>
         exc.id === id
           ? {
               ...exc,
               status,
-              approvedBy: currentUser?.name || 'Diretoria Financeira',
+              approvedBy,
             }
           : exc,
       ),
     )
+
+    portalDb.updateException(id, { status, approvedBy }).catch((err) => {
+      console.warn('[PortalContext] Falha ao atualizar status da exceção no banco:', err)
+    })
   }
 
   // Maintenance
   const addTicket = (ticketData: Omit<MaintenanceTicket, 'id' | 'createdAt' | 'status'>) => {
+    const tempId = generateId('tkt')
     const newTicket: MaintenanceTicket = {
       ...ticketData,
-      id: generateId('tkt'),
+      id: tempId,
       status: 'aberto',
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
     }
     setTickets((prev) => [newTicket, ...prev])
+
+    portalDb
+      .createTicket(newTicket)
+      .then((created) => {
+        if (created) {
+          setTickets((prev) => prev.map((t) => (t.id === tempId ? created : t)))
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao cadastrar chamado de manutenção no banco:', err)
+      })
   }
 
   const updateTicketStatus = (id: string, status: MaintenanceTicket['status']) => {
+    const resolvedAt =
+      status === 'concluido' ? new Date().toISOString().replace('T', ' ').slice(0, 16) : undefined
+
     setTickets((prev) =>
       prev.map((t) =>
         t.id === id
           ? {
               ...t,
               status,
-              resolvedAt:
-                status === 'concluido'
-                  ? new Date().toISOString().replace('T', ' ').slice(0, 16)
-                  : t.resolvedAt,
+              resolvedAt: resolvedAt !== undefined ? resolvedAt : t.resolvedAt,
             }
           : t,
       ),
     )
+
+    portalDb
+      .updateTicket(id, {
+        status,
+        ...(resolvedAt ? { resolvedAt } : {}),
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar status do chamado no banco:', err)
+      })
   }
 
   // LGPD
   const addLgpdRequest = (reqData: Omit<LgpdRequest, 'id' | 'createdAt'>) => {
+    const tempId = generateId('lgpd')
     const newReq: LgpdRequest = {
       ...reqData,
-      id: generateId('lgpd'),
+      id: tempId,
       createdAt: new Date().toISOString().split('T')[0],
     }
     setLgpdRequests((prev) => [newReq, ...prev])
+
+    portalDb
+      .createLgpdRequest(newReq)
+      .then((created) => {
+        if (created) {
+          setLgpdRequests((prev) => prev.map((r) => (r.id === tempId ? created : r)))
+        }
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao criar solicitação LGPD no banco:', err)
+      })
   }
 
   const updateLgpdStatus = (id: string, status: LgpdRequest['status'], notes?: string) => {
@@ -685,6 +877,15 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           : r,
       ),
     )
+
+    portalDb
+      .updateLgpdRequest(id, {
+        status,
+        ...(notes ? { dpoNotes: notes } : {}),
+      })
+      .catch((err) => {
+        console.warn('[PortalContext] Falha ao atualizar status LGPD no banco:', err)
+      })
   }
 
   // Diagnostic
@@ -742,6 +943,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         updateLgpdStatus,
         diagnostic,
         refreshDiagnostic,
+        isBackendReady,
+        isSyncing,
       }}
     >
       {children}

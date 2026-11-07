@@ -25,7 +25,7 @@ import {
   INITIAL_STUDENTS,
 } from '@/data/portalMockData'
 
-const COLLECTIONS = {
+export const COLLECTIONS = {
   students: 'students',
   courses: 'courses',
   charges: 'charges',
@@ -34,6 +34,7 @@ const COLLECTIONS = {
   exceptions: 'billing_exceptions',
   tickets: 'maintenance_tickets',
   lgpd: 'lgpd_requests',
+  appUsers: 'app_users',
 } as const
 
 // Conta compartilhada de demonstração usada pela app para autenticar no
@@ -100,15 +101,32 @@ export function seedIfEmpty(): Promise<void> {
         try {
           const existing = await pb.collection(collection).getList(1, 1)
           if (existing.totalItems > 0) return
-          await Promise.all(
-            rows.map((row) => pb.collection(collection).create({ id: row.id, ...map(row) })),
-          )
+          for (const row of rows) {
+            try {
+              await pb.collection(collection).create(map(row))
+            } catch (createErr) {
+              console.warn(`[portalDb] seed item in ${collection}:`, createErr)
+            }
+          }
         } catch (e) {
           console.warn(`[portalDb] seed ${collection}:`, e)
         }
       }
 
       await Promise.all([
+        seed(COLLECTIONS.appUsers, DEMO_ACCOUNTS, (u) => ({
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          roleTitle: u.roleTitle,
+          department: u.department,
+          status: u.status,
+          cpf: u.cpf,
+          phone: u.phone,
+          avatar: u.avatar,
+          createdAt: u.createdAt,
+          lastAccess: u.lastAccess,
+        })),
         seed(COLLECTIONS.students, INITIAL_STUDENTS, (s) => ({
           fullName: s.fullName,
           cpf: s.cpf,
@@ -396,11 +414,29 @@ function mapLgpd(rec: AnyRec): LgpdRequest {
   }
 }
 
+function mapAppUser(rec: AnyRec): UserAccount {
+  return {
+    id: str(rec.id),
+    name: str(rec.name),
+    email: str(rec.email),
+    role: str(rec.role, 'aluno') as UserAccount['role'],
+    roleTitle: str(rec.roleTitle),
+    department: str(rec.department),
+    status: str(rec.status, 'ativo') as UserAccount['status'],
+    cpf: str(rec.cpf),
+    phone: str(rec.phone),
+    avatar: str(rec.avatar),
+    createdAt: str(rec.createdAt),
+    lastAccess: str(rec.lastAccess),
+  }
+}
+
 // ---------- loaders ----------
 
 // Carrega todos os dados do banco (com seed inicial em coleções vazias).
 // Cada loader tem fallback local: banco indisponível não pode derrubar o app.
 export async function loadAllData(): Promise<{
+  users: UserAccount[]
   students: Student[]
   courses: Course[]
   charges: Charge[]
@@ -414,6 +450,7 @@ export async function loadAllData(): Promise<{
   await seedIfEmpty()
 
   const [
+    users,
     students,
     courses,
     charges,
@@ -423,6 +460,11 @@ export async function loadAllData(): Promise<{
     tickets,
     lgpdRequests,
   ] = await Promise.all([
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.appUsers).getFullList({ sort: 'name' })).map(mapAppUser),
+      DEMO_ACCOUNTS,
+    ),
     safeList(
       async () =>
         (await pb.collection(COLLECTIONS.students).getFullList({ sort: '-created' })).map(
@@ -471,6 +513,7 @@ export async function loadAllData(): Promise<{
   ])
 
   return {
+    users,
     students,
     courses,
     charges,
@@ -541,6 +584,7 @@ export const portalDb = {
             ),
             docFiles: docFiles.length > 0 ? docFiles : undefined,
             observations: student.observations || '',
+            ...(student.id && student.id.length >= 15 ? { id: student.id } : {}),
           }),
         )
         return mapStudent(rec as unknown as AnyRec)
@@ -563,43 +607,204 @@ export const portalDb = {
             updates.documents.map(({ pendingFile: _f, ...rest }) => rest),
           )
         }
-        const rec = await pb.collection(COLLECTIONS.students).update(studentId, payload)
-        return mapStudent(rec as unknown as AnyRec)
+        try {
+          const rec = await pb.collection(COLLECTIONS.students).update(studentId, payload)
+          return mapStudent(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.students)
+            .getFirstListItem(
+              `id = "${studentId}" || cpfRaw = "${(updates.cpf || '').replace(/\D/g, '')}"`,
+            )
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.students).update(found.id, payload)
+            return mapStudent(rec as unknown as AnyRec)
+          }
+          throw new Error('Student not found')
+        }
       },
       null as Student | null,
     ),
 
-  updateCourse: (courseId: string, updates: Partial<Course>) =>
+  createCourse: (course: Course) =>
     safeWrite(
       async () => {
-        const payload: Record<string, unknown> = { ...updates, type: undefined }
-        const rec = await pb.collection(COLLECTIONS.courses).update(courseId, payload)
+        const payload: Record<string, unknown> = {
+          code: course.code,
+          name: course.name,
+          level: course.level,
+          courseType: course.type,
+          modality: course.modality,
+          durationSemesters: course.durationSemesters,
+          workloadHours: course.workloadHours,
+          coordinator: course.coordinator,
+          status: course.status,
+          lockedForEditing: course.lockedForEditing,
+          emecCode: course.emecCode,
+          emecConcept: course.emecConcept,
+          emecOrdinanceNumber: course.emecOrdinanceNumber,
+          emecOrdinanceDate: course.emecOrdinanceDate,
+          description: course.description,
+          monthlyFee: course.monthlyFee,
+          vacancies: course.vacancies,
+          enrolledCount: course.enrolledCount,
+        }
+        if (course.id && course.id.length >= 15) {
+          payload.id = course.id
+        }
+        const rec = await pb.collection(COLLECTIONS.courses).create(payload)
         return mapCourse(rec as unknown as AnyRec)
       },
       null as Course | null,
     ),
 
+  toggleCourseLock: (courseId: string, locked: boolean) =>
+    safeWrite(
+      async () => {
+        try {
+          const rec = await pb
+            .collection(COLLECTIONS.courses)
+            .update(courseId, { lockedForEditing: locked })
+          return mapCourse(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.courses)
+            .getFirstListItem(`id = "${courseId}"`)
+          if (found) {
+            const rec = await pb
+              .collection(COLLECTIONS.courses)
+              .update(found.id, { lockedForEditing: locked })
+            return mapCourse(rec as unknown as AnyRec)
+          }
+          throw new Error('Course not found')
+        }
+      },
+      null as Course | null,
+    ),
+
+  updateCourse: (courseId: string, updates: Partial<Course>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.name !== undefined) payload.name = updates.name
+        if (updates.code !== undefined) payload.code = updates.code
+        if (updates.level !== undefined) payload.level = updates.level
+        if (updates.type !== undefined) payload.courseType = updates.type
+        if (updates.modality !== undefined) payload.modality = updates.modality
+        if (updates.durationSemesters !== undefined)
+          payload.durationSemesters = updates.durationSemesters
+        if (updates.workloadHours !== undefined) payload.workloadHours = updates.workloadHours
+        if (updates.coordinator !== undefined) payload.coordinator = updates.coordinator
+        if (updates.status !== undefined) payload.status = updates.status
+        if (updates.lockedForEditing !== undefined)
+          payload.lockedForEditing = updates.lockedForEditing
+        if (updates.emecCode !== undefined) payload.emecCode = updates.emecCode
+        if (updates.emecConcept !== undefined) payload.emecConcept = updates.emecConcept
+        if (updates.emecOrdinanceNumber !== undefined)
+          payload.emecOrdinanceNumber = updates.emecOrdinanceNumber
+        if (updates.emecOrdinanceDate !== undefined)
+          payload.emecOrdinanceDate = updates.emecOrdinanceDate
+        if (updates.description !== undefined) payload.description = updates.description
+        if (updates.monthlyFee !== undefined) payload.monthlyFee = updates.monthlyFee
+        if (updates.vacancies !== undefined) payload.vacancies = updates.vacancies
+        if (updates.enrolledCount !== undefined) payload.enrolledCount = updates.enrolledCount
+
+        try {
+          const rec = await pb.collection(COLLECTIONS.courses).update(courseId, payload)
+          return mapCourse(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.courses)
+            .getFirstListItem(`id = "${courseId}" || code = "${updates.code || ''}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.courses).update(found.id, payload)
+            return mapCourse(rec as unknown as AnyRec)
+          }
+          throw new Error('Course not found')
+        }
+      },
+      null as Course | null,
+    ),
+
+  createAppUser: (user: UserAccount) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          roleTitle: user.roleTitle,
+          department: user.department,
+          status: user.status,
+          cpf: user.cpf,
+          phone: user.phone,
+          avatar: user.avatar,
+          createdAt: user.createdAt,
+          lastAccess: user.lastAccess,
+        }
+        if (user.id && user.id.length >= 15) {
+          payload.id = user.id
+        }
+        const rec = await pb.collection(COLLECTIONS.appUsers).create(payload)
+        return mapAppUser(rec as unknown as AnyRec)
+      },
+      null as UserAccount | null,
+    ),
+
+  updateAppUser: (userId: string, updates: Partial<UserAccount>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.name !== undefined) payload.name = updates.name
+        if (updates.role !== undefined) payload.role = updates.role
+        if (updates.roleTitle !== undefined) payload.roleTitle = updates.roleTitle
+        if (updates.department !== undefined) payload.department = updates.department
+        if (updates.status !== undefined) payload.status = updates.status
+        if (updates.cpf !== undefined) payload.cpf = updates.cpf
+        if (updates.phone !== undefined) payload.phone = updates.phone
+        if (updates.avatar !== undefined) payload.avatar = updates.avatar
+        if (updates.lastAccess !== undefined) payload.lastAccess = updates.lastAccess
+
+        try {
+          const rec = await pb.collection(COLLECTIONS.appUsers).update(userId, payload)
+          return mapAppUser(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.appUsers)
+            .getFirstListItem(`id = "${userId}" || email = "${updates.email || ''}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.appUsers).update(found.id, payload)
+            return mapAppUser(rec as unknown as AnyRec)
+          }
+          throw new Error('User not found')
+        }
+      },
+      null as UserAccount | null,
+    ),
+
   createCharge: (charge: Charge) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.charges).create(
-          buildFormData({
-            code: charge.code,
-            studentId: charge.studentId,
-            studentName: charge.studentName,
-            studentCpf: charge.studentCpf,
-            category: charge.category,
-            description: charge.description,
-            amount: charge.amount,
-            dueDate: charge.dueDate,
-            status: charge.status,
-            method: charge.method || '',
-            paidAt: charge.paidAt || '',
-            pixCode: charge.pixCode || '',
-            pixQrUrl: charge.pixQrUrl || '',
-            receiptNumber: charge.receiptNumber || '',
-          }),
-        )
+        const payload: Record<string, unknown> = {
+          code: charge.code,
+          studentId: charge.studentId,
+          studentName: charge.studentName,
+          studentCpf: charge.studentCpf,
+          category: charge.category,
+          description: charge.description,
+          amount: charge.amount,
+          dueDate: charge.dueDate,
+          status: charge.status,
+          method: charge.method || '',
+          paidAt: charge.paidAt || '',
+          pixCode: charge.pixCode || '',
+          pixQrUrl: charge.pixQrUrl || '',
+          receiptNumber: charge.receiptNumber || '',
+        }
+        if (charge.id && charge.id.length >= 15) {
+          payload.id = charge.id
+        }
+        const rec = await pb.collection(COLLECTIONS.charges).create(payload)
         return mapCharge(rec as unknown as AnyRec)
       },
       null as Charge | null,
@@ -613,8 +818,19 @@ export const portalDb = {
         if (updates.method !== undefined) payload.method = updates.method
         if (updates.paidAt !== undefined) payload.paidAt = updates.paidAt
         if (updates.receiptNumber !== undefined) payload.receiptNumber = updates.receiptNumber
-        const rec = await pb.collection(COLLECTIONS.charges).update(chargeId, payload)
-        return mapCharge(rec as unknown as AnyRec)
+        try {
+          const rec = await pb.collection(COLLECTIONS.charges).update(chargeId, payload)
+          return mapCharge(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.charges)
+            .getFirstListItem(`id = "${chargeId}" || code = "${updates.code || ''}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.charges).update(found.id, payload)
+            return mapCharge(rec as unknown as AnyRec)
+          }
+          throw new Error('Charge not found')
+        }
       },
       null as Charge | null,
     ),
@@ -624,14 +840,29 @@ export const portalDb = {
       async () => {
         const payload: Record<string, unknown> = {}
         if (updates.standardMonthlyFee !== undefined)
-          payload.standardMonthlyFee = updates.standardMonthlyFee
-        if (updates.enrollmentFee !== undefined) payload.enrollmentFee = updates.enrollmentFee
+          payload.standardMonthlyFee = Number(updates.standardMonthlyFee)
+        if (updates.enrollmentFee !== undefined)
+          payload.enrollmentFee = Number(updates.enrollmentFee)
         if (updates.lateFeePercentage !== undefined)
-          payload.lateFeePercentage = updates.lateFeePercentage
+          payload.lateFeePercentage = Number(updates.lateFeePercentage)
         if (updates.updatedAt !== undefined) payload.updatedAt = updates.updatedAt
         if (updates.updatedBy !== undefined) payload.updatedBy = updates.updatedBy
-        const rec = await pb.collection(COLLECTIONS.prices).update(itemId, payload)
-        return mapPriceItem(rec as unknown as AnyRec)
+
+        // Tenta atualizar pelo ID (se for registro já existente no PocketBase)
+        try {
+          const rec = await pb.collection(COLLECTIONS.prices).update(itemId, payload)
+          return mapPriceItem(rec as unknown as AnyRec)
+        } catch {
+          // Se o registro tiver ID local ou id seed diferente, tenta localizar por categoria/nível
+          const found = await pb
+            .collection(COLLECTIONS.prices)
+            .getFirstListItem(`id = "${itemId}" || category = "${updates.category || ''}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.prices).update(found.id, payload)
+            return mapPriceItem(rec as unknown as AnyRec)
+          }
+          throw new Error('Price item not found')
+        }
       },
       null as PriceTableItem | null,
     ),
@@ -639,14 +870,18 @@ export const portalDb = {
   createPriceLog: (log: PriceAuditLog) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.priceLogs).create({
+        const payload: Record<string, unknown> = {
           timestamp: log.timestamp,
           userName: log.userName,
           userRole: log.userRole,
           changeSummary: log.changeSummary,
           previousValue: log.previousValue,
           newValue: log.newValue,
-        })
+        }
+        if (log.id && log.id.length >= 15) {
+          payload.id = log.id
+        }
+        const rec = await pb.collection(COLLECTIONS.priceLogs).create(payload)
         return mapPriceLog(rec as unknown as AnyRec)
       },
       null as PriceAuditLog | null,
@@ -655,7 +890,7 @@ export const portalDb = {
   createException: (exc: BillingException) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.exceptions).create({
+        const payload: Record<string, unknown> = {
           studentId: exc.studentId,
           studentName: exc.studentName,
           reason: exc.reason,
@@ -665,7 +900,11 @@ export const portalDb = {
           approvedBy: exc.approvedBy || '',
           status: exc.status,
           createdAt: exc.createdAt,
-        })
+        }
+        if (exc.id && exc.id.length >= 15) {
+          payload.id = exc.id
+        }
+        const rec = await pb.collection(COLLECTIONS.exceptions).create(payload)
         return mapException(rec as unknown as AnyRec)
       },
       null as BillingException | null,
@@ -677,8 +916,19 @@ export const portalDb = {
         const payload: Record<string, unknown> = {}
         if (updates.status !== undefined) payload.status = updates.status
         if (updates.approvedBy !== undefined) payload.approvedBy = updates.approvedBy
-        const rec = await pb.collection(COLLECTIONS.exceptions).update(excId, payload)
-        return mapException(rec as unknown as AnyRec)
+        try {
+          const rec = await pb.collection(COLLECTIONS.exceptions).update(excId, payload)
+          return mapException(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.exceptions)
+            .getFirstListItem(`id = "${excId}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.exceptions).update(found.id, payload)
+            return mapException(rec as unknown as AnyRec)
+          }
+          throw new Error('Exception not found')
+        }
       },
       null as BillingException | null,
     ),
@@ -686,24 +936,25 @@ export const portalDb = {
   createTicket: (ticket: MaintenanceTicket) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.tickets).create(
-          buildFormData({
-            title: ticket.title,
-            description: ticket.description,
-            location: ticket.location,
-            priority: ticket.priority,
-            status: ticket.status,
-            category: ticket.category,
-            reporterName: ticket.reporterName,
-            reporterRole: ticket.reporterRole,
-            assignedTo: ticket.assignedTo || '',
-            // Se houver arquivo real, o backend gera a URL; senão mantém a demo.
-            photoUrls: ticket.photoFiles?.length ? '' : JSON.stringify(ticket.photoUrls),
-            photo: ticket.photoFiles?.[0],
-            createdAt: ticket.createdAt,
-            resolvedAt: ticket.resolvedAt || '',
-          }),
-        )
+        const body: Record<string, unknown> = {
+          title: ticket.title,
+          description: ticket.description,
+          location: ticket.location,
+          priority: ticket.priority,
+          status: ticket.status,
+          category: ticket.category,
+          reporterName: ticket.reporterName,
+          reporterRole: ticket.reporterRole,
+          assignedTo: ticket.assignedTo || '',
+          photoUrls: ticket.photoFiles?.length ? '' : JSON.stringify(ticket.photoUrls),
+          photo: ticket.photoFiles?.[0],
+          createdAt: ticket.createdAt,
+          resolvedAt: ticket.resolvedAt || '',
+        }
+        if (ticket.id && ticket.id.length >= 15) {
+          body.id = ticket.id
+        }
+        const rec = await pb.collection(COLLECTIONS.tickets).create(buildFormData(body))
         return mapTicket(rec as unknown as AnyRec)
       },
       null as MaintenanceTicket | null,
@@ -716,8 +967,19 @@ export const portalDb = {
         if (updates.status !== undefined) payload.status = updates.status
         if (updates.assignedTo !== undefined) payload.assignedTo = updates.assignedTo
         if (updates.resolvedAt !== undefined) payload.resolvedAt = updates.resolvedAt
-        const rec = await pb.collection(COLLECTIONS.tickets).update(ticketId, payload)
-        return mapTicket(rec as unknown as AnyRec)
+        try {
+          const rec = await pb.collection(COLLECTIONS.tickets).update(ticketId, payload)
+          return mapTicket(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb
+            .collection(COLLECTIONS.tickets)
+            .getFirstListItem(`id = "${ticketId}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.tickets).update(found.id, payload)
+            return mapTicket(rec as unknown as AnyRec)
+          }
+          throw new Error('Ticket not found')
+        }
       },
       null as MaintenanceTicket | null,
     ),
@@ -725,7 +987,7 @@ export const portalDb = {
   createLgpdRequest: (req: LgpdRequest) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.lgpd).create({
+        const payload: Record<string, unknown> = {
           requesterName: req.requesterName,
           requesterCpf: req.requesterCpf,
           requesterEmail: req.requesterEmail,
@@ -737,7 +999,11 @@ export const portalDb = {
           legalJustification: req.legalJustification,
           createdAt: req.createdAt,
           dpoNotes: req.dpoNotes || '',
-        })
+        }
+        if (req.id && req.id.length >= 15) {
+          payload.id = req.id
+        }
+        const rec = await pb.collection(COLLECTIONS.lgpd).create(payload)
         return mapLgpd(rec as unknown as AnyRec)
       },
       null as LgpdRequest | null,
@@ -751,8 +1017,17 @@ export const portalDb = {
         if (updates.dpoNotes !== undefined) payload.dpoNotes = updates.dpoNotes
         if (updates.legalJustification !== undefined)
           payload.legalJustification = updates.legalJustification
-        const rec = await pb.collection(COLLECTIONS.lgpd).update(reqId, payload)
-        return mapLgpd(rec as unknown as AnyRec)
+        try {
+          const rec = await pb.collection(COLLECTIONS.lgpd).update(reqId, payload)
+          return mapLgpd(rec as unknown as AnyRec)
+        } catch {
+          const found = await pb.collection(COLLECTIONS.lgpd).getFirstListItem(`id = "${reqId}"`)
+          if (found) {
+            const rec = await pb.collection(COLLECTIONS.lgpd).update(found.id, payload)
+            return mapLgpd(rec as unknown as AnyRec)
+          }
+          throw new Error('LGPD request not found')
+        }
       },
       null as LgpdRequest | null,
     ),
