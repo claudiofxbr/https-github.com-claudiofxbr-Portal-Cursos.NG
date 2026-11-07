@@ -25,8 +25,10 @@ import {
   INITIAL_BILLING_EXCEPTIONS,
   INITIAL_TICKETS,
   INITIAL_LGPD_REQUESTS,
+  INITIAL_EXPENSES,
   INITIAL_DIAGNOSTIC,
 } from '@/data/portalMockData'
+import { Expense } from '@/types/portal'
 import { generateId } from '@/lib/id'
 import pb from '@/lib/pocketbase/client'
 import {
@@ -103,6 +105,11 @@ interface PortalContextType {
   lgpdRequests: LgpdRequest[]
   addLgpdRequest: (req: Omit<LgpdRequest, 'id' | 'createdAt'>) => void
   updateLgpdStatus: (id: string, status: LgpdRequest['status'], notes?: string) => void
+
+  // Relatórios & Despesas
+  expenses: Expense[]
+  addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Promise<Expense>
+  deleteExpense: (id: string) => Promise<boolean>
 
   // Diagnostic
   diagnostic: SystemDiagnostic
@@ -268,6 +275,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   )
   const [tickets, setTickets] = useState<MaintenanceTicket[]>(INITIAL_TICKETS)
   const [lgpdRequests, setLgpdRequests] = useState<LgpdRequest[]>(INITIAL_LGPD_REQUESTS)
+  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES)
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -293,6 +301,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         setBillingExceptions(data.billingExceptions)
       if (data.tickets && data.tickets.length > 0) setTickets(data.tickets)
       if (data.lgpdRequests && data.lgpdRequests.length > 0) setLgpdRequests(data.lgpdRequests)
+      if (data.expenses && data.expenses.length > 0) setExpenses(data.expenses)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -996,6 +1005,40 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       })
   }
 
+  // Relatórios / Despesas
+  const addExpense = async (expenseData: Omit<Expense, 'id' | 'createdAt'>): Promise<Expense> => {
+    const tempId = generateId('exp')
+    const now = new Date().toISOString()
+    const newExp: Expense = {
+      ...expenseData,
+      id: tempId,
+      createdAt: now,
+    }
+    setExpenses((prev) => [newExp, ...prev])
+
+    try {
+      const created = await portalDb.createExpense(newExp)
+      if (created) {
+        setExpenses((prev) => prev.map((e) => (e.id === tempId ? created : e)))
+        return created
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao criar despesa no banco:', err)
+    }
+    return newExp
+  }
+
+  const deleteExpense = async (id: string): Promise<boolean> => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id))
+    try {
+      const ok = await portalDb.deleteExpense(id)
+      return ok
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao excluir despesa do banco:', err)
+      return false
+    }
+  }
+
   // Diagnostic
   const refreshDiagnostic = () => {
     setDiagnostic((prev) => ({
@@ -1050,6 +1093,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         lgpdRequests,
         addLgpdRequest,
         updateLgpdStatus,
+        expenses,
+        addExpense,
+        deleteExpense,
         diagnostic,
         refreshDiagnostic,
         isBackendReady,

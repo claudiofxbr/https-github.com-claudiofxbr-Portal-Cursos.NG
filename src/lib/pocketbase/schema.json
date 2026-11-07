@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T13:26:57.388Z",
+  "generatedAt": "2026-11-07T14:56:26.171Z",
   "collections": [
     {
       "name": "users",
@@ -939,6 +939,89 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_lgpd_status ON lgpd_requests (status)"]
+    },
+    {
+      "name": "expenses",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "folha_pagamento",
+            "infraestrutura",
+            "marketing",
+            "tecnologia",
+            "impostos",
+            "servicos_terceiros",
+            "outros"
+          ]
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "date",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pago", "pendente", "agendado", "cancelado"]
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_expenses_date ON expenses (date)",
+        "CREATE INDEX idx_expenses_category ON expenses (category)"
+      ]
     }
   ]
 }

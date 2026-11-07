@@ -12,6 +12,7 @@ import { UsuariosEquipeModule } from '@/components/usuarios/UsuariosEquipeModule
 import { ManutencaoModule } from '@/components/manutencao/ManutencaoModule'
 import { LgpdModule } from '@/components/lgpd/LgpdModule'
 import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
+import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -39,6 +40,7 @@ export default function Index() {
           {safeActiveModule === 'matriculas' && <MatriculaModule />}
           {safeActiveModule === 'cursos' && <CursosModule />}
           {safeActiveModule === 'financeiro' && <FinanceiroModule />}
+          {safeActiveModule === 'relatorios' && <RelatoriosModule />}
           {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
           {safeActiveModule === 'manutencao' && <ManutencaoModule />}
           {safeActiveModule === 'lgpd' && <LgpdModule />}

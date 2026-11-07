@@ -29,6 +29,7 @@ export type ModuleKey =
   | 'matriculas'
   | 'cursos'
   | 'financeiro'
+  | 'relatorios'
   | 'usuarios'
   | 'manutencao'
   | 'lgpd'
@@ -191,6 +192,29 @@ export interface LgpdRequest {
   legalJustification: string
   createdAt: string
   dpoNotes?: string
+}
+
+export type ExpenseCategory =
+  | 'folha_pagamento'
+  | 'infraestrutura'
+  | 'marketing'
+  | 'tecnologia'
+  | 'impostos'
+  | 'servicos_terceiros'
+  | 'outros'
+
+export type ExpenseStatus = 'pago' | 'pendente' | 'agendado' | 'cancelado'
+
+export interface Expense {
+  id: string
+  description: string
+  category: ExpenseCategory
+  amount: number
+  date: string // YYYY-MM-DD
+  status: ExpenseStatus
+  courseId?: string
+  notes?: string
+  createdAt?: string
 }
 
 export interface SystemDiagnostic {

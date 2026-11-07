@@ -12,6 +12,7 @@ import {
   BillingException,
   MaintenanceTicket,
   LgpdRequest,
+  Expense,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
@@ -22,6 +23,7 @@ import {
   INITIAL_BILLING_EXCEPTIONS,
   INITIAL_TICKETS,
   INITIAL_LGPD_REQUESTS,
+  INITIAL_EXPENSES,
   INITIAL_STUDENTS,
 } from '@/data/portalMockData'
 
@@ -34,6 +36,7 @@ export const COLLECTIONS = {
   exceptions: 'billing_exceptions',
   tickets: 'maintenance_tickets',
   lgpd: 'lgpd_requests',
+  expenses: 'expenses',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -500,6 +503,20 @@ function mapLgpd(rec: AnyRec): LgpdRequest {
   }
 }
 
+function mapExpense(rec: AnyRec): Expense {
+  return {
+    id: str(rec.id),
+    description: str(rec.description),
+    category: str(rec.category, 'outros') as Expense['category'],
+    amount: num(rec.amount),
+    date: str(rec.date),
+    status: str(rec.status, 'pago') as Expense['status'],
+    courseId: str(rec.courseId) || undefined,
+    notes: str(rec.notes) || undefined,
+    createdAt: str(rec.created || rec.createdAt),
+  }
+}
+
 function mapAppUser(rec: AnyRec): UserAccount {
   return {
     id: str(rec.id),
@@ -531,6 +548,7 @@ export async function loadAllData(): Promise<{
   billingExceptions: BillingException[]
   tickets: MaintenanceTicket[]
   lgpdRequests: LgpdRequest[]
+  expenses: Expense[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -545,6 +563,7 @@ export async function loadAllData(): Promise<{
     billingExceptions,
     tickets,
     lgpdRequests,
+    expenses,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -607,6 +626,11 @@ export async function loadAllData(): Promise<{
         (await pb.collection(COLLECTIONS.lgpd).getFullList({ sort: '-created' })).map(mapLgpd),
       INITIAL_LGPD_REQUESTS,
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.expenses).getFullList({ sort: '-date' })).map(mapExpense),
+      INITIAL_EXPENSES,
+    ),
   ])
 
   return {
@@ -619,6 +643,7 @@ export async function loadAllData(): Promise<{
     billingExceptions,
     tickets,
     lgpdRequests,
+    expenses,
   }
 }
 
@@ -1192,4 +1217,42 @@ export const portalDb = {
       },
       null as LgpdRequest | null,
     ),
+
+  createExpense: (expense: Omit<Expense, 'id' | 'createdAt'> & { id?: string }) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          description: expense.description,
+          category: expense.category,
+          amount: Number(expense.amount),
+          date: expense.date,
+          status: expense.status || 'pago',
+          courseId: expense.courseId || '',
+          notes: expense.notes || '',
+        }
+        if (expense.id && expense.id.length >= 15) {
+          payload.id = expense.id
+        }
+        const rec = await pb.collection(COLLECTIONS.expenses).create(payload)
+        return mapExpense(rec as unknown as AnyRec)
+      },
+      null as Expense | null,
+    ),
+
+  deleteExpense: (expenseId: string) =>
+    safeWrite(async () => {
+      try {
+        await pb.collection(COLLECTIONS.expenses).delete(expenseId)
+        return true
+      } catch {
+        const found = await pb
+          .collection(COLLECTIONS.expenses)
+          .getFirstListItem(`id = "${expenseId}"`)
+        if (found) {
+          await pb.collection(COLLECTIONS.expenses).delete(found.id)
+          return true
+        }
+        throw new Error('Expense not found')
+      }
+    }, false),
 }

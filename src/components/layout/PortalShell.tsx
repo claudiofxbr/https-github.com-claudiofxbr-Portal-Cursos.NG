@@ -22,6 +22,7 @@ import {
   Wrench,
   ShieldCheck,
   Cpu,
+  BarChart3,
   Lock,
   LogOut,
   ChevronDown,
@@ -41,6 +42,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Wrench,
   ShieldCheck,
   Cpu,
+  BarChart3,
 }
 
 interface PortalHeaderAndSidebarProps {

@@ -14,6 +14,7 @@ import {
   Wrench,
   ShieldCheck,
   Cpu,
+  BarChart3,
   ArrowRight,
   Lock,
   UserCheck,
@@ -27,6 +28,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   GraduationCap,
   BookOpen,
   CreditCard,
+  BarChart3,
   Users,
   Wrench,
   ShieldCheck,
@@ -104,6 +106,18 @@ export function DashboardOverview({ onNavigate }: { onNavigate: (mod: ModuleKey)
               >
                 <CreditCard className="w-4 h-4 mr-2" />
                 Ver Cobranças Pix
+              </Button>
+            )}
+            {canAccessModule('relatorios') && (
+              <Button
+                onClick={() =>
+                  handleNavigate(onNavigate, 'relatorios', canAccessModule('relatorios'))
+                }
+                variant="outline"
+                className="border-sky-700/60 bg-sky-950/40 hover:bg-sky-900/60 text-sky-200 text-xs h-9"
+              >
+                <BarChart3 className="w-4 h-4 mr-2 text-sky-400" />
+                Relatórios Gerenciais
               </Button>
             )}
           </div>
