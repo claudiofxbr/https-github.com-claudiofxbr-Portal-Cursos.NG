@@ -23,12 +23,19 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { usePortal } from '@/context/PortalContext'
+import { toast } from '@/hooks/use-toast'
 import { KpiCard } from './KpiCard'
 import { CoursePerformanceTable, CoursePerformanceData } from './CoursePerformanceTable'
 import { FinancialCharts } from './FinancialCharts'
 import { DecisionInsights, DecisionInsight } from './DecisionInsights'
 import { ExpenseManager } from './ExpenseManager'
 import { Charge, Student, Course, Expense } from '@/types/portal'
+import {
+  exportReportToCsv,
+  exportReportToPdf,
+  canUserExportReports,
+  ReportExportPayload,
+} from '@/lib/reportExport'
 
 export type PeriodFilter =
   | 'last_30_days'
@@ -48,9 +55,14 @@ const CATEGORY_LABEL_MAP: Record<string, string> = {
 }
 
 export const RelatoriosModule: React.FC = () => {
-  const { charges, students, courses, expenses, addExpense, deleteExpense } = usePortal()
+  const { charges, students, courses, expenses, addExpense, deleteExpense, currentUser } =
+    usePortal()
 
   const [period, setPeriod] = useState<PeriodFilter>('current_month')
+  const [isExportingCsv, setIsExportingCsv] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
+
+  const canExport = canUserExportReports(currentUser?.role)
 
   // Date boundaries calculation
   const { dateRange, prevRange, periodLabel, prevPeriodLabel } = useMemo(() => {
@@ -419,6 +431,87 @@ export const RelatoriosModule: React.FC = () => {
     return list
   }, [currentMetrics, deltas, prevMetrics, currentCharges, coursePerformance])
 
+  // Prepara payload compartilhado de exportação
+  const getExportPayload = (): ReportExportPayload => {
+    return {
+      portalName: 'PortalCursos.NG',
+      periodLabel,
+      periodKey: period,
+      generatedAt: new Date(),
+      generatedBy: {
+        name: currentUser?.name || 'Administrador',
+        roleTitle: currentUser?.roleTitle || 'Gestor',
+        email: currentUser?.email || 'admin@portalcursos.ng',
+      },
+      kpis: currentMetrics,
+      courses: coursePerformance,
+    }
+  }
+
+  // Handler para exportação em CSV
+  const handleExportCsv = () => {
+    if (!canExport) {
+      toast({
+        title: 'Acesso negado',
+        description:
+          'Seu perfil de acesso não possui permissão para exportar relatórios gerenciais.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setIsExportingCsv(true)
+      const payload = getExportPayload()
+      exportReportToCsv(payload)
+      toast({
+        title: 'Exportação CSV concluída',
+        description: `Arquivo CSV gerado com sucesso para o período "${periodLabel}". Compatível com Excel.`,
+      })
+    } catch (err) {
+      console.error('Erro ao exportar CSV:', err)
+      toast({
+        title: 'Erro na exportação CSV',
+        description: 'Não foi possível gerar a planilha no momento.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsExportingCsv(false)
+    }
+  }
+
+  // Handler para exportação em PDF
+  const handleExportPdf = () => {
+    if (!canExport) {
+      toast({
+        title: 'Acesso negado',
+        description:
+          'Seu perfil de acesso não possui permissão para exportar relatórios gerenciais.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setIsExportingPdf(true)
+      const payload = getExportPayload()
+      exportReportToPdf(payload)
+      toast({
+        title: 'Relatório PDF gerado',
+        description: `Janela de impressão e download aberta com o cabeçalho institucional e dados do período "${periodLabel}".`,
+      })
+    } catch (err) {
+      console.error('Erro ao exportar PDF:', err)
+      toast({
+        title: 'Erro na exportação PDF',
+        description: 'Não foi possível formatar o documento PDF para impressão.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsExportingPdf(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header & Period Selector */}
@@ -440,12 +533,12 @@ export const RelatoriosModule: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
             <Filter className="w-3.5 h-3.5 text-slate-500" />
             <span className="text-xs font-medium text-slate-600">Período:</span>
             <Select value={period} onValueChange={(v) => setPeriod(v as PeriodFilter)}>
-              <SelectTrigger className="w-[180px] h-8 text-xs border-0 bg-transparent shadow-none focus:ring-0">
+              <SelectTrigger className="w-[170px] h-8 text-xs border-0 bg-transparent shadow-none focus:ring-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -467,6 +560,35 @@ export const RelatoriosModule: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Botões de Exportação protegidos por RBAC (root, admin, financeiro) */}
+          {canExport && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCsv}
+                disabled={isExportingCsv}
+                className="h-9 gap-1.5 text-xs font-medium border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                title="Exportar planilha CSV compatível com Excel (BOM UTF-8)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{isExportingCsv ? 'Exportando...' : 'Exportar CSV'}</span>
+              </Button>
+
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="h-9 gap-1.5 text-xs font-medium bg-sky-700 hover:bg-sky-800 text-white shadow-xs"
+                title="Exportar documento PDF institucional pronto para impressão"
+              >
+                <Download className="w-3.5 h-3.5 text-white" />
+                <span>{isExportingPdf ? 'Gerando...' : 'Exportar PDF'}</span>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
