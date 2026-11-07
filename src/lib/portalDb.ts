@@ -755,39 +755,55 @@ export async function loadAllData(): Promise<{
         (await pb.collection(COLLECTIONS.courses).getFullList({ sort: '-created' })).map(mapCourse),
       INITIAL_COURSES,
     ),
-    safeList(
-      async () =>
-        (await pb.collection(COLLECTIONS.charges).getFullList({ sort: '-created' })).map(mapCharge),
-      INITIAL_CHARGES,
-    ),
+    safeList(async () => {
+      try {
+        return (await pb.collection(COLLECTIONS.charges).getFullList({ sort: '-created' })).map(
+          mapCharge,
+        )
+      } catch {
+        return (await pb.collection(COLLECTIONS.charges).getFullList()).map(mapCharge)
+      }
+    }, INITIAL_CHARGES),
     safeList(
       async () => (await pb.collection(COLLECTIONS.prices).getFullList()).map(mapPriceItem),
       INITIAL_PRICE_TABLE,
     ),
-    safeList(
-      async () =>
-        (await pb.collection(COLLECTIONS.priceLogs).getFullList({ sort: '-created' })).map(
+    safeList(async () => {
+      try {
+        return (await pb.collection(COLLECTIONS.priceLogs).getFullList({ sort: '-created' })).map(
           mapPriceLog,
-        ),
-      INITIAL_PRICE_AUDIT_LOGS,
-    ),
-    safeList(
-      async () =>
-        (await pb.collection(COLLECTIONS.exceptions).getFullList({ sort: '-created' })).map(
+        )
+      } catch {
+        return (await pb.collection(COLLECTIONS.priceLogs).getFullList()).map(mapPriceLog)
+      }
+    }, INITIAL_PRICE_AUDIT_LOGS),
+    safeList(async () => {
+      try {
+        return (await pb.collection(COLLECTIONS.exceptions).getFullList({ sort: '-created' })).map(
           mapException,
-        ),
-      INITIAL_BILLING_EXCEPTIONS,
-    ),
-    safeList(
-      async () =>
-        (await pb.collection(COLLECTIONS.tickets).getFullList({ sort: '-created' })).map(mapTicket),
-      INITIAL_TICKETS,
-    ),
-    safeList(
-      async () =>
-        (await pb.collection(COLLECTIONS.lgpd).getFullList({ sort: '-created' })).map(mapLgpd),
-      INITIAL_LGPD_REQUESTS,
-    ),
+        )
+      } catch {
+        return (await pb.collection(COLLECTIONS.exceptions).getFullList()).map(mapException)
+      }
+    }, INITIAL_BILLING_EXCEPTIONS),
+    safeList(async () => {
+      try {
+        return (await pb.collection(COLLECTIONS.tickets).getFullList({ sort: '-created' })).map(
+          mapTicket,
+        )
+      } catch {
+        return (await pb.collection(COLLECTIONS.tickets).getFullList()).map(mapTicket)
+      }
+    }, INITIAL_TICKETS),
+    safeList(async () => {
+      try {
+        return (await pb.collection(COLLECTIONS.lgpd).getFullList({ sort: '-created' })).map(
+          mapLgpd,
+        )
+      } catch {
+        return (await pb.collection(COLLECTIONS.lgpd).getFullList()).map(mapLgpd)
+      }
+    }, INITIAL_LGPD_REQUESTS),
     safeList(
       async () =>
         (await pb.collection(COLLECTIONS.expenses).getFullList({ sort: '-date' })).map(mapExpense),
