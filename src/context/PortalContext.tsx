@@ -15,6 +15,11 @@ import {
   Expense,
   Grade,
   AttendanceRecord,
+  LessonProgress,
+  CourseMaterial,
+  CalendarEvent,
+  StudentNotification,
+  StudentSupportTicket,
 } from '@/types/portal'
 import {
   PORTAL_GATE_PASSCODE,
@@ -134,6 +139,36 @@ interface PortalContextType {
   // Diagnostic
   diagnostic: SystemDiagnostic
   refreshDiagnostic: () => void
+
+  // Portal do Aluno
+  lessonProgress: LessonProgress[]
+  courseMaterials: CourseMaterial[]
+  calendarEvents: CalendarEvent[]
+  studentNotifications: StudentNotification[]
+  studentSupportTickets: StudentSupportTicket[]
+  updateLessonProgress: (
+    lessonId: string,
+    updates: Partial<LessonProgress>,
+    courseId?: string,
+    moduleName?: string,
+    lessonTitle?: string,
+  ) => Promise<LessonProgress | null>
+  markNotificationAsRead: (notificationId: string) => Promise<boolean>
+  markAllNotificationsAsRead: () => Promise<boolean>
+  createStudentSupportTicket: (
+    ticket: Omit<StudentSupportTicket, 'id' | 'created' | 'updated' | 'protocol' | 'studentId'>,
+  ) => Promise<StudentSupportTicket | null>
+  updateStudentProfile: (updates: {
+    phone?: string
+    street?: string
+    city?: string
+    state?: string
+    zip?: string
+    photoUrl?: string
+    photoFile?: File
+    name?: string
+    observations?: string
+  }) => Promise<boolean>
 
   // Estado de sincronização com o banco
   isBackendReady: boolean
@@ -298,6 +333,11 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES)
   const [grades, setGrades] = useState<Grade[]>(INITIAL_GRADES)
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE)
+  const [lessonProgress, setLessonProgress] = useState<LessonProgress[]>([])
+  const [courseMaterials, setCourseMaterials] = useState<CourseMaterial[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [studentNotifications, setStudentNotifications] = useState<StudentNotification[]>([])
+  const [studentSupportTickets, setStudentSupportTickets] = useState<StudentSupportTicket[]>([])
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -326,6 +366,11 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.expenses && data.expenses.length > 0) setExpenses(data.expenses)
       if (data.grades && data.grades.length > 0) setGrades(data.grades)
       if (data.attendance && data.attendance.length > 0) setAttendance(data.attendance)
+      if (data.lessonProgress) setLessonProgress(data.lessonProgress)
+      if (data.courseMaterials) setCourseMaterials(data.courseMaterials)
+      if (data.calendarEvents) setCalendarEvents(data.calendarEvents)
+      if (data.studentNotifications) setStudentNotifications(data.studentNotifications)
+      if (data.studentSupportTickets) setStudentSupportTickets(data.studentSupportTickets)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -1197,6 +1242,228 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // --- Portal do Aluno: Métodos ---
+  const updateLessonProgress = async (
+    lessonId: string,
+    updates: Partial<LessonProgress>,
+    courseId?: string,
+    moduleName?: string,
+    lessonTitle?: string,
+  ): Promise<LessonProgress | null> => {
+    // Acha o aluno vinculado
+    const student =
+      students.find(
+        (s) =>
+          (currentUser?.studentId && s.id === currentUser.studentId) ||
+          (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
+      ) || students[0]
+
+    const effectiveStudentId = currentUser?.studentId || student?.id || 'dbphexr97czw7cb'
+    const effectiveCourseId = courseId || student?.courseId || 'crs-eng-soft'
+
+    // Otimista
+    setLessonProgress((prev) => {
+      const idx = prev.findIndex(
+        (p) => p.lessonId === lessonId && p.studentId === effectiveStudentId,
+      )
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], ...updates, updated: new Date().toISOString() }
+        return next
+      }
+      const newItem: LessonProgress = {
+        id: `lp-${Date.now()}`,
+        studentId: effectiveStudentId,
+        courseId: effectiveCourseId,
+        moduleName: moduleName || 'Geral',
+        lessonId,
+        lessonTitle: lessonTitle || 'Aula',
+        durationMinutes: updates.durationMinutes || 30,
+        status: updates.status || 'em_andamento',
+        completedAt: updates.completedAt,
+        lastWatchedSeconds: updates.lastWatchedSeconds || 0,
+      }
+      return [...prev, newItem]
+    })
+
+    try {
+      const saved = await portalDb.updateLessonProgress(
+        effectiveStudentId,
+        effectiveCourseId,
+        lessonId,
+        {
+          ...updates,
+          moduleName,
+          lessonTitle,
+        },
+      )
+      if (saved) {
+        setLessonProgress((prev) => {
+          const filtered = prev.filter(
+            (p) => !(p.lessonId === lessonId && p.studentId === effectiveStudentId),
+          )
+          return [...filtered, saved]
+        })
+        return saved
+      }
+    } catch (e) {
+      console.warn('[PortalContext] Erro ao salvar progresso de aula:', e)
+    }
+    return null
+  }
+
+  const markNotificationAsRead = async (notificationId: string): Promise<boolean> => {
+    setStudentNotifications((prev) =>
+      prev.map((n) =>
+        n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n,
+      ),
+    )
+    try {
+      const res = await portalDb.markNotificationAsRead(notificationId)
+      return Boolean(res)
+    } catch (e) {
+      console.warn('[PortalContext] Erro ao marcar notificação como lida:', e)
+      return false
+    }
+  }
+
+  const markAllNotificationsAsRead = async (): Promise<boolean> => {
+    const student =
+      students.find(
+        (s) =>
+          (currentUser?.studentId && s.id === currentUser.studentId) ||
+          (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
+      ) || students[0]
+    const effectiveStudentId = currentUser?.studentId || student?.id || 'dbphexr97czw7cb'
+
+    setStudentNotifications((prev) =>
+      prev.map((n) => (n.studentId === effectiveStudentId ? { ...n, read: true } : n)),
+    )
+
+    try {
+      return await portalDb.markAllNotificationsAsRead(effectiveStudentId)
+    } catch (e) {
+      console.warn('[PortalContext] Erro ao marcar todas as notificações:', e)
+      return false
+    }
+  }
+
+  const createStudentSupportTicket = async (
+    ticket: Omit<StudentSupportTicket, 'id' | 'created' | 'updated' | 'protocol' | 'studentId'>,
+  ): Promise<StudentSupportTicket | null> => {
+    const student =
+      students.find(
+        (s) =>
+          (currentUser?.studentId && s.id === currentUser.studentId) ||
+          (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
+      ) || students[0]
+    const effectiveStudentId = currentUser?.studentId || student?.id || 'dbphexr97czw7cb'
+    const protocol = `SUP-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`
+
+    const optimistic: StudentSupportTicket = {
+      id: `tick-${Date.now()}`,
+      studentId: effectiveStudentId,
+      studentName: currentUser?.name || student?.fullName || 'Aluno',
+      studentEmail: currentUser?.email || student?.email || 'aluno@portalcursos.ng',
+      courseName: student?.courseName || 'Engenharia de Software',
+      protocol,
+      subject: ticket.subject,
+      category: ticket.category,
+      priority: ticket.priority,
+      status: ticket.status || 'aberto',
+      message: ticket.message,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+
+    setStudentSupportTickets((prev) => [optimistic, ...prev])
+
+    try {
+      const saved = await portalDb.createStudentSupportTicket({
+        studentId: effectiveStudentId,
+        studentName: optimistic.studentName,
+        studentEmail: optimistic.studentEmail,
+        courseName: optimistic.courseName,
+        protocol,
+        subject: ticket.subject,
+        category: ticket.category,
+        priority: ticket.priority,
+        status: optimistic.status,
+        message: ticket.message,
+      })
+      if (saved) {
+        setStudentSupportTickets((prev) => prev.map((t) => (t.id === optimistic.id ? saved : t)))
+        return saved
+      }
+    } catch (e) {
+      console.warn('[PortalContext] Erro ao criar ticket de suporte:', e)
+    }
+    return optimistic
+  }
+
+  const updateStudentProfile = async (updates: {
+    phone?: string
+    street?: string
+    city?: string
+    state?: string
+    zip?: string
+    photoUrl?: string
+    photoFile?: File
+    name?: string
+    observations?: string
+  }): Promise<boolean> => {
+    const student =
+      students.find(
+        (s) =>
+          (currentUser?.studentId && s.id === currentUser.studentId) ||
+          (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
+      ) || students[0]
+    const effectiveStudentId = currentUser?.studentId || student?.id || 'dbphexr97czw7cb'
+    const effectiveUserId = currentUser?.id || 'user-aluno'
+
+    // Atualização otimista
+    if (student) {
+      setStudents((prev) =>
+        prev.map((s) => {
+          if (s.id !== effectiveStudentId) return s
+          return {
+            ...s,
+            fullName: updates.name !== undefined ? updates.name : s.fullName,
+            phone: updates.phone !== undefined ? updates.phone : s.phone,
+            photoUrl: updates.photoUrl !== undefined ? updates.photoUrl : s.photoUrl,
+            observations:
+              updates.observations !== undefined ? updates.observations : s.observations,
+            address: {
+              ...s.address,
+              street: updates.street !== undefined ? updates.street : s.address.street,
+              city: updates.city !== undefined ? updates.city : s.address.city,
+              state: updates.state !== undefined ? updates.state : s.address.state,
+              zip: updates.zip !== undefined ? updates.zip : s.address.zip,
+            },
+          }
+        }),
+      )
+    }
+
+    if (currentUser) {
+      const updatedUser: UserAccount = {
+        ...currentUser,
+        name: updates.name !== undefined ? updates.name : currentUser.name,
+        phone: updates.phone !== undefined ? updates.phone : currentUser.phone,
+        avatar: updates.photoUrl !== undefined ? updates.photoUrl : currentUser.avatar,
+      }
+      setCurrentUser(updatedUser)
+      setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)))
+    }
+
+    try {
+      return await portalDb.updateStudentProfile(effectiveStudentId, effectiveUserId, updates)
+    } catch (e) {
+      console.warn('[PortalContext] Erro ao atualizar perfil do aluno:', e)
+      return false
+    }
+  }
+
   // Diagnostic
   const refreshDiagnostic = () => {
     setDiagnostic((prev) => ({
@@ -1265,6 +1532,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         deleteAttendance,
         diagnostic,
         refreshDiagnostic,
+        lessonProgress,
+        courseMaterials,
+        calendarEvents,
+        studentNotifications,
+        studentSupportTickets,
+        updateLessonProgress,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        createStudentSupportTicket,
+        updateStudentProfile,
         isBackendReady,
         isSyncing,
       }}

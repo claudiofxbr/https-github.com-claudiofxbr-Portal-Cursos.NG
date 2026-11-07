@@ -15,6 +15,11 @@ import {
   Expense,
   Grade,
   AttendanceRecord,
+  LessonProgress,
+  CourseMaterial,
+  CalendarEvent,
+  StudentNotification,
+  StudentSupportTicket,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
@@ -42,6 +47,11 @@ export const COLLECTIONS = {
   expenses: 'expenses',
   grades: 'grades',
   attendance: 'attendance',
+  lessonProgress: 'lesson_progress',
+  courseMaterials: 'course_materials',
+  calendarEvents: 'calendar_events',
+  studentNotifications: 'student_notifications',
+  studentSupportTickets: 'student_support_tickets',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -578,6 +588,97 @@ function mapAppUser(rec: AnyRec): UserAccount {
     avatar: str(rec.avatar),
     createdAt: str(rec.createdAt),
     lastAccess: str(rec.lastAccess),
+    studentId: str(rec.studentId) || undefined,
+  }
+}
+
+export function mapLessonProgress(rec: AnyRec): LessonProgress {
+  return {
+    id: str(rec.id),
+    studentId: str(rec.studentId),
+    courseId: str(rec.courseId),
+    moduleName: str(rec.moduleName),
+    lessonId: str(rec.lessonId),
+    lessonTitle: str(rec.lessonTitle),
+    durationMinutes: num(rec.durationMinutes, 30),
+    status: str(rec.status, 'nao_iniciado') as LessonProgress['status'],
+    completedAt: str(rec.completedAt) || undefined,
+    lastWatchedSeconds: num(rec.lastWatchedSeconds, 0),
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapCourseMaterial(rec: AnyRec): CourseMaterial {
+  return {
+    id: str(rec.id),
+    courseId: str(rec.courseId),
+    courseName: str(rec.courseName) || undefined,
+    subject: str(rec.subject),
+    title: str(rec.title),
+    description: str(rec.description) || undefined,
+    type: str(rec.type, 'pdf') as CourseMaterial['type'],
+    fileUrl: str(rec.fileUrl) || undefined,
+    externalUrl: str(rec.externalUrl) || undefined,
+    fileSize: str(rec.fileSize) || undefined,
+    weekOrModule: str(rec.weekOrModule) || undefined,
+    uploadedBy: str(rec.uploadedBy) || undefined,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapCalendarEvent(rec: AnyRec): CalendarEvent {
+  return {
+    id: str(rec.id),
+    courseId: str(rec.courseId) || undefined,
+    studentId: str(rec.studentId) || undefined,
+    title: str(rec.title),
+    description: str(rec.description) || undefined,
+    subject: str(rec.subject) || undefined,
+    type: str(rec.type, 'institucional') as CalendarEvent['type'],
+    startDate: str(rec.startDate),
+    endDate: str(rec.endDate) || undefined,
+    locationOrLink: str(rec.locationOrLink) || undefined,
+    weight: str(rec.weight) || undefined,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapStudentNotification(rec: AnyRec): StudentNotification {
+  return {
+    id: str(rec.id),
+    studentId: str(rec.studentId),
+    title: str(rec.title),
+    message: str(rec.message),
+    type: str(rec.type, 'aviso') as StudentNotification['type'],
+    read: Boolean(rec.read),
+    actionUrl: str(rec.actionUrl) || undefined,
+    readAt: str(rec.readAt) || undefined,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapStudentSupportTicket(rec: AnyRec): StudentSupportTicket {
+  return {
+    id: str(rec.id),
+    studentId: str(rec.studentId),
+    studentName: str(rec.studentName) || undefined,
+    studentEmail: str(rec.studentEmail) || undefined,
+    courseName: str(rec.courseName) || undefined,
+    protocol: str(rec.protocol),
+    subject: str(rec.subject),
+    category: str(rec.category, 'outro') as StudentSupportTicket['category'],
+    priority: str(rec.priority, 'media') as StudentSupportTicket['priority'],
+    status: str(rec.status, 'aberto') as StudentSupportTicket['status'],
+    message: str(rec.message),
+    response: str(rec.response) || undefined,
+    respondedBy: str(rec.respondedBy) || undefined,
+    respondedAt: str(rec.respondedAt) || undefined,
+    created: str(rec.created),
+    updated: str(rec.updated),
   }
 }
 
@@ -598,6 +699,11 @@ export async function loadAllData(): Promise<{
   expenses: Expense[]
   grades: Grade[]
   attendance: AttendanceRecord[]
+  lessonProgress: LessonProgress[]
+  courseMaterials: CourseMaterial[]
+  calendarEvents: CalendarEvent[]
+  studentNotifications: StudentNotification[]
+  studentSupportTickets: StudentSupportTicket[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -615,6 +721,11 @@ export async function loadAllData(): Promise<{
     expenses,
     grades,
     attendance,
+    lessonProgress,
+    courseMaterials,
+    calendarEvents,
+    studentNotifications,
+    studentSupportTickets,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -694,6 +805,41 @@ export async function loadAllData(): Promise<{
         ),
       INITIAL_ATTENDANCE,
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.lessonProgress).getFullList({ sort: 'lessonId' })).map(
+          mapLessonProgress,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.courseMaterials).getFullList({ sort: '-created' })).map(
+          mapCourseMaterial,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.calendarEvents).getFullList({ sort: 'startDate' })).map(
+          mapCalendarEvent,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
+        (
+          await pb.collection(COLLECTIONS.studentNotifications).getFullList({ sort: '-created' })
+        ).map(mapStudentNotification),
+      [],
+    ),
+    safeList(
+      async () =>
+        (
+          await pb.collection(COLLECTIONS.studentSupportTickets).getFullList({ sort: '-created' })
+        ).map(mapStudentSupportTicket),
+      [],
+    ),
   ])
 
   return {
@@ -709,6 +855,11 @@ export async function loadAllData(): Promise<{
     expenses,
     grades,
     attendance,
+    lessonProgress,
+    courseMaterials,
+    calendarEvents,
+    studentNotifications,
+    studentSupportTickets,
   }
 }
 
@@ -1490,5 +1641,154 @@ export const portalDb = {
         }
         throw new Error('Attendance not found')
       }
+    }, false),
+
+  // --- Portal do Aluno: Aulas e Progresso ---
+  updateLessonProgress: (
+    studentId: string,
+    courseId: string,
+    lessonId: string,
+    updates: Partial<LessonProgress>,
+  ) =>
+    safeWrite(
+      async () => {
+        // Tenta achar pelo índice composto (studentId + lessonId)
+        let recId = updates.id
+        if (!recId) {
+          try {
+            const found = await pb
+              .collection(COLLECTIONS.lessonProgress)
+              .getFirstListItem(`studentId = "${studentId}" && lessonId = "${lessonId}"`)
+            recId = found.id
+          } catch {
+            // se não existir ainda, criamos
+          }
+        }
+
+        const payload: Record<string, unknown> = {
+          studentId,
+          courseId,
+          lessonId,
+        }
+        if (updates.moduleName) payload.moduleName = updates.moduleName
+        if (updates.lessonTitle) payload.lessonTitle = updates.lessonTitle
+        if (updates.durationMinutes !== undefined) payload.durationMinutes = updates.durationMinutes
+        if (updates.status !== undefined) payload.status = updates.status
+        if (updates.completedAt !== undefined) payload.completedAt = updates.completedAt
+        if (updates.lastWatchedSeconds !== undefined)
+          payload.lastWatchedSeconds = updates.lastWatchedSeconds
+
+        if (recId) {
+          const updatedRec = await pb.collection(COLLECTIONS.lessonProgress).update(recId, payload)
+          return mapLessonProgress(updatedRec as unknown as AnyRec)
+        } else {
+          const newRec = await pb.collection(COLLECTIONS.lessonProgress).create(payload)
+          return mapLessonProgress(newRec as unknown as AnyRec)
+        }
+      },
+      null as LessonProgress | null,
+    ),
+
+  // --- Portal do Aluno: Notificações ---
+  markNotificationAsRead: (notificationId: string) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          read: true,
+          readAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        }
+        const rec = await pb
+          .collection(COLLECTIONS.studentNotifications)
+          .update(notificationId, payload)
+        return mapStudentNotification(rec as unknown as AnyRec)
+      },
+      null as StudentNotification | null,
+    ),
+
+  markAllNotificationsAsRead: (studentId: string) =>
+    safeWrite(async () => {
+      const unread = await pb
+        .collection(COLLECTIONS.studentNotifications)
+        .getFullList({ filter: `studentId = "${studentId}" && read = false` })
+      const now = new Date().toISOString().replace('T', ' ').substring(0, 16)
+      for (const item of unread) {
+        await pb.collection(COLLECTIONS.studentNotifications).update(item.id, {
+          read: true,
+          readAt: now,
+        })
+      }
+      return true
+    }, false),
+
+  // --- Portal do Aluno: Suporte ---
+  createStudentSupportTicket: (ticket: Omit<StudentSupportTicket, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          studentId: ticket.studentId,
+          studentName: ticket.studentName || '',
+          studentEmail: ticket.studentEmail || '',
+          courseName: ticket.courseName || '',
+          protocol: ticket.protocol || `SUP-${Date.now().toString().slice(-6)}`,
+          subject: ticket.subject,
+          category: ticket.category,
+          priority: ticket.priority,
+          status: ticket.status || 'aberto',
+          message: ticket.message,
+          response: ticket.response || '',
+          respondedBy: ticket.respondedBy || '',
+          respondedAt: ticket.respondedAt || '',
+        }
+        const rec = await pb.collection(COLLECTIONS.studentSupportTickets).create(payload)
+        return mapStudentSupportTicket(rec as unknown as AnyRec)
+      },
+      null as StudentSupportTicket | null,
+    ),
+
+  // --- Portal do Aluno: Edição de Perfil do Aluno ---
+  updateStudentProfile: (
+    studentId: string,
+    userId: string,
+    updates: {
+      phone?: string
+      street?: string
+      city?: string
+      state?: string
+      zip?: string
+      photoUrl?: string
+      photoFile?: File
+      name?: string
+      observations?: string
+    },
+  ) =>
+    safeWrite(async () => {
+      // Atualiza students
+      if (studentId) {
+        const studentPayload: Record<string, unknown> = {}
+        if (updates.phone !== undefined) studentPayload.phone = updates.phone
+        if (updates.street !== undefined) studentPayload.street = updates.street
+        if (updates.city !== undefined) studentPayload.city = updates.city
+        if (updates.state !== undefined) studentPayload.state = updates.state
+        if (updates.zip !== undefined) studentPayload.zip = updates.zip
+        if (updates.photoUrl !== undefined) studentPayload.photoUrl = updates.photoUrl
+        if (updates.photoFile instanceof File) studentPayload.photo = updates.photoFile
+        if (updates.name !== undefined) studentPayload.fullName = updates.name
+        if (updates.observations !== undefined) studentPayload.observations = updates.observations
+
+        await pb.collection(COLLECTIONS.students).update(studentId, buildFormData(studentPayload))
+      }
+
+      // Atualiza users (auth)
+      if (userId) {
+        const userPayload: Record<string, unknown> = {}
+        if (updates.phone !== undefined) userPayload.phone = updates.phone
+        if (updates.name !== undefined) userPayload.name = updates.name
+        if (updates.photoUrl !== undefined) userPayload.avatarUrl = updates.photoUrl
+        if (updates.photoFile instanceof File) userPayload.avatar = updates.photoFile
+
+        await pb.collection('users').update(userId, buildFormData(userPayload))
+      }
+
+      return true
     }, false),
 }

@@ -107,10 +107,17 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin'],
   },
   {
+    key: 'portal_aluno',
+    label: 'Portal do Aluno',
+    description: 'Ambiente virtual com cursos, aulas, materiais, calendário e suporte',
+    icon: 'GraduationCap',
+    requiredRoles: ['aluno'],
+  },
+  {
     key: 'minhas_notas',
     label: 'Minhas Notas e Frequência',
     description: 'Boletim acadêmico, notas por disciplina, faltas e percentual de frequência',
-    icon: 'GraduationCap',
+    icon: 'Award',
     requiredRoles: ['aluno'],
   },
 ]

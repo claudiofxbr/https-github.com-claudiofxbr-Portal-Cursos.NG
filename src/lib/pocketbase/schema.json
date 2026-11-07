@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T16:19:09.338Z",
+  "generatedAt": "2026-11-07T16:37:23.200Z",
   "collections": [
     {
       "name": "users",
@@ -1243,6 +1243,476 @@
         "CREATE INDEX idx_attendance_student ON attendance (studentId)",
         "CREATE INDEX idx_attendance_subject ON attendance (subject)",
         "CREATE INDEX idx_attendance_date ON attendance (date)"
+      ]
+    },
+    {
+      "name": "lesson_progress",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "moduleName",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lessonId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lessonTitle",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "durationMinutes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["nao_iniciado", "em_andamento", "concluido"]
+        },
+        {
+          "name": "completedAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lastWatchedSeconds",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_lesson_student_course ON lesson_progress (studentId, courseId)",
+        "CREATE INDEX idx_lesson_student_lesson ON lesson_progress (studentId, lessonId)"
+      ]
+    },
+    {
+      "name": "course_materials",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "courseName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pdf", "slide", "video", "codigo", "link", "outro"]
+        },
+        {
+          "name": "fileUrl",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "externalUrl",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fileSize",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "weekOrModule",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uploadedBy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mat_course ON course_materials (courseId)",
+        "CREATE INDEX idx_mat_subject ON course_materials (subject)"
+      ]
+    },
+    {
+      "name": "calendar_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["prova", "trabalho", "aula_ao_vivo", "prazo", "feriado", "institucional"]
+        },
+        {
+          "name": "startDate",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "endDate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "locationOrLink",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "weight",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_cal_start ON calendar_events (startDate)",
+        "CREATE INDEX idx_cal_course ON calendar_events (courseId)"
+      ]
+    },
+    {
+      "name": "student_notifications",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["academico", "financeiro", "aviso", "urgente", "sistema"]
+        },
+        {
+          "name": "read",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "actionUrl",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "readAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notif_student ON student_notifications (studentId)",
+        "CREATE INDEX idx_notif_student_read ON student_notifications (studentId, read)"
+      ]
+    },
+    {
+      "name": "student_support_tickets",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentEmail",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "courseName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "protocol",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "academico",
+            "secretaria",
+            "financeiro",
+            "tecnico",
+            "diploma_certificados",
+            "outro"
+          ]
+        },
+        {
+          "name": "priority",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["baixa", "media", "alta", "urgente"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["aberto", "em_analise", "respondido", "resolvido", "fechado"]
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "response",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "respondedBy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "respondedAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_supp_student ON student_support_tickets (studentId)",
+        "CREATE INDEX idx_supp_status ON student_support_tickets (status)",
+        "CREATE UNIQUE INDEX idx_supp_protocol ON student_support_tickets (protocol)"
       ]
     }
   ]

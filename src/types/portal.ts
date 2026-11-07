@@ -37,6 +37,7 @@ export type ModuleKey =
   | 'lgpd'
   | 'diagnostico'
   | 'minhas_notas'
+  | 'portal_aluno'
 
 export interface ModulePermission {
   key: ModuleKey
@@ -288,6 +289,133 @@ export interface SubjectAcademicSummary {
   justifiedAbsencesCount: number
   attendancePercent: number
   status: 'aprovado' | 'reprovado_nota' | 'reprovado_frequencia' | 'reprovado_ambos' | 'em_curso'
+}
+
+// --- Tipos para o Portal do Aluno ---
+export type LessonStatus = 'nao_iniciado' | 'em_andamento' | 'concluido'
+
+export interface LessonProgress {
+  id: string
+  studentId: string
+  courseId: string
+  moduleName: string
+  lessonId: string
+  lessonTitle: string
+  durationMinutes: number
+  status: LessonStatus
+  completedAt?: string
+  lastWatchedSeconds: number
+  created?: string
+  updated?: string
+}
+
+export type MaterialType = 'pdf' | 'slide' | 'video' | 'codigo' | 'planilha' | 'link' | 'outro'
+
+export interface CourseMaterial {
+  id: string
+  courseId: string
+  courseName?: string
+  subject: string
+  title: string
+  description?: string
+  type: MaterialType
+  fileUrl?: string
+  externalUrl?: string
+  fileSize?: string
+  weekOrModule?: string
+  uploadedBy?: string
+  created?: string
+  updated?: string
+}
+
+export type CalendarEventType =
+  | 'prova'
+  | 'trabalho'
+  | 'entrega'
+  | 'aula_ao_vivo'
+  | 'prazo'
+  | 'feriado'
+  | 'institucional'
+
+export interface CalendarEvent {
+  id: string
+  courseId?: string
+  studentId?: string
+  title: string
+  description?: string
+  subject?: string
+  type: CalendarEventType
+  startDate: string
+  endDate?: string
+  locationOrLink?: string
+  weight?: string
+  created?: string
+  updated?: string
+}
+
+export type NotificationType = 'academico' | 'financeiro' | 'aviso' | 'urgente' | 'sistema'
+
+export interface StudentNotification {
+  id: string
+  studentId: string
+  title: string
+  message: string
+  type: NotificationType
+  read: boolean
+  actionUrl?: string
+  readAt?: string
+  created?: string
+  updated?: string
+}
+
+export type StudentPortalTab =
+  | 'inicio'
+  | 'perfil'
+  | 'cursos'
+  | 'materiais'
+  | 'calendario'
+  | 'notificacoes'
+  | 'minhas_notas'
+  | 'suporte'
+
+export type SupportCategory =
+  | 'academico'
+  | 'secretaria'
+  | 'financeiro'
+  | 'tecnico'
+  | 'diploma_certificados'
+  | 'ti'
+  | 'outro'
+  | 'outros'
+
+export type SupportPriority = 'baixa' | 'media' | 'alta' | 'urgente'
+export type SupportStatus =
+  | 'aberto'
+  | 'em_analise'
+  | 'em_atendimento'
+  | 'respondido'
+  | 'resolvido'
+  | 'fechado'
+
+export interface StudentSupportTicket {
+  id: string
+  studentId: string
+  studentName?: string
+  studentEmail?: string
+  courseName?: string
+  protocol: string
+  subject: string
+  category: SupportCategory
+  priority: SupportPriority
+  status: SupportStatus
+  message: string
+  description?: string
+  response?: string
+  respondedBy?: string
+  respondedAt?: string
+  resolvedAt?: string
+  created?: string
+  updated?: string
 }
 
 export interface SystemDiagnostic {

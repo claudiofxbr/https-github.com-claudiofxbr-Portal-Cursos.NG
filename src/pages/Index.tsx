@@ -15,10 +15,20 @@ import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
 import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
+import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard')
+
+  // Se o usuário logado for do papel ALUNO, renderiza o PORTAL DO ALUNO completo e dedicado
+  if (currentUser && currentUser.role === 'aluno') {
+    return (
+      <PortalGateGuard>
+        <AlunoPortalMaster />
+      </PortalGateGuard>
+    )
+  }
 
   // Se o módulo ativo não for acessível pelo perfil atual, volta para dashboard
   const safeActiveModule = canAccessModule(activeModule) ? activeModule : 'dashboard'
