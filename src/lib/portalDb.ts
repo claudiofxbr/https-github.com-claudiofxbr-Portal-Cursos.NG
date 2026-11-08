@@ -404,6 +404,7 @@ function mapStudent(rec: AnyRec): Student {
       return match ? { ...d, fileUrl: pbFileUrl('students', str(rec.id), match) } : d
     }),
     observations: str(rec.observations) || undefined,
+    transcriptNotes: str(rec.transcriptNotes) || undefined,
     createdAt: str(rec.created) || str(rec.createdAt) || str(rec.enrolledAt),
     created: str(rec.created),
   }
@@ -1285,6 +1286,7 @@ export const portalDb = {
         if (updates.birthDate !== undefined) payload.birthDate = updates.birthDate
         if (updates.status !== undefined) payload.status = updates.status
         if (updates.observations !== undefined) payload.observations = updates.observations
+        if (updates.transcriptNotes !== undefined) payload.transcriptNotes = updates.transcriptNotes
         if (updates.address !== undefined) {
           if (updates.address.street !== undefined) payload.street = updates.address.street
           if (updates.address.city !== undefined) payload.city = updates.address.city

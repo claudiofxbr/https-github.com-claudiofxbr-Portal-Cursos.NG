@@ -8,6 +8,7 @@ import {
   getAttendanceBadge,
 } from '@/lib/academicCalculations'
 import { StudentGradesAndAttendanceTab } from '@/components/alunos/StudentGradesAndAttendanceTab'
+import { StudentTranscriptTab } from '@/components/alunos/StudentTranscriptTab'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -123,6 +124,10 @@ export function AlunosModule({
   const role = currentUser?.role || 'aluno'
   const canManage = ['root', 'admin', 'secretaria', 'matricula'].includes(role)
   const canDelete = ['root', 'admin'].includes(role)
+  const canManageTranscript = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
+  const canExportTranscript = ['root', 'admin', 'secretaria', 'coordenador', 'professor'].includes(
+    role,
+  )
   const canIssueCertificate = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
   const canIssueDiploma = ['root', 'admin', 'secretaria'].includes(role)
   const canRevokeCertificate = ['root', 'admin', 'secretaria'].includes(role)
@@ -256,6 +261,34 @@ export function AlunosModule({
       })
     } finally {
       setIsIssuingDiploma(false)
+    }
+  }
+
+  // Atualizar observações do histórico escolar
+  const handleUpdateTranscriptNotes = async (
+    studentId: string,
+    notes: string,
+  ): Promise<boolean> => {
+    try {
+      const updated = await updateStudent(studentId, { transcriptNotes: notes })
+      if (updated) {
+        if (viewStudent && viewStudent.id === studentId) {
+          setViewStudent((prev) => (prev ? { ...prev, transcriptNotes: notes } : null))
+        }
+        toast({
+          title: 'Histórico Escolar Atualizado',
+          description: 'Observações do histórico escolar foram salvas com sucesso.',
+        })
+        return true
+      }
+      return false
+    } catch (err: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar observações',
+        description: err instanceof Error ? err.message : 'Falha ao gravar no banco.',
+      })
+      return false
     }
   }
 
@@ -1054,9 +1087,12 @@ export function AlunosModule({
                 </div>
               )}
 
-              {/* Abas da Ficha: Resumo Acadêmico, Dados Pessoais, Lançamento de Notas & Freq, Documentos, Cobranças */}
-              <Tabs defaultValue="resumo" className="w-full">
-                <TabsList className="grid grid-cols-5 bg-slate-950 border border-slate-800 text-xs">
+              {/* Abas da Ficha: Histórico Escolar, Resumo Acadêmico, Dados Pessoais, Lançamento de Notas & Freq, Documentos, Cobranças */}
+              <Tabs defaultValue="historico" className="w-full">
+                <TabsList className="grid grid-cols-6 bg-slate-950 border border-slate-800 text-xs">
+                  <TabsTrigger value="historico" className="text-xs font-bold text-amber-300">
+                    Histórico Escolar
+                  </TabsTrigger>
                   <TabsTrigger value="resumo" className="text-xs font-semibold text-blue-300">
                     Resumo Acadêmico
                   </TabsTrigger>
@@ -1073,6 +1109,23 @@ export function AlunosModule({
                     Cobranças ({selectedStudentCharges.length})
                   </TabsTrigger>
                 </TabsList>
+
+                {/* Aba: Histórico Escolar Oficial */}
+                <TabsContent value="historico" className="space-y-4 pt-3">
+                  <StudentTranscriptTab
+                    student={viewStudent}
+                    course={courses.find((c) => c.id === viewStudent.courseId) || null}
+                    grades={grades}
+                    attendance={attendance}
+                    certificates={certificates}
+                    eadCourses={eadCourses}
+                    eadLessons={eadLessons}
+                    lessonProgress={lessonProgress}
+                    canManage={canManageTranscript}
+                    canExport={canExportTranscript}
+                    onUpdateNotes={handleUpdateTranscriptNotes}
+                  />
+                </TabsContent>
 
                 {/* Aba: Resumo Acadêmico Consolidado */}
                 <TabsContent value="resumo" className="space-y-4 pt-3">

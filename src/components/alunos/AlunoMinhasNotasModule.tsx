@@ -28,11 +28,13 @@ import {
 } from 'lucide-react'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 import { generateDiplomaPdf } from '@/lib/diplomaPdfExport'
+import { generateTranscriptPdf } from '@/lib/transcriptPdfExport'
 
 export function AlunoMinhasNotasModule() {
   const {
     currentUser,
     students,
+    courses,
     grades,
     attendance,
     certificates,
@@ -79,6 +81,16 @@ export function AlunoMinhasNotasModule() {
 
     return null
   }, [currentUser, students])
+
+  // Localiza curso do aluno
+  const currentCourse = useMemo(() => {
+    if (!currentStudent) return null
+    return (
+      courses.find((c) => c.id === currentStudent.courseId) ||
+      courses.find((c) => c.name.toLowerCase() === currentStudent.courseName.toLowerCase()) ||
+      null
+    )
+  }, [currentStudent, courses])
 
   // Filtra estritamente as notas e presenças DESTE aluno autenticado
   const myGrades = useMemo(() => {
@@ -148,38 +160,70 @@ export function AlunoMinhasNotasModule() {
     return { label: 'Reprovado (MEC)', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
   }, [overallAverage, consolidatedAtt])
 
-  // Certificado e Diploma emitidos para o aluno autenticado
-  const myCertificate = useMemo(() => {
-    if (!currentStudent) return null
+  // Todos os certificados e diplomas emitidos para o histórico
+  const myCertificatesList = useMemo(() => {
+    if (!currentStudent) return []
     const cleanCpf = currentStudent.cpfRaw || currentStudent.cpf.replace(/\D/g, '')
-    return (
-      certificates.find((c) => {
-        if (c.status !== 'ativo') return false
-        const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
-        if (isDiploma) return false
-        if (c.studentId === currentStudent.id) return true
-        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
-        if (c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()) return true
-        return false
-      }) || null
-    )
+    return certificates.filter((c) => {
+      if (c.status !== 'ativo') return false
+      const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
+      if (isDiploma) return false
+      if (c.studentId === currentStudent.id) return true
+      if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+      return c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()
+    })
   }, [currentStudent, certificates])
 
-  const myDiploma = useMemo(() => {
-    if (!currentStudent) return null
+  const myDiplomasList = useMemo(() => {
+    if (!currentStudent) return []
     const cleanCpf = currentStudent.cpfRaw || currentStudent.cpf.replace(/\D/g, '')
-    return (
-      certificates.find((c) => {
-        if (c.status !== 'ativo') return false
-        const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
-        if (!isDiploma) return false
-        if (c.studentId === currentStudent.id) return true
-        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
-        if (c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()) return true
-        return false
-      }) || null
-    )
+    return certificates.filter((c) => {
+      if (c.status !== 'ativo') return false
+      const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
+      if (!isDiploma) return false
+      if (c.studentId === currentStudent.id) return true
+      if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+      return c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()
+    })
   }, [currentStudent, certificates])
+
+  const myCertificate = myCertificatesList[0] || null
+  const myDiploma = myDiplomasList[0] || null
+
+  // Ação de download do Histórico Escolar Oficial em PDF
+  const handleDownloadTranscript = () => {
+    if (!currentStudent) return
+    generateTranscriptPdf({
+      student: currentStudent,
+      course: currentCourse,
+      summaries,
+      overallAverage: overallAverage ?? 0,
+      consolidatedAtt: consolidatedAtt || {
+        studentId: currentStudent.id,
+        manualClasses: 0,
+        manualPresents: 0,
+        manualAttendancePercent: 100,
+        eadTotalLessons: 0,
+        eadCompletedLessons: 0,
+        eadAttendancePercent: 100,
+        overallAttendancePercent: 100,
+        presencialPercent: 100,
+        eadPercent: 100,
+        consolidatedPercent: 100,
+        totalClassesCombined: 0,
+        totalPresentsCombined: 0,
+        hasEad: false,
+      },
+      mecStatus: {
+        label: mecStatus.label,
+        approved: mecStatus.label.includes('Aprovado') || currentStudent.status === 'concluido',
+      },
+      certificates: myCertificatesList,
+      diplomas: myDiplomasList,
+      observations: currentStudent.transcriptNotes || '',
+      generatedBy: 'Portal do Aluno (Emissão Online)',
+    })
+  }
 
   // Métricas globais
   const overallMetrics = useMemo(() => {
@@ -253,7 +297,7 @@ export function AlunoMinhasNotasModule() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-right">
             <span className="text-[10px] text-slate-400 block uppercase tracking-wider">
               Curso Matriculado
@@ -266,7 +310,102 @@ export function AlunoMinhasNotasModule() {
             </span>
             <span className="text-blue-400 font-mono font-medium">{currentStudent.cpf}</span>
           </div>
+          <Button
+            onClick={handleDownloadTranscript}
+            className="h-10 text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md"
+          >
+            <Download className="w-4 h-4" />
+            Baixar Histórico Escolar (PDF)
+          </Button>
         </div>
+      </div>
+
+      {/* Card Oficial de HISTÓRICO ESCOLAR COMPLETO (Transcript) */}
+      <div className="bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/40 border border-blue-500/40 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-inner">
+              <FileSpreadsheet className="w-6 h-6 text-blue-400" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                  Histórico Escolar Oficial do Aluno
+                </h2>
+                <Badge className={`text-xs font-semibold ${mecStatus.cls}`}>
+                  {mecStatus.label}
+                </Badge>
+                <Badge variant="outline" className="text-xs border-slate-700 text-slate-300">
+                  Status: {currentStudent.status.toUpperCase()}
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-300">
+                Documento acadêmico institucional com registro de todas as disciplinas, notas, carga
+                horária, frequência consolidada e situação perante as diretrizes do MEC.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleDownloadTranscript}
+            className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm h-10 px-4 gap-2 shadow-md hover:shadow-blue-500/25 transition-all shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            Baixar Histórico (PDF)
+          </Button>
+        </div>
+
+        {/* Resumo rápido do Histórico Escolar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800 text-xs">
+          <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 block uppercase">Carga Horária Total</span>
+            <span className="text-white font-bold">{currentCourse?.workloadHours || 0} horas</span>
+          </div>
+          <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 block uppercase">Disciplinas Cursadas</span>
+            <span className="text-blue-400 font-bold">{summaries.length} disciplinas</span>
+          </div>
+          <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 block uppercase">
+              Média Geral Ponderada
+            </span>
+            <span
+              className={`font-mono font-bold ${
+                (overallAverage ?? 0) >= ACADEMIC_RULES.MIN_PASSING_GRADE
+                  ? 'text-emerald-400'
+                  : 'text-amber-400'
+              }`}
+            >
+              {overallAverage !== null ? overallAverage.toFixed(1) : '—'} / 10.0
+            </span>
+          </div>
+          <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 block uppercase">
+              Frequência Consolidada
+            </span>
+            <span
+              className={`font-mono font-bold ${
+                consolidatedAttendancePercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                  ? 'text-emerald-400'
+                  : 'text-rose-400'
+              }`}
+            >
+              {consolidatedAttendancePercent}%
+            </span>
+          </div>
+        </div>
+
+        {/* Observações da Secretaria no Histórico */}
+        {currentStudent.transcriptNotes && (
+          <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs space-y-1">
+            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">
+              Observações Registradas pela Secretaria Acadêmica:
+            </span>
+            <p className="text-slate-200 italic whitespace-pre-line">
+              "{currentStudent.transcriptNotes}"
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Card Especial de DIPLOMA DIGITAL (Outorga de Grau Oficial) */}

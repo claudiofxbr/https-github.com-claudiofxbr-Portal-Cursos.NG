@@ -85,6 +85,8 @@ export interface Student {
   enrolledAt: string
   documents: StudentDocument[]
   observations?: string
+  /** Observações acadêmicas específicas do histórico escolar (editável por perfis autorizados). */
+  transcriptNotes?: string
   /** Data/hora de criação do registro no banco (PocketBase created autodate). */
   createdAt?: string
   created?: string
@@ -258,10 +260,9 @@ export interface Grade {
   teacherId?: string
   teacherName?: string
   observations?: string
+  createdAt?: string
   created?: string
-  updated?: string
 }
-
 export type AttendanceStatus = 'presente' | 'falta' | 'falta_justificada'
 
 export interface AttendanceRecord {
