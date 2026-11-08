@@ -23,11 +23,14 @@ import {
   DollarSign,
 } from 'lucide-react'
 
+import { checkEadEligibility, isEadCourseActive } from '@/lib/eadAccessValidator'
+
 interface AlunoInicioOverviewProps {
   setActiveTab: (tab: StudentPortalTab) => void
+  onOpenEadCourse?: (courseId?: string | null) => void
 }
 
-export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) {
+export function AlunoInicioOverview({ setActiveTab, onOpenEadCourse }: AlunoInicioOverviewProps) {
   const {
     currentUser,
     students,
@@ -40,6 +43,8 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
     grades,
     attendance,
     charges,
+    eadCourses,
+    eadLessons,
   } = usePortal()
 
   const currentStudent =
@@ -52,6 +57,32 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
   const effectiveCpf = (currentUser?.cpf || currentStudent?.cpf || '').trim()
   const cleanCpf = effectiveCpf.replace(/\D/g, '')
+
+  // Validação de elegibilidade cadastral do aluno para estudo no EAD
+  const eligibility = checkEadEligibility(currentStudent)
+
+  // Encontra o primeiro curso EAD elegível (ativo + matriculado)
+  const eligibleEadCourse = eadCourses.find((c) => {
+    if (!isEadCourseActive(c)) return false
+    if (!c.enrolledStudentIds || c.enrolledStudentIds.length === 0) return true
+    return c.enrolledStudentIds.includes(effectiveStudentId)
+  })
+
+  // Ação unificada para "Assistir Aulas" / "Continuar Assistindo"
+  const handleWatchLessons = () => {
+    // Se o aluno não for elegível ou não houver curso específico,
+    // navega para a aba cursos onde a validação oficial do eadAccessValidator exibe o bloqueio com motivo
+    if (!eligibility.isEligibleToStudy || !eligibleEadCourse) {
+      setActiveTab('cursos')
+      return
+    }
+
+    if (onOpenEadCourse) {
+      onOpenEadCourse(eligibleEadCourse.id)
+    } else {
+      setActiveTab('cursos')
+    }
+  }
 
   // Cobranças do aluno
   const myCharges = charges.filter((c) => {
@@ -150,11 +181,11 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
-              onClick={() => setActiveTab('cursos')}
+              onClick={handleWatchLessons}
               className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-600/30 gap-2 text-xs sm:text-sm"
             >
               <PlayCircle className="w-4 h-4" />
-              Continuar Assistindo
+              Assistir Aulas
             </Button>
             <Button
               variant="outline"
@@ -301,7 +332,7 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setActiveTab('cursos')}
+                onClick={handleWatchLessons}
                 className="h-8 text-xs border-slate-700 text-blue-400 hover:bg-slate-800"
               >
                 Ver Todas as Aulas
@@ -329,11 +360,11 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
                   </div>
 
                   <Button
-                    onClick={() => setActiveTab('cursos')}
+                    onClick={handleWatchLessons}
                     className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white shrink-0 gap-2 text-xs"
                   >
                     <PlayCircle className="w-4 h-4" />
-                    {nextLesson.status === 'concluido' ? 'Rever Aula' : 'Assistir Agora'}
+                    {nextLesson.status === 'concluido' ? 'Rever Aula' : 'Assistir Aulas'}
                   </Button>
                 </div>
               ) : (

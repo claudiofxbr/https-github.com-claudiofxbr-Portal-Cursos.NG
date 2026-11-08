@@ -45,7 +45,15 @@ import {
   isEadCourseActive,
 } from '@/lib/eadAccessValidator'
 
-export function AlunoCursosModule() {
+export interface AlunoCursosModuleProps {
+  initialEadCourseId?: string | null
+  onClearInitialEadCourseId?: () => void
+}
+
+export function AlunoCursosModule({
+  initialEadCourseId,
+  onClearInitialEadCourseId,
+}: AlunoCursosModuleProps = {}) {
   const {
     currentUser,
     students,
@@ -63,8 +71,17 @@ export function AlunoCursosModule() {
   const [selectedCourseId, setSelectedCourseId] = useState<string>('')
   const [activeLessonModal, setActiveLessonModal] = useState<LessonProgress | null>(null)
   const [savingLessonId, setSavingLessonId] = useState<string | null>(null)
-  const [activeEadCourseId, setActiveEadCourseId] = useState<string | null>(null)
+  const [activeEadCourseId, setActiveEadCourseId] = useState<string | null>(
+    initialEadCourseId || null,
+  )
   const [accessErrorMessage, setAccessErrorMessage] = useState<string | null>(null)
+
+  // Sincroniza quando o prop initialEadCourseId for atualizado externamente
+  React.useEffect(() => {
+    if (initialEadCourseId) {
+      setActiveEadCourseId(initialEadCourseId)
+    }
+  }, [initialEadCourseId])
 
   const currentStudent =
     students.find(
@@ -454,10 +471,17 @@ export function AlunoCursosModule() {
               lessonTitle,
             )
           }}
-          onBackToList={() => setActiveEadCourseId(null)}
+          onBackToList={() => {
+            setActiveEadCourseId(null)
+            if (onClearInitialEadCourseId) onClearInitialEadCourseId()
+          }}
         />
       )
     }
+  }
+
+  const handleSelectEadCourse = (courseId: string) => {
+    setActiveEadCourseId(courseId)
   }
 
   return (
@@ -610,7 +634,7 @@ export function AlunoCursosModule() {
 
                     <Button
                       size="sm"
-                      onClick={() => setActiveEadCourseId(eadCourse.id)}
+                      onClick={() => handleSelectEadCourse(eadCourse.id)}
                       className={`w-full text-xs font-semibold gap-1.5 shadow-sm text-white ${
                         isCourseCompleted
                           ? 'bg-emerald-700 hover:bg-emerald-600'

@@ -34,6 +34,7 @@ import {
 interface AlunoPortalShellProps {
   activeTab: StudentPortalTab
   setActiveTab: (tab: StudentPortalTab) => void
+  onOpenEadCourse?: (courseId?: string | null) => void
   children: React.ReactNode
 }
 
@@ -44,7 +45,12 @@ interface NavItem {
   badge?: number | string
 }
 
-export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPortalShellProps) {
+export function AlunoPortalShell({
+  activeTab,
+  setActiveTab,
+  onOpenEadCourse,
+  children,
+}: AlunoPortalShellProps) {
   const {
     currentUser,
     students,
@@ -53,6 +59,7 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
     studentSupportTickets,
     lessonProgress,
     charges,
+    eadCourses,
   } = usePortal()
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -408,7 +415,20 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setActiveTab('cursos')}
+              onClick={() => {
+                const firstEad = eadCourses.find(
+                  (c) =>
+                    c.status === 'publicado' &&
+                    (!c.enrolledStudentIds ||
+                      c.enrolledStudentIds.length === 0 ||
+                      c.enrolledStudentIds.includes(effectiveStudentId)),
+                )
+                if (onOpenEadCourse) {
+                  onOpenEadCourse(firstEad?.id || null)
+                } else {
+                  setActiveTab('cursos')
+                }
+              }}
               className="w-full h-8 text-[11px] border-blue-500/30 text-blue-300 hover:bg-blue-950/50 mt-1"
             >
               Continuar Aulas

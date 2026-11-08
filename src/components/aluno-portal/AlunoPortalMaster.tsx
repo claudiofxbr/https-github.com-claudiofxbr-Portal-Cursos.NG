@@ -16,11 +16,21 @@ import { AlunoCobrancasModule } from './AlunoCobrancasModule'
 
 export function AlunoPortalMaster() {
   const [activeTab, setActiveTab] = useState<StudentPortalTab>('inicio')
+  const [targetEadCourseId, setTargetEadCourseId] = useState<string | null>(null)
+
+  const handleOpenEadCourse = (courseId?: string | null) => {
+    if (courseId) {
+      setTargetEadCourseId(courseId)
+    }
+    setActiveTab('cursos')
+  }
 
   const renderContent = () => {
     switch (activeTab) {
       case 'inicio':
-        return <AlunoInicioOverview setActiveTab={setActiveTab} />
+        return (
+          <AlunoInicioOverview setActiveTab={setActiveTab} onOpenEadCourse={handleOpenEadCourse} />
+        )
       case 'perfil':
         return <AlunoPerfilModule />
       case 'cursos':
@@ -28,9 +38,15 @@ export function AlunoPortalMaster() {
           <InstitutionalErrorBoundary
             fallbackTitle="Ambiente Virtual de Aprendizagem (EAD)"
             fallbackDescription="Não foi possível renderizar a trilha de aulas no momento. Suas notas e progresso continuam gravados com segurança."
-            onNavigateHome={() => setActiveTab('inicio')}
+            onNavigateHome={() => {
+              setTargetEadCourseId(null)
+              setActiveTab('inicio')
+            }}
           >
-            <AlunoCursosModule />
+            <AlunoCursosModule
+              initialEadCourseId={targetEadCourseId}
+              onClearInitialEadCourseId={() => setTargetEadCourseId(null)}
+            />
           </InstitutionalErrorBoundary>
         )
       case 'materiais':
@@ -48,12 +64,18 @@ export function AlunoPortalMaster() {
       case 'suporte':
         return <AlunoSuporteModule />
       default:
-        return <AlunoInicioOverview setActiveTab={setActiveTab} />
+        return (
+          <AlunoInicioOverview setActiveTab={setActiveTab} onOpenEadCourse={handleOpenEadCourse} />
+        )
     }
   }
 
   return (
-    <AlunoPortalShell activeTab={activeTab} setActiveTab={setActiveTab}>
+    <AlunoPortalShell
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      onOpenEadCourse={handleOpenEadCourse}
+    >
       {renderContent()}
     </AlunoPortalShell>
   )
