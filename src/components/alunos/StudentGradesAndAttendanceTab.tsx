@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Student, Grade, AttendanceRecord, UserAccount, ACADEMIC_RULES } from '@/types/portal'
 import {
   calculateAcademicSummary,
@@ -118,6 +118,32 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
       student.cpf,
     )
   }, [student, studentAtt, eadCourses, eadLessons, lessonProgress])
+
+  // Média geral das notas lançadas (base do indicador MEC)
+  const overallAverage = useMemo(() => {
+    if (studentGrades.length === 0) return null
+    const sum = studentGrades.reduce((acc, g) => acc + g.value, 0)
+    return Math.round((sum / studentGrades.length) * 10) / 10
+  }, [studentGrades])
+
+  // Indicador de aprovação MEC: média >= 6,0 E frequência consolidada >= 75%
+  const mecStatus = useMemo(() => {
+    const hasGrades = overallAverage !== null
+    const hasFreq = consolidatedAtt.totalClassesCombined > 0
+    if (!hasGrades || !hasFreq) {
+      return { label: 'Em Curso', cls: 'bg-blue-500/20 text-blue-300 border-blue-500/40' }
+    }
+    const gradeOk = (overallAverage as number) >= ACADEMIC_RULES.MIN_PASSING_GRADE
+    const freqOk =
+      consolidatedAtt.overallAttendancePercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+    if (gradeOk && freqOk) {
+      return {
+        label: 'Aprovado (MEC)',
+        cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      }
+    }
+    return { label: 'Reprovado (MEC)', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
+  }, [overallAverage, consolidatedAtt])
 
   // Modais de Lançamento / Edição de Nota
   const [gradeModalOpen, setGradeModalOpen] = useState(false)
@@ -418,7 +444,17 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
               Regras MEC: Mín. {ACADEMIC_RULES.MIN_PASSING_GRADE.toFixed(1)} /{' '}
               {ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}% pres.
             </Badge>
+            <Badge variant="outline" className={`text-[10px] font-semibold ${mecStatus.cls}`}>
+              {mecStatus.label}
+            </Badge>
           </div>
+          {overallAverage !== null && (
+            <p className="text-slate-400 text-[11px]">
+              Média geral: <strong className="text-slate-200">{overallAverage.toFixed(1)}</strong> •
+              Critério MEC: média ≥ {ACADEMIC_RULES.MIN_PASSING_GRADE.toFixed(1)} e frequência
+              consolidada ≥ {ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%
+            </p>
+          )}
           <p className="text-slate-400 text-[11px]">
             {summaries.length === 0
               ? 'Nenhuma avaliação ou chamada registrada até o momento.'
@@ -450,7 +486,7 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
       </div>
 
       {/* Painel de Frequência Consolidada MEC (Presencial + EAD) */}
-      {consolidatedAtt.hasEad && (
+      <>
         <div className="bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-950 p-3.5 rounded-xl border border-indigo-500/30 space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -517,7 +553,7 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
 
           <p className="text-[10px] text-slate-400 italic">{consolidatedAtt.formulaExplanation}</p>
         </div>
-      )}
+      </>
 
       {/* Visão Consolidada por Disciplina */}
       {summaries.length === 0 ? (

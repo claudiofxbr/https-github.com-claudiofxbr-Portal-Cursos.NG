@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import {
   calculateAcademicSummary,
+  calculateConsolidatedAttendance,
   getAcademicStatusBadge,
   getAttendanceBadge,
 } from '@/lib/academicCalculations'
@@ -28,7 +29,16 @@ import {
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 
 export function AlunoMinhasNotasModule() {
-  const { currentUser, students, grades, attendance, certificates } = usePortal()
+  const {
+    currentUser,
+    students,
+    grades,
+    attendance,
+    certificates,
+    eadCourses,
+    eadLessons,
+    lessonProgress,
+  } = usePortal()
 
   // Localiza o aluno correspondente ao usuário logado
   const currentStudent = useMemo<Student | null>(() => {
@@ -94,6 +104,48 @@ export function AlunoMinhasNotasModule() {
   const summaries = useMemo(() => {
     return calculateAcademicSummary(myGrades, myAttendance)
   }, [myGrades, myAttendance])
+
+  // Frequência consolidada MEC: presenças presenciais + aulas EAD concluídas
+  const consolidatedAtt = useMemo(() => {
+    if (!currentStudent) return null
+    return calculateConsolidatedAttendance(
+      currentStudent.id,
+      myAttendance,
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      currentStudent.cpf,
+    )
+  }, [currentStudent, myAttendance, eadCourses, eadLessons, lessonProgress])
+
+  // Média geral das notas lançadas
+  const overallAverage = useMemo(() => {
+    if (myGrades.length === 0) return null
+    const sum = myGrades.reduce((acc, g) => acc + g.value, 0)
+    return Math.round((sum / myGrades.length) * 10) / 10
+  }, [myGrades])
+
+  const consolidatedAttendancePercent = consolidatedAtt?.overallAttendancePercent ?? 0
+
+  // Indicador de aprovação MEC: média >= 6,0 E frequência consolidada >= 75%
+  const mecStatus = useMemo(() => {
+    const hasGrades = overallAverage !== null
+    const hasFreq = (consolidatedAtt?.totalClassesCombined ?? 0) > 0
+    if (!hasGrades || !hasFreq) {
+      return { label: 'Em Curso', cls: 'bg-blue-500/20 text-blue-300 border-blue-500/40' }
+    }
+    const gradeOk = (overallAverage as number) >= ACADEMIC_RULES.MIN_PASSING_GRADE
+    const freqOk =
+      (consolidatedAtt?.overallAttendancePercent ?? 0) >=
+      ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+    if (gradeOk && freqOk) {
+      return {
+        label: 'Aprovado (MEC)',
+        cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      }
+    }
+    return { label: 'Reprovado (MEC)', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
+  }, [overallAverage, consolidatedAtt])
 
   // Certificado emitido para o aluno autenticado
   const myCertificate = useMemo(() => {
@@ -290,6 +342,107 @@ export function AlunoMinhasNotasModule() {
         </div>
       )}
 
+      {/* Frequência Consolidada MEC: como minha frequência foi composta */}
+      {consolidatedAtt && (
+        <div className="bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-950 p-4 sm:p-5 rounded-2xl border border-indigo-500/30 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-white font-semibold text-sm flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-indigo-400" />
+                  Minha Frequência Consolidada (Presencial + EAD)
+                </span>
+                <Badge className={`text-[10px] font-semibold ${mecStatus.cls}`}>
+                  {mecStatus.label}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Cálculo MEC: média ≥ {ACADEMIC_RULES.MIN_PASSING_GRADE.toFixed(1)} e frequência ≥{' '}
+                {ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}% (presenças em aulas presenciais +
+                videoaulas EAD concluídas)
+              </p>
+            </div>
+
+            <div className="bg-slate-950/80 px-4 py-2 rounded-xl border border-indigo-500/40 text-right shrink-0">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                Frequência Global
+              </span>
+              <span
+                className={`text-2xl font-mono font-bold ${
+                  consolidatedAtt.overallAttendancePercent >=
+                  ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                    ? 'text-emerald-400'
+                    : consolidatedAtt.overallAttendancePercent >= 50
+                      ? 'text-amber-400'
+                      : 'text-rose-400'
+                }`}
+              >
+                {consolidatedAtt.overallAttendancePercent}%
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/60">
+            <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                  Chamadas Presenciais
+                </span>
+                <span
+                  className={`text-sm font-bold font-mono ${
+                    consolidatedAtt.manualAttendancePercent >=
+                    ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                      ? 'text-emerald-400'
+                      : 'text-rose-400'
+                  }`}
+                >
+                  {consolidatedAtt.manualAttendancePercent}%
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-slate-200">
+                {consolidatedAtt.manualPresents} presenças de {consolidatedAtt.manualClasses} aulas
+                registradas
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {consolidatedAtt.manualAbsences} falta(s), sendo justificadas abonadas como presença
+                institucional
+              </p>
+            </div>
+
+            <div className="bg-slate-950/60 p-3 rounded-lg border border-indigo-900/40 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-indigo-300 uppercase tracking-wider">
+                  Videoaulas EAD Concluídas
+                </span>
+                <span
+                  className={`text-sm font-bold font-mono ${
+                    consolidatedAtt.eadAttendancePercent >=
+                    ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                      ? 'text-emerald-400'
+                      : 'text-amber-400'
+                  }`}
+                >
+                  {consolidatedAtt.eadAttendancePercent}%
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-slate-200">
+                {consolidatedAtt.eadCompletedLessons} concluídas de{' '}
+                {consolidatedAtt.eadTotalLessons} aulas EAD matriculadas
+                {consolidatedAtt.eadEnrolledCoursesCount > 0 &&
+                  ` em ${consolidatedAtt.eadEnrolledCoursesCount} curso(s)`}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {consolidatedAtt.hasEad
+                  ? 'Cada videoaula marcada como concluída conta como presença no cálculo MEC.'
+                  : 'Você ainda não está matriculado em nenhum curso EAD com aulas publicadas.'}
+              </p>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-400 italic">{consolidatedAtt.formulaExplanation}</p>
+        </div>
+      )}
+
       {/* Cards de Métricas Acadêmicas Gerais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Média Geral */}
@@ -318,7 +471,7 @@ export function AlunoMinhasNotasModule() {
           </CardContent>
         </Card>
 
-        {/* Frequência Geral */}
+        {/* Frequência Geral (consolidada: presencial + EAD) */}
         <Card className="bg-slate-900/80 border-slate-800">
           <CardHeader className="pb-2">
             <CardDescription className="text-xs text-slate-400 flex items-center justify-between">
@@ -328,21 +481,31 @@ export function AlunoMinhasNotasModule() {
             <CardTitle className="text-2xl font-bold font-mono text-white flex items-baseline gap-2">
               <span
                 className={
-                  overallMetrics.overallAttendance >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                  consolidatedAttendancePercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
                     ? 'text-emerald-400'
-                    : overallMetrics.overallAttendance >= 50
+                    : consolidatedAttendancePercent >= 50
                       ? 'text-amber-400'
                       : 'text-rose-400'
                 }
               >
-                {overallMetrics.overallAttendance}%
+                {consolidatedAttendancePercent}%
               </span>
               <span className="text-xs font-normal text-slate-400">presença</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="text-[11px] text-slate-400">
-            Frequência mínima exigida:{' '}
-            <strong>{ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%</strong>
+            {consolidatedAtt && consolidatedAtt.hasEad ? (
+              <>
+                Presencial + EAD: {consolidatedAtt.totalPresentsCombined} de{' '}
+                {consolidatedAtt.totalClassesCombined} • mín.{' '}
+                <strong>{ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%</strong>
+              </>
+            ) : (
+              <>
+                Frequência mínima exigida:{' '}
+                <strong>{ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%</strong>
+              </>
+            )}
           </CardContent>
         </Card>
 
