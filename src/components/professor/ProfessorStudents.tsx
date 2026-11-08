@@ -34,11 +34,11 @@ export function ProfessorStudents({
       .filter(
         (s) =>
           !term ||
-          s.name.toLowerCase().includes(term) ||
-          (s.email || '').toLowerCase().includes(term) ||
-          (s.cpf || '').includes(term),
+          s.fullName.toLowerCase().includes(term) ||
+          s.email.toLowerCase().includes(term) ||
+          s.cpf.includes(term),
       )
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName))
   }, [students, courseFilter, search])
 
   const statsFor = (studentId: string) => {
@@ -90,7 +90,7 @@ export function ProfessorStudents({
           <ul className="divide-y">
             {filtered.map((s) => {
               const st = statsFor(s.id)
-              const initials = s.name
+              const initials = s.fullName
                 .split(' ')
                 .slice(0, 2)
                 .map((p) => p[0])
@@ -108,7 +108,7 @@ export function ProfessorStudents({
                         <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{s.name}</p>
+                        <p className="truncate text-sm font-medium">{s.fullName}</p>
                         <p className="truncate text-xs text-muted-foreground">
                           {courseNameById.get(s.courseId) || 'Curso não vinculado'}
                         </p>

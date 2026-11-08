@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { AttendanceStatus, Course, Grade, Student } from '@/types/portal'
+import { AttendanceRecord, AttendanceStatus, Course, Grade, Student } from '@/types/portal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,7 @@ interface ProfessorEntriesProps {
   courses: Course[]
   students: Student[]
   grades: Grade[]
-  attendance: Pick<AttendanceRecord, 'id' | 'studentId' | 'courseId' | 'date' | 'status'>[]
+  attendance: AttendanceRecord[]
   professorId: string
   professorName: string
   onAddGrade: (data: Omit<Grade, 'id' | 'created' | 'updated'>) => Promise<Grade>
@@ -57,13 +57,14 @@ export function ProfessorEntries({
   const [attDate, setAttDate] = useState<string>(todayIso())
   const [attHours, setAttHours] = useState('2')
   const [attSubject, setAttSubject] = useState('')
+  const [attTerm, setAttTerm] = useState('2025.1')
   const [attStatusByStudent, setAttStatusByStudent] = useState<Record<string, AttendanceStatus>>({})
 
   const studentsOfGrade = useMemo(
     () =>
       students
         .filter((s) => s.courseId === gradeCourseId)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [students, gradeCourseId],
   )
 
@@ -71,7 +72,7 @@ export function ProfessorEntries({
     () =>
       students
         .filter((s) => s.courseId === attCourseId)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [students, attCourseId],
   )
 
@@ -105,7 +106,7 @@ export function ProfessorEntries({
     const student = students.find((s) => s.id === gradeStudentId)
     await onAddGrade({
       studentId: gradeStudentId,
-      studentName: student?.name,
+      studentName: student?.fullName,
       studentCpf: student?.cpf,
       courseId: gradeCourseId,
       subject: gradeSubject.trim(),
@@ -116,7 +117,7 @@ export function ProfessorEntries({
       teacherName: professorName,
       observations: gradeObs.trim() || undefined,
     })
-    toast({ title: 'Nota lançada', description: `${student?.name}: ${value.toFixed(1)}` })
+    toast({ title: 'Nota lançada', description: `${student?.fullName}: ${value.toFixed(1)}` })
     setGradeValue('8.0')
     setGradeObs('')
   }
@@ -136,11 +137,11 @@ export function ProfessorEntries({
       const status = attStatusByStudent[s.id]
       await onAddAttendance({
         studentId: s.id,
-        studentName: s.name,
+        studentName: s.fullName,
         studentCpf: s.cpf,
         courseId: attCourseId,
         subject: attSubject.trim() || courses.find((c) => c.id === attCourseId)?.name || 'Aula',
-        term: '2025.1',
+        term: attTerm.trim() || undefined,
         date: attDate,
         status,
         hours,
@@ -154,6 +155,7 @@ export function ProfessorEntries({
     })
     setAttStatusByStudent({})
     setAttSubject('')
+    setAttTerm('2025.1')
   }
 
   return (
@@ -205,7 +207,7 @@ export function ProfessorEntries({
                   <SelectContent>
                     {studentsOfGrade.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name}
+                        {s.fullName}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -277,7 +279,7 @@ export function ProfessorEntries({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Turma / Curso</Label>
                 <Select
@@ -312,6 +314,14 @@ export function ProfessorEntries({
                   onChange={(e) => setAttHours(e.target.value)}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Período</Label>
+                <Input
+                  value={attTerm}
+                  onChange={(e) => setAttTerm(e.target.value)}
+                  placeholder="Ex.: 2025.1"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Disciplina / Aula (opcional)</Label>
@@ -330,7 +340,7 @@ export function ProfessorEntries({
                   const status = attStatusByStudent[s.id]
                   return (
                     <li key={s.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                      <span className="min-w-0 truncate text-sm">{s.name}</span>
+                      <span className="min-w-0 truncate text-sm">{s.fullName}</span>
                       <div className="flex shrink-0 gap-1">
                         {(['presente', 'falta'] as const).map((st) => (
                           <Button

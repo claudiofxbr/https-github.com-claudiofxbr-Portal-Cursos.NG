@@ -39,6 +39,7 @@ export type ModuleKey =
   | 'diagnostico'
   | 'minhas_notas'
   | 'portal_aluno'
+  | 'professor_area'
 
 export interface ModulePermission {
   key: ModuleKey

@@ -17,6 +17,7 @@ import { AlunosModule } from '@/components/alunos/AlunosModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
 import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
 import { EADModule } from '@/components/ead/EADModule'
+import { ProfessorAreaModule } from '@/components/professor/ProfessorAreaModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -104,6 +105,9 @@ export default function Index() {
           {safeActiveModule === 'manutencao' && <ManutencaoModule />}
           {safeActiveModule === 'lgpd' && <LgpdModule />}
           {safeActiveModule === 'diagnostico' && <DiagnosticoModule />}
+          {safeActiveModule === 'professor_area' && (
+            <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
+          )}
         </PortalShell>
       )}
     </PortalGateGuard>

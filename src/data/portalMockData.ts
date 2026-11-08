@@ -127,6 +127,13 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     icon: 'Award',
     requiredRoles: ['aluno'],
   },
+  {
+    key: 'professor_area',
+    label: 'Área do Professor',
+    description: 'Turmas, alunos, lançamento de notas e chamada, e cursos EAD do docente',
+    icon: 'UserCheck',
+    requiredRoles: ['professor', 'root', 'admin', 'coordenador', 'secretaria'],
+  },
 ]
 
 export const DEMO_ACCOUNTS: UserAccount[] = [

@@ -275,7 +275,9 @@ export function ProfessorEad({
                       return (
                         <li key={s.id} className="py-3">
                           <div className="mb-1 flex items-center justify-between gap-3">
-                            <span className="min-w-0 truncate text-sm font-medium">{s.name}</span>
+                            <span className="min-w-0 truncate text-sm font-medium">
+                              {s.fullName}
+                            </span>
                             <Badge
                               variant={pct === 100 ? 'default' : 'secondary'}
                               className="shrink-0"
