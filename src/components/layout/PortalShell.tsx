@@ -34,6 +34,7 @@ import {
   Award,
   Tv,
   Library,
+  Calendar,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -50,6 +51,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Award,
   Tv,
   Library,
+  Calendar,
 }
 
 interface PortalHeaderAndSidebarProps {

@@ -25,6 +25,8 @@ import {
   LibraryBook,
   LibraryLoan,
   LibrarySettings,
+  ClassItem,
+  ClassSchedule,
   SystemDiagnostic,
 } from '@/types/portal'
 import {
@@ -256,6 +258,25 @@ interface PortalContextType {
   ) => Promise<{ success: boolean; loan?: LibraryLoan; error?: string }>
   deleteLibraryLoan: (id: string) => Promise<boolean>
 
+  // Turmas e Horários
+  classes: ClassItem[]
+  classSchedules: ClassSchedule[]
+  createClass: (
+    data: Omit<ClassItem, 'id' | 'created' | 'updated' | 'schedules'>,
+  ) => Promise<ClassItem | null>
+  updateClass: (id: string, updates: Partial<ClassItem>) => Promise<ClassItem | null>
+  deleteClass: (id: string) => Promise<boolean>
+  createClassSchedule: (
+    data: Omit<ClassSchedule, 'id' | 'created' | 'updated'>,
+  ) => Promise<ClassSchedule | null>
+  updateClassSchedule: (
+    id: string,
+    updates: Partial<ClassSchedule>,
+  ) => Promise<ClassSchedule | null>
+  deleteClassSchedule: (id: string) => Promise<boolean>
+  enrollStudentsInClass: (classId: string, studentIds: string[]) => Promise<boolean>
+  removeStudentFromClass: (classId: string, studentId: string) => Promise<boolean>
+
   // Diagnostic
   diagnostic: SystemDiagnostic
   refreshDiagnostic: () => void
@@ -464,6 +485,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([])
   const [libraryLoans, setLibraryLoans] = useState<LibraryLoan[]>([])
   const [librarySettings, setLibrarySettings] = useState<LibrarySettings>(DEFAULT_LIBRARY_SETTINGS)
+  const [classes, setClasses] = useState<ClassItem[]>([])
+  const [classSchedules, setClassSchedules] = useState<ClassSchedule[]>([])
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -503,6 +526,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.libraryBooks) setLibraryBooks(data.libraryBooks)
       if (data.libraryLoans) setLibraryLoans(data.libraryLoans)
       if (data.librarySettings) setLibrarySettings(data.librarySettings)
+      if (data.classes) setClasses(data.classes)
+      if (data.classSchedules) setClassSchedules(data.classSchedules)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -2674,6 +2699,142 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Turmas e Horários
+  const createClass = async (
+    data: Omit<ClassItem, 'id' | 'created' | 'updated' | 'schedules'>,
+  ): Promise<ClassItem | null> => {
+    try {
+      const created = await portalDb.createClass(data)
+      if (created) {
+        setClasses((prev) => [created, ...prev])
+        return created
+      }
+      return null
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar turma:', err)
+      return null
+    }
+  }
+
+  const updateClass = async (
+    id: string,
+    updates: Partial<ClassItem>,
+  ): Promise<ClassItem | null> => {
+    try {
+      const updated = await portalDb.updateClass(id, updates)
+      if (updated) {
+        setClasses((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)))
+        return updated
+      }
+      return null
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao atualizar turma:', err)
+      return null
+    }
+  }
+
+  const deleteClass = async (id: string): Promise<boolean> => {
+    setClasses((prev) => prev.filter((c) => c.id !== id))
+    setClassSchedules((prev) => prev.filter((s) => s.classId !== id))
+    try {
+      return await portalDb.deleteClass(id)
+    } catch {
+      return true
+    }
+  }
+
+  const createClassSchedule = async (
+    data: Omit<ClassSchedule, 'id' | 'created' | 'updated'>,
+  ): Promise<ClassSchedule | null> => {
+    try {
+      const created = await portalDb.createClassSchedule(data)
+      if (created) {
+        setClassSchedules((prev) => [...prev, created])
+        setClasses((prev) =>
+          prev.map((c) => {
+            if (c.id === created.classId) {
+              const schedules = [...(c.schedules || []), created]
+              return { ...c, schedules }
+            }
+            return c
+          }),
+        )
+        return created
+      }
+      return null
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar horário:', err)
+      return null
+    }
+  }
+
+  const updateClassSchedule = async (
+    id: string,
+    updates: Partial<ClassSchedule>,
+  ): Promise<ClassSchedule | null> => {
+    try {
+      const updated = await portalDb.updateClassSchedule(id, updates)
+      if (updated) {
+        setClassSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)))
+        setClasses((prev) =>
+          prev.map((c) => {
+            if (c.schedules?.some((s) => s.id === id)) {
+              const schedules = c.schedules.map((s) => (s.id === id ? { ...s, ...updated } : s))
+              return { ...c, schedules }
+            }
+            return c
+          }),
+        )
+        return updated
+      }
+      return null
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao atualizar horário:', err)
+      return null
+    }
+  }
+
+  const deleteClassSchedule = async (id: string): Promise<boolean> => {
+    setClassSchedules((prev) => prev.filter((s) => s.id !== id))
+    setClasses((prev) =>
+      prev.map((c) => {
+        if (c.schedules?.some((s) => s.id === id)) {
+          return { ...c, schedules: c.schedules.filter((s) => s.id !== id) }
+        }
+        return c
+      }),
+    )
+    try {
+      return await portalDb.deleteClassSchedule(id)
+    } catch {
+      return true
+    }
+  }
+
+  const enrollStudentsInClass = async (
+    classId: string,
+    studentIdsToAdd: string[],
+  ): Promise<boolean> => {
+    const target = classes.find((c) => c.id === classId)
+    if (!target) return false
+
+    const currentIds = new Set(target.studentIds || [])
+    studentIdsToAdd.forEach((id) => currentIds.add(id))
+    const updatedIds = Array.from(currentIds)
+
+    const updated = await updateClass(classId, { studentIds: updatedIds })
+    return !!updated
+  }
+
+  const removeStudentFromClass = async (classId: string, studentId: string): Promise<boolean> => {
+    const target = classes.find((c) => c.id === classId)
+    if (!target) return false
+
+    const updatedIds = (target.studentIds || []).filter((id) => id !== studentId)
+    const updated = await updateClass(classId, { studentIds: updatedIds })
+    return !!updated
+  }
+
   return (
     <PortalContext.Provider
       value={{
@@ -2770,6 +2931,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         returnLibraryLoan,
         renewLibraryLoan,
         deleteLibraryLoan,
+        classes,
+        classSchedules,
+        createClass,
+        updateClass,
+        deleteClass,
+        createClassSchedule,
+        updateClassSchedule,
+        deleteClassSchedule,
+        enrollStudentsInClass,
+        removeStudentFromClass,
         isBackendReady,
         isSyncing,
       }}

@@ -2,13 +2,14 @@ import React, { useMemo, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { AttendanceRecord, Grade, Student } from '@/types/portal'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { LayoutDashboard, Users, ClipboardList, Tv } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, Tv, Calendar } from 'lucide-react'
 import { ProfessorOverview } from './ProfessorOverview'
 import { ProfessorStudents } from './ProfessorStudents'
 import { ProfessorEntries } from './ProfessorEntries'
 import { ProfessorEad } from './ProfessorEad'
+import { ProfessorTurmas } from './ProfessorTurmas'
 
-type TabKey = 'visao' | 'alunos' | 'lancamentos' | 'ead'
+type TabKey = 'visao' | 'turmas' | 'alunos' | 'lancamentos' | 'ead'
 
 interface ProfessorAreaModuleProps {
   onNavigateToStudent?: (studentId: string) => void
@@ -28,6 +29,8 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
     eadCourses,
     eadLessons,
     lessonProgress,
+    classes,
+    classSchedules,
     addGrade,
     addAttendance,
     createEadCourse,
@@ -35,6 +38,13 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
   } = usePortal()
 
   const isManagement = !!currentUser && MANAGEMENT_ROLES.includes(currentUser.role)
+
+  // Turmas atribuídas ao professor logado (ou todas se for perfil de gestão)
+  const myClasses = useMemo(() => {
+    if (isManagement) return classes
+    if (!currentUser) return []
+    return classes.filter((c) => c.professorUserId === currentUser.id)
+  }, [classes, currentUser, isManagement])
 
   // Vínculo professor↔curso por ID do usuário logado (coleção `users`):
   // - cursos de graduação/pós: `Course.coordinatorId` (campo novo; cursos antigos
@@ -126,6 +136,9 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
           <TabsTrigger value="visao" className="gap-2">
             <LayoutDashboard className="h-4 w-4" /> Visão Geral
           </TabsTrigger>
+          <TabsTrigger value="turmas" className="gap-2">
+            <Calendar className="h-4 w-4" /> Minhas Turmas & Horários ({myClasses.length})
+          </TabsTrigger>
           <TabsTrigger value="alunos" className="gap-2">
             <Users className="h-4 w-4" /> Meus Alunos
           </TabsTrigger>
@@ -148,6 +161,15 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
           eadLessons={eadLessons}
           lessonProgress={lessonProgress}
           onOpenTab={setTab}
+        />
+      )}
+
+      {tab === 'turmas' && (
+        <ProfessorTurmas
+          classes={myClasses}
+          classSchedules={classSchedules}
+          students={students}
+          onOpenStudent={(id) => onNavigateToStudent?.(id)}
         />
       )}
 

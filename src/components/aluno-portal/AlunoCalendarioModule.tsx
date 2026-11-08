@@ -15,10 +15,10 @@ import {
   ChevronRight,
   Filter,
 } from 'lucide-react'
-import { CalendarEvent } from '@/types/portal'
+import { CalendarEvent, DAY_OF_WEEK_LABELS, DAY_OF_WEEK_SHORT } from '@/types/portal'
 
 export function AlunoCalendarioModule() {
-  const { calendarEvents, currentUser, students } = usePortal()
+  const { calendarEvents, currentUser, students, classes, classSchedules } = usePortal()
 
   const [filterType, setFilterType] = useState<string>('todos')
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-03')
@@ -31,6 +31,20 @@ export function AlunoCalendarioModule() {
     ) || students[0]
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
+
+  // Turmas em que o aluno está matriculado
+  const myEnrolledClasses = classes.filter((c) => c.studentIds?.includes(effectiveStudentId))
+
+  // Horários semanais das turmas do aluno
+  const myClassSchedulesWithClass = myEnrolledClasses
+    .flatMap((cls) => {
+      const schedules = classSchedules.filter((s) => s.classId === cls.id)
+      return schedules.map((sched) => ({
+        ...sched,
+        classItem: cls,
+      }))
+    })
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
 
   // Lista de eventos
   const eventsList: CalendarEvent[] =
@@ -167,6 +181,74 @@ export function AlunoCalendarioModule() {
           </Badge>
         </div>
       </div>
+
+      {/* Seção Nova: Meus Horários Semanais de Aula */}
+      {myEnrolledClasses.length > 0 && (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  Minhas Aulas & Horários Semanais
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-400">
+                  Grade de horários das turmas em que você está regularmente matriculado
+                </CardDescription>
+              </div>
+              <Badge
+                variant="outline"
+                className="border-blue-500/30 text-blue-300 bg-blue-500/10 text-xs w-fit"
+              >
+                {myEnrolledClasses.length} turma(s) vinculada(s)
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {myClassSchedulesWithClass.length === 0 ? (
+              <p className="text-xs text-slate-500 py-3 text-center">
+                Você está matriculado em turmas, mas os horários ainda estão sendo definidos pela
+                coordenação.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {myClassSchedulesWithClass.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between space-y-2"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge className="bg-indigo-500/10 text-indigo-300 border-indigo-500/30 text-xs font-semibold">
+                          {DAY_OF_WEEK_LABELS[item.dayOfWeek]} ({DAY_OF_WEEK_SHORT[item.dayOfWeek]})
+                        </Badge>
+                        <span className="text-[11px] font-mono text-amber-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {item.startTime} - {item.endTime}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-white mt-1 line-clamp-1">
+                        {item.classItem.name}
+                      </p>
+                      <p className="text-[11px] text-slate-400 line-clamp-1">
+                        {item.classItem.courseName}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="flex items-center gap-1 text-slate-300">
+                        <MapPin className="w-3 h-3 text-slate-500" />
+                        {item.room || 'Ambiente a confirmar'}
+                      </span>
+                      <span className="text-slate-400">Prof. {item.classItem.professorName}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Barra de Filtro de Categoria */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

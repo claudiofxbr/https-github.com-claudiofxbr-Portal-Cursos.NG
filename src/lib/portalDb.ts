@@ -27,6 +27,10 @@ import {
   LibraryLoan,
   LibraryLoanStatus,
   LibrarySettings,
+  ClassItem,
+  ClassSchedule,
+  DayOfWeek,
+  ClassStatus,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
@@ -65,6 +69,8 @@ export const COLLECTIONS = {
   libraryBooks: 'library_books',
   libraryLoans: 'library_loans',
   librarySettings: 'library_settings',
+  classes: 'classes',
+  classSchedules: 'class_schedules',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -922,6 +928,50 @@ export function mapLibrarySettings(rec: AnyRec): LibrarySettings {
   }
 }
 
+export function mapClassSchedule(rec: AnyRec): ClassSchedule {
+  return {
+    id: str(rec.id),
+    classId: str(rec.classId),
+    dayOfWeek: (str(rec.dayOfWeek) || 'segunda') as DayOfWeek,
+    startTime: str(rec.startTime) || '08:00',
+    endTime: str(rec.endTime) || '10:00',
+    room: str(rec.room),
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapClassItem(rec: AnyRec, schedules: ClassSchedule[] = []): ClassItem {
+  let studentIds: string[] = []
+  if (Array.isArray(rec.studentIds)) {
+    studentIds = rec.studentIds.map(String)
+  } else if (typeof rec.studentIds === 'string' && rec.studentIds.trim()) {
+    try {
+      const parsed = JSON.parse(rec.studentIds)
+      if (Array.isArray(parsed)) studentIds = parsed.map(String)
+    } catch {
+      studentIds = []
+    }
+  }
+
+  return {
+    id: str(rec.id),
+    name: str(rec.name),
+    courseId: str(rec.courseId),
+    courseName: str(rec.courseName),
+    professorUserId: str(rec.professorUserId),
+    professorName: str(rec.professorName),
+    term: str(rec.term),
+    capacity: num(rec.capacity, 40),
+    status: (str(rec.status) || 'planejada') as ClassStatus,
+    studentIds,
+    notes: str(rec.notes),
+    schedules,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
 export const DEFAULT_LIBRARY_SETTINGS: LibrarySettings = {
   maxRenewals: 2,
   renewalDays: 7,
@@ -956,6 +1006,8 @@ export async function loadAllData(): Promise<{
   libraryBooks: LibraryBook[]
   libraryLoans: LibraryLoan[]
   librarySettings: LibrarySettings
+  classes: ClassItem[]
+  classSchedules: ClassSchedule[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -984,6 +1036,8 @@ export async function loadAllData(): Promise<{
     rawLibraryBooks,
     libraryLoans,
     librarySettingsList,
+    rawClasses,
+    classSchedules,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -1156,6 +1210,20 @@ export async function loadAllData(): Promise<{
         ),
       [DEFAULT_LIBRARY_SETTINGS],
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.classes).getFullList({ sort: '-created' })).map((r) =>
+          mapClassItem(r as unknown as AnyRec, []),
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.classSchedules).getFullList({ sort: 'startTime' })).map(
+          (r) => mapClassSchedule(r as unknown as AnyRec),
+        ),
+      [],
+    ),
   ])
 
   const librarySettings: LibrarySettings =
@@ -1173,6 +1241,14 @@ export async function loadAllData(): Promise<{
     return {
       ...b,
       availableCopies: Math.max(0, b.totalCopies - activeCount),
+    }
+  })
+
+  const classes = rawClasses.map((cls) => {
+    const schedules = classSchedules.filter((s) => s.classId === cls.id)
+    return {
+      ...cls,
+      schedules,
     }
   })
 
@@ -1200,6 +1276,8 @@ export async function loadAllData(): Promise<{
     libraryBooks,
     libraryLoans,
     librarySettings,
+    classes,
+    classSchedules,
   }
 }
 
@@ -2499,4 +2577,130 @@ export const portalDb = {
         }>
       }
     }, null),
+
+  // ---------- classes & class_schedules ----------
+
+  listClasses: () =>
+    safeList(async () => {
+      await ensureAuth()
+      const [classRecs, scheduleRecs] = await Promise.all([
+        pb.collection(COLLECTIONS.classes).getFullList({ sort: '-created' }),
+        pb.collection(COLLECTIONS.classSchedules).getFullList({ sort: 'startTime' }),
+      ])
+      const allSchedules = scheduleRecs.map((r) => mapClassSchedule(r as unknown as AnyRec))
+      return classRecs.map((cr) => {
+        const classSchedules = allSchedules.filter((s) => s.classId === cr.id)
+        return mapClassItem(cr as unknown as AnyRec, classSchedules)
+      })
+    }, [] as ClassItem[]),
+
+  listClassSchedules: (classId?: string) =>
+    safeList(async () => {
+      await ensureAuth()
+      const filter = classId ? `classId = "${classId}"` : ''
+      const list = await pb.collection(COLLECTIONS.classSchedules).getFullList({
+        filter,
+        sort: 'startTime',
+      })
+      return list.map((r) => mapClassSchedule(r as unknown as AnyRec))
+    }, [] as ClassSchedule[]),
+
+  createClass: (data: Omit<ClassItem, 'id' | 'created' | 'updated' | 'schedules'>) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          name: data.name.trim(),
+          courseId: data.courseId,
+          courseName: data.courseName || '',
+          professorUserId: data.professorUserId,
+          professorName: data.professorName || '',
+          term: data.term.trim(),
+          capacity: Math.max(1, Math.round(data.capacity || 40)),
+          status: data.status || 'planejada',
+          studentIds: JSON.stringify(data.studentIds || []),
+          notes: data.notes || '',
+        }
+        const rec = await pb.collection(COLLECTIONS.classes).create(payload)
+        return mapClassItem(rec as unknown as AnyRec, [])
+      },
+      null as ClassItem | null,
+    ),
+
+  updateClass: (id: string, updates: Partial<ClassItem>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.name !== undefined) payload.name = updates.name.trim()
+        if (updates.courseId !== undefined) payload.courseId = updates.courseId
+        if (updates.courseName !== undefined) payload.courseName = updates.courseName
+        if (updates.professorUserId !== undefined) payload.professorUserId = updates.professorUserId
+        if (updates.professorName !== undefined) payload.professorName = updates.professorName
+        if (updates.term !== undefined) payload.term = updates.term.trim()
+        if (updates.capacity !== undefined)
+          payload.capacity = Math.max(1, Math.round(updates.capacity))
+        if (updates.status !== undefined) payload.status = updates.status
+        if (updates.studentIds !== undefined)
+          payload.studentIds = JSON.stringify(updates.studentIds)
+        if (updates.notes !== undefined) payload.notes = updates.notes
+
+        const rec = await pb.collection(COLLECTIONS.classes).update(id, payload)
+        const schedules = await portalDb.listClassSchedules(id)
+        return mapClassItem(rec as unknown as AnyRec, schedules)
+      },
+      null as ClassItem | null,
+    ),
+
+  deleteClass: (id: string) =>
+    safeWrite(async () => {
+      // Remove também os horários da turma
+      try {
+        const schedules = await pb.collection(COLLECTIONS.classSchedules).getFullList({
+          filter: `classId = "${id}"`,
+        })
+        await Promise.all(
+          schedules.map((s) => pb.collection(COLLECTIONS.classSchedules).delete(s.id)),
+        )
+      } catch (err) {
+        console.warn('[portalDb] Erro ao remover horários em cascata:', err)
+      }
+      await pb.collection(COLLECTIONS.classes).delete(id)
+      return true
+    }, false),
+
+  createClassSchedule: (data: Omit<ClassSchedule, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          classId: data.classId,
+          dayOfWeek: data.dayOfWeek,
+          startTime: data.startTime.trim(),
+          endTime: data.endTime.trim(),
+          room: (data.room || '').trim(),
+        }
+        const rec = await pb.collection(COLLECTIONS.classSchedules).create(payload)
+        return mapClassSchedule(rec as unknown as AnyRec)
+      },
+      null as ClassSchedule | null,
+    ),
+
+  updateClassSchedule: (id: string, updates: Partial<ClassSchedule>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.dayOfWeek !== undefined) payload.dayOfWeek = updates.dayOfWeek
+        if (updates.startTime !== undefined) payload.startTime = updates.startTime.trim()
+        if (updates.endTime !== undefined) payload.endTime = updates.endTime.trim()
+        if (updates.room !== undefined) payload.room = updates.room.trim()
+
+        const rec = await pb.collection(COLLECTIONS.classSchedules).update(id, payload)
+        return mapClassSchedule(rec as unknown as AnyRec)
+      },
+      null as ClassSchedule | null,
+    ),
+
+  deleteClassSchedule: (id: string) =>
+    safeWrite(async () => {
+      await pb.collection(COLLECTIONS.classSchedules).delete(id)
+      return true
+    }, false),
 }

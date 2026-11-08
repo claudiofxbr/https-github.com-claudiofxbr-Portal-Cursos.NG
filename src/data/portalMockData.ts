@@ -19,8 +19,8 @@ export const PORTAL_GATE_PASSCODE = 'PORTAL2025' // Código padrão do portão
 export const MODULE_PERMISSIONS: ModulePermission[] = [
   {
     key: 'dashboard',
-    label: 'Painel Geral',
-    description: 'Visão consolidada com métricas e atalhos rápidos',
+    label: 'Dashboard Geral',
+    description: 'Métricas institucionais, avisos rápidos, atalhos operacionais e visão executiva',
     icon: 'LayoutDashboard',
     requiredRoles: [
       'root',
@@ -33,6 +33,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
       'professor',
       'aluno',
     ],
+  },
+  {
+    key: 'turmas',
+    label: 'Gestão de Turmas',
+    description:
+      'Turmas letivas, vinculação de professores por ID, horários semanais e alocação de alunos',
+    icon: 'Calendar',
+    requiredRoles: ['root', 'admin', 'secretaria', 'coordenador', 'professor'],
   },
   {
     key: 'alunos',

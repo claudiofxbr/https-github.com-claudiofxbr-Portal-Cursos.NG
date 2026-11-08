@@ -27,6 +27,7 @@ export interface UserAccount {
 }
 export type ModuleKey =
   | 'dashboard'
+  | 'turmas'
   | 'alunos'
   | 'matriculas'
   | 'diplomas'
@@ -578,6 +579,58 @@ export interface LibrarySettings {
   maxRenewals: number // limite máximo de renovações por empréstimo (padrão 2)
   renewalDays: number // dias concedidos a cada renovação (padrão 7)
   libraryEmail?: string // e-mail oficial da biblioteca que recebe cópia dos avisos de atraso
+  created?: string
+  updated?: string
+}
+
+export type DayOfWeek = 'domingo' | 'segunda' | 'terca' | 'quarta' | 'quinta' | 'sexta' | 'sabado'
+
+export const DAY_OF_WEEK_LABELS: Record<DayOfWeek, string> = {
+  domingo: 'Domingo',
+  segunda: 'Segunda-feira',
+  terca: 'Terça-feira',
+  quarta: 'Quarta-feira',
+  quinta: 'Quinta-feira',
+  sexta: 'Sexta-feira',
+  sabado: 'Sábado',
+}
+
+export const DAY_OF_WEEK_SHORT: Record<DayOfWeek, string> = {
+  domingo: 'Dom',
+  segunda: 'Seg',
+  terca: 'Ter',
+  quarta: 'Qua',
+  quinta: 'Qui',
+  sexta: 'Sex',
+  sabado: 'Sáb',
+}
+
+export type ClassStatus = 'planejada' | 'em_andamento' | 'encerrada'
+
+export interface ClassSchedule {
+  id: string
+  classId: string
+  dayOfWeek: DayOfWeek
+  startTime: string // "HH:mm", ex: "19:15"
+  endTime: string // "HH:mm", ex: "22:30"
+  room?: string // sala, lab ou link virtual
+  created?: string
+  updated?: string
+}
+
+export interface ClassItem {
+  id: string
+  name: string
+  courseId: string
+  courseName?: string
+  professorUserId: string
+  professorName?: string
+  term: string // ex: "2025.1", "2025.2"
+  capacity: number
+  status: ClassStatus
+  studentIds: string[]
+  notes?: string
+  schedules?: ClassSchedule[]
   created?: string
   updated?: string
 }

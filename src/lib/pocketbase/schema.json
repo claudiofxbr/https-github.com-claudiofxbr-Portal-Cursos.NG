@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T16:18:12.668Z",
+  "generatedAt": "2026-11-08T17:59:02.926Z",
   "collections": [
     {
       "name": "users",
@@ -2450,6 +2450,162 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "classes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "courseId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "courseName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "professorUserId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "professorName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "term",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "capacity",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["planejada", "em_andamento", "encerrada"]
+        },
+        {
+          "name": "studentIds",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_classes_course ON classes (courseId)",
+        "CREATE INDEX idx_classes_prof ON classes (professorUserId)",
+        "CREATE INDEX idx_classes_status ON classes (status)",
+        "CREATE INDEX idx_classes_term ON classes (term)"
+      ]
+    },
+    {
+      "name": "class_schedules",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "classId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dayOfWeek",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"]
+        },
+        {
+          "name": "startTime",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "endTime",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_schedules_class ON class_schedules (classId)",
+        "CREATE INDEX idx_schedules_day ON class_schedules (dayOfWeek)"
+      ]
     }
   ]
 }
