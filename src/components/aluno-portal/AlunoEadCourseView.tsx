@@ -22,6 +22,8 @@ interface AlunoEadCourseViewProps {
   lessons: EadLesson[]
   lessonProgress: LessonProgress[]
   studentId: string
+  canToggleProgress?: boolean
+  suspensionNotice?: string
   onToggleLessonProgress: (
     lessonId: string,
     completed: boolean,
@@ -37,6 +39,8 @@ export function AlunoEadCourseView({
   lessons,
   lessonProgress,
   studentId,
+  canToggleProgress = true,
+  suspensionNotice,
   onToggleLessonProgress,
   onBackToList,
 }: AlunoEadCourseViewProps) {
@@ -87,6 +91,7 @@ export function AlunoEadCourseView({
 
   const handleToggleCurrent = async () => {
     if (!activeLesson) return
+    if (!canToggleProgress) return
     setIsUpdating(true)
     try {
       await onToggleLessonProgress(
@@ -187,13 +192,21 @@ export function AlunoEadCourseView({
                   title={activeLesson.title}
                   autoPlay={false}
                   onEnded={() => {
-                    // Ao terminar o vídeo, marca como concluído se ainda não estiver
-                    if (!isActiveCompleted) {
+                    // Ao terminar o vídeo, marca como concluído se ainda não estiver e se tiver permissão
+                    if (!isActiveCompleted && canToggleProgress) {
                       handleToggleCurrent()
                     }
                   }}
                 />
               </div>
+
+              {/* Aviso se a marcação de conclusão estiver suspensa */}
+              {!canToggleProgress && suspensionNotice && (
+                <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded-lg text-xs text-amber-200 flex items-center gap-2">
+                  <span className="font-semibold text-amber-300">Atenção:</span>
+                  {suspensionNotice}
+                </div>
+              )}
 
               {/* Barra de Ações da Aula e Informações */}
               <Card className="bg-slate-900 border-slate-800 text-slate-100">
@@ -219,31 +232,40 @@ export function AlunoEadCourseView({
                       </CardTitle>
                     </div>
 
-                    {/* Botão de Marcar/Desmarcar Concluída */}
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleToggleCurrent}
-                        disabled={isUpdating}
-                        className={`text-xs font-semibold shadow-sm transition-all ${
-                          isActiveCompleted
-                            ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
-                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                        }`}
+                    {/* Botão de Marcar/Desmarcar Concluída (oculto/desabilitado se não puder alterar) */}
+                    {canToggleProgress ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={handleToggleCurrent}
+                          disabled={isUpdating}
+                          className={`text-xs font-semibold shadow-sm transition-all ${
+                            isActiveCompleted
+                              ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                          }`}
+                        >
+                          {isActiveCompleted ? (
+                            <>
+                              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                              Desmarcar Conclusão
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                              Marcar como Concluída
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-300 bg-amber-500/10 text-xs px-2.5 py-1"
                       >
-                        {isActiveCompleted ? (
-                          <>
-                            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                            Desmarcar Conclusão
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                            Marcar como Concluída
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                        Conclusão Bloqueada
+                      </Badge>
+                    )}
                   </div>
                 </CardHeader>
 
@@ -330,25 +352,30 @@ export function AlunoEadCourseView({
                       {/* Marcador visual de assistida */}
                       <button
                         type="button"
+                        disabled={!canToggleProgress}
                         onClick={(e) => {
                           e.stopPropagation()
-                          onToggleLessonProgress(
-                            lesson.id,
-                            !isCompleted,
-                            course.id,
-                            lesson.moduleName,
-                            lesson.title,
-                          )
+                          if (canToggleProgress) {
+                            onToggleLessonProgress(
+                              lesson.id,
+                              !isCompleted,
+                              course.id,
+                              lesson.moduleName,
+                              lesson.title,
+                            )
+                          }
                         }}
                         className={`mt-0.5 shrink-0 rounded-full p-0.5 transition-colors ${
                           isCompleted
                             ? 'text-emerald-400 hover:text-emerald-300'
                             : 'text-slate-500 hover:text-slate-300'
-                        }`}
+                        } ${!canToggleProgress ? 'cursor-default opacity-80' : ''}`}
                         title={
-                          isCompleted
-                            ? 'Marcada como concluída (clique para alternar)'
-                            : 'Marcar como concluída'
+                          !canToggleProgress
+                            ? 'Marcação de conclusão bloqueada por situação cadastral'
+                            : isCompleted
+                              ? 'Marcada como concluída (clique para alternar)'
+                              : 'Marcar como concluída'
                         }
                       >
                         {isCompleted ? (

@@ -2012,6 +2012,18 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
       ) || students[0]
 
+    // Validação de elegibilidade: se o usuário atual for aluno, seu status deve ser 'Ativo' ou 'Matriculado'
+    if (currentUser?.role === 'aluno' && student) {
+      const normalizedStatus = (student.status || '').trim().toLowerCase()
+      const isEligible = normalizedStatus === 'ativo' || normalizedStatus === 'matriculado'
+      if (!isEligible) {
+        console.warn(
+          `[PortalContext] Aluno ${student.id} (${student.fullName}) com status "${student.status}" não está autorizado a registrar progresso de videoaulas.`,
+        )
+        return null
+      }
+    }
+
     const effectiveStudentId = currentUser?.studentId || student?.id || 'dbphexr97czw7cb'
     const effectiveCourseId = courseId || student?.courseId || 'crs-eng-soft'
 

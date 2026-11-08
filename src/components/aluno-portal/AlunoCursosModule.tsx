@@ -28,8 +28,22 @@ import {
 import { LessonProgress } from '@/types/portal'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Tv, Play } from 'lucide-react'
+import {
+  Tv,
+  Play,
+  ShieldAlert,
+  AlertTriangle,
+  Lock,
+  RefreshCw,
+  Info,
+  HelpCircle,
+} from 'lucide-react'
 import { AlunoEadCourseView } from '@/components/aluno-portal/AlunoEadCourseView'
+import {
+  checkEadEligibility,
+  checkEadCourseAccess,
+  isEadCourseActive,
+} from '@/lib/eadAccessValidator'
 
 export function AlunoCursosModule() {
   const {
@@ -40,6 +54,9 @@ export function AlunoCursosModule() {
     updateLessonProgress,
     eadCourses,
     eadLessons,
+    isSyncing,
+    isBackendReady,
+    refreshDiagnostic,
   } = usePortal()
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -47,6 +64,7 @@ export function AlunoCursosModule() {
   const [activeLessonModal, setActiveLessonModal] = useState<LessonProgress | null>(null)
   const [savingLessonId, setSavingLessonId] = useState<string | null>(null)
   const [activeEadCourseId, setActiveEadCourseId] = useState<string | null>(null)
+  const [accessErrorMessage, setAccessErrorMessage] = useState<string | null>(null)
 
   const currentStudent =
     students.find(
@@ -57,14 +75,31 @@ export function AlunoCursosModule() {
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
 
-  // Cursos EAD em que o aluno está matriculado/vinculado (ou todos se não houver filtro restrito)
+  // Validação de elegibilidade cadastral do aluno
+  const eligibility = checkEadEligibility(currentStudent)
+
+  // Cursos EAD: apenas cursos ATIVOS (status = 'publicado') e que o aluno esteja matriculado
   const myEadCourses = eadCourses.filter((c) => {
+    // Curso inativo não aparece em Meus Cursos
+    if (!isEadCourseActive(c)) return false
+    // Aluno deve estar matriculado no curso
     if (!c.enrolledStudentIds || c.enrolledStudentIds.length === 0) return true
     return c.enrolledStudentIds.includes(effectiveStudentId)
   })
 
-  // Se o aluno clicou para assistir um curso EAD específico
-  const selectedEadCourse = myEadCourses.find((c) => c.id === activeEadCourseId)
+  // Se o aluno clicou para assistir um curso EAD específico (ou tentou abrir por ID)
+  const candidateEadCourse = activeEadCourseId
+    ? eadCourses.find((c) => c.id === activeEadCourseId)
+    : null
+
+  // Valida autorização e status do curso selecionado
+  const courseAccessCheck = candidateEadCourse
+    ? checkEadCourseAccess(candidateEadCourse, effectiveStudentId)
+    : null
+
+  const selectedEadCourse =
+    candidateEadCourse && courseAccessCheck?.hasAccess ? candidateEadCourse : null
+
   const selectedEadLessons = selectedEadCourse
     ? eadLessons.filter((l) => l.eadCourseId === selectedEadCourse.id)
     : []
@@ -211,29 +246,218 @@ export function AlunoCursosModule() {
     setSavingLessonId(null)
   }
 
-  // Se o aluno estiver assistindo a um curso EAD específico
-  if (selectedEadCourse) {
+  // 1. ESTADO DE CARREGAMENTO INICIAL
+  if (isSyncing && !isBackendReady) {
     return (
-      <AlunoEadCourseView
-        course={selectedEadCourse}
-        lessons={selectedEadLessons}
-        lessonProgress={lessonProgress}
-        studentId={effectiveStudentId}
-        onToggleLessonProgress={async (lessonId, completed, courseId, moduleName, lessonTitle) => {
-          await updateLessonProgress(
+      <div className="p-12 text-center bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
+        <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold text-white">Carregando Ambiente EAD...</h3>
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            Sincronizando seus cursos matriculados, videoaulas e progresso com a base acadêmica.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // 2. BLOQUEIO DE ACESSO AO EAD POR SITUAÇÃO CADASTRAL DO ALUNO (Item 1)
+  if (!eligibility.isEligibleToStudy) {
+    return (
+      <div className="space-y-6">
+        {/* Top Header com badge de bloqueio */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+              <GraduationCap className="w-6 h-6 text-slate-400" />
+              Meus Cursos & Trilhas de Videoaulas
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400">
+              Ambiente Virtual de Aprendizagem (AVA) do PortalCursos.NG
+            </p>
+          </div>
+
+          <Badge
+            variant="outline"
+            className="border-amber-500/40 text-amber-300 bg-amber-500/10 px-3 py-1 text-xs flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            Situação: {eligibility.studentStatusLabel}
+          </Badge>
+        </div>
+
+        {/* Painel claro de bloqueio de acesso */}
+        <Card className="bg-amber-950/20 border-amber-500/30 text-slate-200">
+          <CardHeader className="p-6 pb-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                  {eligibility.reasonTitle}
+                </CardTitle>
+                <CardDescription className="text-sm text-amber-200/80 leading-relaxed">
+                  {eligibility.reasonMessage}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 pt-2 space-y-4">
+            <div className="p-4 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300 space-y-2">
+              <div className="flex items-center gap-2 text-amber-300 font-semibold">
+                <Info className="w-4 h-4" />
+                Como regularizar seu acesso:
+              </div>
+              <p>
+                Para liberar o player de videoaulas e a continuidade do seu progresso, procure a
+                secretaria acadêmica através da aba <strong>Suporte</strong> ou pelo e-mail
+                institucional para reativar ou regularizar sua matrícula.
+              </p>
+              <p className="text-slate-400 text-[11px]">
+                Seus registros anteriores de progresso e notas permanecem salvos com segurança no
+                sistema.
+              </p>
+            </div>
+
+            {/* Exibe o histórico de progresso existente para visualização, SEM permissão para estudar/marcar */}
+            {studentLessons.length > 0 && (
+              <div className="pt-2 border-t border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-300">
+                    Histórico de Aulas Concluídas Anteriormente (Apenas Leitura)
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    {completedCount} de {totalLessons} aulas ({progressPercent}%)
+                  </span>
+                </div>
+                <Progress value={progressPercent} className="h-2 bg-slate-800" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // 3. SE O ALUNO TENTOU ABRIR UM CURSO EAD ESPECÍFICO
+  if (activeEadCourseId) {
+    // Caso 1: Curso não encontrado
+    if (!candidateEadCourse) {
+      return (
+        <div className="space-y-6">
+          <Card className="bg-slate-900/80 border-slate-800 p-8 text-center space-y-4">
+            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white">Curso EAD Não Encontrado</h2>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                O curso solicitado não existe ou foi removido do catálogo.
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                setActiveEadCourseId(null)
+                setAccessErrorMessage(null)
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            >
+              Voltar para Meus Cursos
+            </Button>
+          </Card>
+        </div>
+      )
+    }
+
+    // Caso 2: Curso inativo (Item 2)
+    if (!courseAccessCheck?.isCourseActive) {
+      return (
+        <div className="space-y-6">
+          <Card className="bg-amber-950/20 border-amber-500/30 p-8 text-center space-y-4">
+            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white">Curso indisponível no momento</h2>
+              <p className="text-xs text-slate-300 max-w-md mx-auto">
+                {candidateEadCourse.title} está temporariamente indisponível para exibição. A
+                coordenação pedagógica suspendeu a publicação deste curso para revisão ou
+                atualização curricular.
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                setActiveEadCourseId(null)
+                setAccessErrorMessage(null)
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            >
+              Voltar para Meus Cursos
+            </Button>
+          </Card>
+        </div>
+      )
+    }
+
+    // Caso 3: Aluno não matriculado / Sem permissão (Item 3)
+    if (!courseAccessCheck?.isEnrolled) {
+      return (
+        <div className="space-y-6">
+          <Card className="bg-rose-950/20 border-rose-500/30 p-8 text-center space-y-4">
+            <Lock className="w-10 h-10 text-rose-400 mx-auto" />
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white">Sem Permissão de Acesso</h2>
+              <p className="text-xs text-rose-200/80 max-w-md mx-auto">
+                Você não está matriculado neste curso EAD ({candidateEadCourse.title}). Por medidas
+                de segurança e autorização acadêmica, apenas alunos com matrícula ativa nesta turma
+                podem assistir às videoaulas.
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                setActiveEadCourseId(null)
+                setAccessErrorMessage(null)
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            >
+              Voltar para Meus Cursos
+            </Button>
+          </Card>
+        </div>
+      )
+    }
+
+    // Caso 4: Acesso autorizado ao curso EAD
+    if (selectedEadCourse) {
+      return (
+        <AlunoEadCourseView
+          course={selectedEadCourse}
+          lessons={selectedEadLessons}
+          lessonProgress={lessonProgress}
+          studentId={effectiveStudentId}
+          onToggleLessonProgress={async (
             lessonId,
-            {
-              status: completed ? 'concluido' : 'em_andamento',
-              completedAt: completed ? new Date().toISOString() : undefined,
-            },
+            completed,
             courseId,
             moduleName,
             lessonTitle,
-          )
-        }}
-        onBackToList={() => setActiveEadCourseId(null)}
-      />
-    )
+          ) => {
+            // Revalidação estrita antes de registrar
+            if (!eligibility.canToggleProgress) {
+              return
+            }
+            await updateLessonProgress(
+              lessonId,
+              {
+                status: completed ? 'concluido' : 'em_andamento',
+                completedAt: completed ? new Date().toISOString() : undefined,
+              },
+              courseId,
+              moduleName,
+              lessonTitle,
+            )
+          }}
+          onBackToList={() => setActiveEadCourseId(null)}
+        />
+      )
+    }
   }
 
   return (
@@ -256,7 +480,7 @@ export function AlunoCursosModule() {
             variant="outline"
             className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 px-3 py-1 text-xs"
           >
-            Matrícula Regular
+            Matrícula Regular ({eligibility.studentStatusLabel})
           </Badge>
           {myEadCourses.length > 0 && (
             <Badge className="bg-indigo-600/30 text-indigo-300 border-indigo-500/40 text-xs">
@@ -266,19 +490,45 @@ export function AlunoCursosModule() {
         </div>
       </div>
 
-      {/* Seção de Cursos EAD com Videoaulas */}
-      {myEadCourses.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Tv className="w-5 h-5 text-indigo-400" />
-              <h2 className="text-base font-bold text-white">Cursos EAD com Videoaulas</h2>
-            </div>
+      {/* Seção de Cursos EAD com Videoaulas ou Estado Vazio Orientador (Item 4) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Tv className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-base font-bold text-white">Cursos EAD com Videoaulas</h2>
+          </div>
+          {myEadCourses.length > 0 && (
             <span className="text-xs text-slate-400">
               Player integrado com YouTube, Vimeo e MP4
             </span>
-          </div>
+          )}
+        </div>
 
+        {myEadCourses.length === 0 ? (
+          <Card className="bg-slate-900/60 border-slate-800 p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
+              <Tv className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5 max-w-md mx-auto">
+              <h3 className="text-sm font-semibold text-white">Nenhum curso EAD matriculado</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Você ainda não está matriculado em nenhum curso EAD. Procure a secretaria para se
+                matricular.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshDiagnostic}
+                className="text-xs border-slate-700 text-slate-300 hover:bg-slate-800 gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Atualizar Dados
+              </Button>
+            </div>
+          </Card>
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {myEadCourses.map((eadCourse) => {
               const courseLessons = eadLessons.filter((l) => l.eadCourseId === eadCourse.id)
@@ -376,8 +626,8 @@ export function AlunoCursosModule() {
               )
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Card do Curso Ativo com Progresso e Detalhes */}
       {activeCourse && (
