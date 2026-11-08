@@ -52,41 +52,52 @@ export function EadReportSection({
         <KpiCard
           title="Cursos EAD Ativos"
           value={String(kpis.totalEadCourses)}
-          description={`${kpis.totalLessons} videoaulas cadastradas`}
+          subValue={`${kpis.totalLessons} videoaulas cadastradas`}
+          calculationExplanation="Quantidade de cursos na modalidade EAD publicados e disponíveis no catálogo da plataforma."
+          delta={0}
+          deltaLabel="catálogo ativo"
           icon={Tv}
-          variant="default"
         />
 
         <KpiCard
           title="Total de Videoaulas"
           value={String(kpis.totalLessons)}
-          description="Gravadas e disponíveis"
+          subValue="Gravadas e disponíveis"
+          calculationExplanation="Soma do total de videoaulas e conteúdos gravados vinculados a todos os cursos EAD cadastrados."
+          delta={0}
+          deltaLabel="acervo de aulas"
           icon={PlayCircle}
-          variant="default"
         />
 
         <KpiCard
           title="Alunos em EAD"
           value={String(kpis.totalEnrolledStudents)}
-          description="Com acesso ativo"
+          subValue="Com matrícula ativa"
+          calculationExplanation="Total de estudantes distintos com acesso ativo e matriculados em ao menos um curso EAD."
+          delta={0}
+          deltaLabel="base matriculada"
           icon={Users}
-          variant="default"
         />
 
         <KpiCard
           title="Progresso Médio Geral"
           value={`${kpis.averageProgressPercent}%`}
-          description={`${kpis.completedStudentsCount} conclusões (100%)`}
+          subValue={`${kpis.completedStudentsCount} conclusões (100%)`}
+          calculationExplanation="Média aritmética percentual de videoaulas concluídas considerando todos os alunos e cursos EAD matriculados."
+          delta={kpis.averageProgressPercent - 50}
+          deltaLabel="vs. marco 50%"
           icon={CheckCircle2}
-          variant={kpis.averageProgressPercent >= 60 ? 'success' : 'default'}
         />
 
         <KpiCard
           title="Progresso Travado / Zero"
           value={String(kpis.stalledStudentsCount)}
-          description="Sem aulas concluídas"
+          subValue="Sem aulas concluídas"
+          calculationExplanation="Estudantes matriculados que ainda não concluíram nenhuma videoaula e estão com 0% de engajamento no curso."
+          delta={kpis.stalledStudentsCount}
+          deltaLabel="atenção requerida"
+          invertDeltaColor={true}
           icon={AlertTriangle}
-          variant={kpis.stalledStudentsCount > 0 ? 'danger' : 'default'}
         />
       </div>
 
