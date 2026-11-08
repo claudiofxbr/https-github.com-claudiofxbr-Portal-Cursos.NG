@@ -819,11 +819,14 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   ): Promise<Student> => {
     const rawCpf = (studentData.cpf || '').replace(/\D/g, '')
     const tempId = generateId('std')
+    const nowIso = new Date().toISOString()
     const newStudent: Student = {
       ...studentData,
       id: tempId,
       cpfRaw: rawCpf,
       enrolledAt: new Date().toISOString().split('T')[0],
+      createdAt: nowIso,
+      created: nowIso,
     }
 
     // Atualização otimista imediata

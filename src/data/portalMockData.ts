@@ -431,6 +431,8 @@ export const INITIAL_STUDENTS: Student[] = [
       },
     ],
     observations: 'Bolsista de iniciação científica em desenvolvimento Web.',
+    createdAt: '2024-02-01T10:00:00.000Z',
+    created: '2024-02-01T10:00:00.000Z',
   },
   {
     id: 'std-002',
@@ -464,6 +466,8 @@ export const INITIAL_STUDENTS: Student[] = [
       },
     ],
     observations: 'Profissional sênior em transição para Data Science.',
+    createdAt: '2024-03-10T14:30:00.000Z',
+    created: '2024-03-10T14:30:00.000Z',
   },
   {
     id: 'std-003',
@@ -497,6 +501,8 @@ export const INITIAL_STUDENTS: Student[] = [
       },
     ],
     observations: 'Aguardando validação do comprovante de residência pela secretaria.',
+    createdAt: '2025-01-15T09:15:00.000Z',
+    created: '2025-01-15T09:15:00.000Z',
   },
   {
     id: 'std-004',
@@ -530,6 +536,8 @@ export const INITIAL_STUDENTS: Student[] = [
       },
     ],
     observations: 'Advogada corporativa com foco em LGPD e IA.',
+    createdAt: '2024-08-01T16:00:00.000Z',
+    created: '2024-08-01T16:00:00.000Z',
   },
 ]
 

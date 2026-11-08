@@ -50,6 +50,88 @@ export interface ReportExportPayload {
   evolutionChartData?: ReportMonthlyEvolutionData[]
 }
 
+export interface StudentStatusCount {
+  status: 'ativo' | 'matriculado' | 'pre_matricula' | 'trancado' | 'inativo' | 'concluido'
+  label: string
+  count: number
+  percentage: number
+}
+
+export interface StudentCourseDistribution {
+  courseId: string
+  courseCode: string
+  courseName: string
+  level: string
+  modality: string
+  totalStudents: number
+  newInPeriod: number
+  graduacaoCount: number
+  posGraduacaoCount: number
+  byStatus: {
+    ativo: number
+    matriculado: number
+    pre_matricula: number
+    trancado: number
+    inativo: number
+    concluido: number
+  }
+  vacancies: number
+  occupancyRate: number
+}
+
+export interface EnrollmentEvolutionPoint {
+  dateKey: string
+  dateLabel: string
+  count: number
+  graduacaoCount: number
+  posCount: number
+}
+
+export interface MatriculasReportKpis {
+  totalStudents: number
+  newEnrollmentsInPeriod: number
+  graduacaoTotal: number
+  posGraduacaoTotal: number
+  graduacaoInPeriod: number
+  posInPeriod: number
+  statusBreakdown: {
+    ativo: number
+    matriculado: number
+    pre_matricula: number
+    trancado: number
+    inativo: number
+    concluido: number
+  }
+  activeOrMatriculatedTotal: number
+}
+
+export interface MatriculasReportExportPayload {
+  portalName: string
+  periodLabel: string
+  periodKey: string
+  generatedAt: Date
+  generatedBy: {
+    name: string
+    roleTitle: string
+    email: string
+  }
+  kpis: MatriculasReportKpis
+  coursesDistribution: StudentCourseDistribution[]
+  evolutionChartData: EnrollmentEvolutionPoint[]
+  statusChartData: StudentStatusCount[]
+  detailedStudents?: Array<{
+    id: string
+    fullName: string
+    cpf: string
+    email: string
+    courseName: string
+    type: string
+    status: string
+    enrolledAt: string
+    createdAt?: string
+  }>
+}
+
 const ALLOWED_EXPORT_ROLES = new Set(['root', 'admin', 'financeiro'])
 
 /** Valida se o usuário tem permissão para exportar relatórios */
@@ -232,6 +314,177 @@ export function exportReportToCsv(payload: ReportExportPayload): void {
   const dateStr = generatedAt.toISOString().slice(0, 10)
   const periodStr = sanitizeFilenamePart(payload.periodKey || payload.periodLabel)
   const filename = `relatorio_financeiro_${periodStr}_${dateStr}.csv`
+
+  triggerDownload(blob, filename)
+}
+
+/**
+ * Gera e dispara download de arquivo CSV formatado com BOM UTF-8 e separador ';'
+ * para o Relatório de Matrículas e Alunos (KPIs, distribuição por curso e detalhamento de alunos).
+ */
+export function exportMatriculasReportToCsv(payload: MatriculasReportExportPayload): void {
+  const {
+    portalName,
+    periodLabel,
+    generatedAt,
+    generatedBy,
+    kpis,
+    coursesDistribution,
+    detailedStudents = [],
+  } = payload
+
+  const lines: string[] = []
+
+  const escapeCell = (val: string | number | undefined | null): string => {
+    if (val === undefined || val === null) return '""'
+    const str = String(val).replace(/"/g, '""')
+    return `"${str}"`
+  }
+
+  // 1. Metadados
+  lines.push(
+    `${escapeCell(portalName)};${escapeCell('Relatório Gerencial de Matrículas e Alunos')}`,
+  )
+  lines.push(`${escapeCell('Período Analisado')};${escapeCell(periodLabel)}`)
+  lines.push(`${escapeCell('Data e Hora de Geração')};${escapeCell(formatDateTime(generatedAt))}`)
+  lines.push(
+    `${escapeCell('Gerado por')};${escapeCell(`${generatedBy.name} (${generatedBy.roleTitle}) - ${generatedBy.email}`)}`,
+  )
+  lines.push('')
+
+  // 2. KPIs
+  lines.push(`${escapeCell('--- INDICADORES GERAIS DE ALUNOS E MATRÍCULAS ---')};;;`)
+  lines.push(
+    [escapeCell('Indicador'), escapeCell('Quantidade'), escapeCell('Segmentação / Detalhe')].join(
+      ';',
+    ),
+  )
+
+  const kpisList: Array<[string, number, string]> = [
+    ['Total de Alunos na Base', kpis.totalStudents, 'Base acumulada de alunos cadastrados'],
+    [
+      'Novas Matrículas no Período',
+      kpis.newEnrollmentsInPeriod,
+      `Matriculados/criados durante "${periodLabel}"`,
+    ],
+    [
+      'Total Alunos - Graduação',
+      kpis.graduacaoTotal,
+      `${kpis.totalStudents > 0 ? ((kpis.graduacaoTotal / kpis.totalStudents) * 100).toFixed(1) : 0}% da base`,
+    ],
+    [
+      'Total Alunos - Pós-Graduação',
+      kpis.posGraduacaoTotal,
+      `${kpis.totalStudents > 0 ? ((kpis.posGraduacaoTotal / kpis.totalStudents) * 100).toFixed(1) : 0}% da base`,
+    ],
+    ['Novas Matrículas no Período - Graduação', kpis.graduacaoInPeriod, 'Novas no período'],
+    ['Novas Matrículas no Período - Pós-Graduação', kpis.posInPeriod, 'Novas no período'],
+    ['Status: Ativos / Matriculados', kpis.activeOrMatriculatedTotal, 'Com acesso ativo ao portal'],
+    [
+      'Status: Pré-Matrícula',
+      kpis.statusBreakdown.pre_matricula,
+      'Aguardando validação ou pagamento',
+    ],
+    ['Status: Trancados', kpis.statusBreakdown.trancado, 'Matrícula trancada'],
+    ['Status: Inativos', kpis.statusBreakdown.inativo, 'Cadastros inativos'],
+    ['Status: Concluídos', kpis.statusBreakdown.concluido, 'Formados / graduados'],
+  ]
+
+  for (const [title, qty, desc] of kpisList) {
+    lines.push([escapeCell(title), escapeCell(qty), escapeCell(desc)].join(';'))
+  }
+
+  lines.push('')
+  lines.push('')
+
+  // 3. Distribuição por Curso
+  lines.push(`${escapeCell('--- DISTRIBUIÇÃO DE ALUNOS POR CURSO E STATUS ---')};;;;;;;;;;;`)
+  lines.push(
+    [
+      escapeCell('Código'),
+      escapeCell('Curso'),
+      escapeCell('Nível'),
+      escapeCell('Modalidade'),
+      escapeCell('Total Alunos'),
+      escapeCell('Novos no Período'),
+      escapeCell('Graduação'),
+      escapeCell('Pós-Graduação'),
+      escapeCell('Ativo/Matriculado'),
+      escapeCell('Pré-Matrícula'),
+      escapeCell('Trancado'),
+      escapeCell('Inativo/Concluído'),
+      escapeCell('Vagas Autorizadas'),
+      escapeCell('Taxa de Ocupação (%)'),
+    ].join(';'),
+  )
+
+  for (const c of coursesDistribution) {
+    const active = (c.byStatus.ativo || 0) + (c.byStatus.matriculado || 0)
+    const inactiveConcluded = (c.byStatus.inativo || 0) + (c.byStatus.concluido || 0)
+    lines.push(
+      [
+        escapeCell(c.courseCode),
+        escapeCell(c.courseName),
+        escapeCell(c.level.replace('_', ' ')),
+        escapeCell(c.modality.toUpperCase()),
+        escapeCell(c.totalStudents),
+        escapeCell(c.newInPeriod),
+        escapeCell(c.graduacaoCount),
+        escapeCell(c.posGraduacaoCount),
+        escapeCell(active),
+        escapeCell(c.byStatus.pre_matricula || 0),
+        escapeCell(c.byStatus.trancado || 0),
+        escapeCell(inactiveConcluded),
+        escapeCell(c.vacancies),
+        escapeCell(c.occupancyRate.toFixed(1).replace('.', ',') + '%'),
+      ].join(';'),
+    )
+  }
+
+  // 4. Detalhamento de Alunos Cadastrados
+  if (detailedStudents.length > 0) {
+    lines.push('')
+    lines.push('')
+    lines.push(`${escapeCell('--- LISTA DETALHADA DE ALUNOS ---')};;;;;;;`)
+    lines.push(
+      [
+        escapeCell('Nome do Aluno'),
+        escapeCell('CPF'),
+        escapeCell('E-mail'),
+        escapeCell('Curso'),
+        escapeCell('Tipo'),
+        escapeCell('Status'),
+        escapeCell('Data Matrícula'),
+        escapeCell('Data de Cadastro'),
+      ].join(';'),
+    )
+
+    for (const s of detailedStudents) {
+      lines.push(
+        [
+          escapeCell(s.fullName),
+          escapeCell(s.cpf),
+          escapeCell(s.email),
+          escapeCell(s.courseName),
+          escapeCell(s.type === 'graduacao' ? 'Graduação' : 'Pós-Graduação'),
+          escapeCell(s.status),
+          escapeCell(s.enrolledAt),
+          escapeCell(s.createdAt ? s.createdAt.slice(0, 10) : s.enrolledAt),
+        ].join(';'),
+      )
+    }
+  }
+
+  lines.push('')
+  lines.push(
+    `${escapeCell('Relatório gerado automaticamente pelo PortalCursos.NG')} - ${escapeCell(formatDateTime(generatedAt))}`,
+  )
+
+  const csvContent = '\uFEFF' + lines.join('\r\n')
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const dateStr = generatedAt.toISOString().slice(0, 10)
+  const periodStr = sanitizeFilenamePart(payload.periodKey || payload.periodLabel)
+  const filename = `relatorio_matriculas_alunos_${periodStr}_${dateStr}.csv`
 
   triggerDownload(blob, filename)
 }
@@ -860,6 +1113,541 @@ function generateCategoriesChartSvg(data: ReportCategoryData[]): string {
       <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${padding.left + chartW}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
     </svg>
   `
+}
+
+/**
+ * Gera um SVG vetorial para o gráfico de evolução de novas matrículas ao longo do tempo.
+ */
+function generateEnrollmentEvolutionChartSvg(data: EnrollmentEvolutionPoint[]): string {
+  if (!data || data.length === 0) {
+    return `<div style="height: 180px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 11px;">Sem dados de matrículas no período selecionado.</div>`
+  }
+
+  const width = 450
+  const height = 200
+  const padding = { top: 22, right: 15, bottom: 42, left: 35 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  const maxVal = Math.max(5, ...data.map((d) => d.count))
+  const yMax = Math.ceil(maxVal * 1.2)
+  const yTicks = [0, Math.ceil(yMax * 0.25), Math.ceil(yMax * 0.5), Math.ceil(yMax * 0.75), yMax]
+
+  const getY = (val: number) => {
+    const clamped = Math.max(0, val)
+    return padding.top + chartH - (clamped / yMax) * chartH
+  }
+
+  const gridLines = yTicks
+    .map((tickVal) => {
+      const y = getY(tickVal)
+      return `
+        <line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${padding.left + chartW}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1" />
+        <text x="${padding.left - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, sans-serif">${tickVal}</text>
+      `
+    })
+    .join('')
+
+  const n = data.length
+  const slotW = chartW / n
+  const barW = Math.max(6, Math.min(22, slotW * 0.45))
+
+  let barsHtml = ''
+  let xAxisHtml = ''
+  const linePoints: Array<{ x: number; y: number; val: number }> = []
+
+  data.forEach((d, idx) => {
+    const slotCenterX = padding.left + idx * slotW + slotW / 2
+    const barX = slotCenterX - barW / 2
+    const barY = getY(d.count)
+    const barH = Math.max(0, padding.top + chartH - barY)
+
+    linePoints.push({ x: slotCenterX, y: barY, val: d.count })
+
+    barsHtml += `
+      <rect x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" fill="#0284c7" rx="2" />
+      ${d.count > 0 ? `<text x="${slotCenterX.toFixed(1)}" y="${(barY - 3).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#0369a1">${d.count}</text>` : ''}
+    `
+
+    xAxisHtml += `
+      <text x="${slotCenterX.toFixed(1)}" y="${(padding.top + chartH + 13).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="600" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+        ${escapeHtml(d.dateLabel)}
+      </text>
+    `
+  })
+
+  let linePath = ''
+  let dotsHtml = ''
+  if (linePoints.length > 1) {
+    linePath = linePoints.reduce((acc, pt, i) => {
+      return i === 0
+        ? `M ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`
+        : `${acc} L ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`
+    }, '')
+
+    dotsHtml = linePoints
+      .map(
+        (pt) =>
+          `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.5" fill="#0284c7" stroke="#ffffff" stroke-width="1" />`,
+      )
+      .join('')
+  }
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" style="display: block; max-width: 100%; overflow: visible;" xmlns="http://www.w3.org/2000/svg">
+      ${gridLines}
+      <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${padding.left + chartW}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+      ${barsHtml}
+      ${linePath ? `<path d="${linePath}" fill="none" stroke="#0369a1" stroke-width="1.5" />` : ''}
+      ${dotsHtml}
+      ${xAxisHtml}
+      <g transform="translate(${padding.left}, 10)">
+        <rect x="0" y="0" width="8" height="8" rx="1.5" fill="#0284c7" />
+        <text x="12" y="7" font-size="8" fill="#334155" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, sans-serif">Matrículas Realizadas</text>
+      </g>
+    </svg>
+  `
+}
+
+/**
+ * Gera um SVG vetorial para a distribuição de alunos por status.
+ */
+function generateStatusChartSvg(data: StudentStatusCount[]): string {
+  if (!data || data.length === 0) {
+    return `<div style="height: 180px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 11px;">Sem dados de status disponíveis.</div>`
+  }
+
+  const width = 450
+  const height = 200
+  const padding = { top: 18, right: 70, bottom: 20, left: 110 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  const maxCount = Math.max(1, ...data.map((d) => d.count))
+  const totalCount = data.reduce((acc, d) => acc + d.count, 0) || 1
+
+  const rowCount = data.length
+  const rowH = chartH / rowCount
+  const barH = Math.min(16, rowH * 0.55)
+
+  const statusColors: Record<string, string> = {
+    ativo: '#059669',
+    matriculado: '#0284c7',
+    pre_matricula: '#d97706',
+    trancado: '#ea580c',
+    inativo: '#64748b',
+    concluido: '#8b5cf6',
+  }
+
+  let rowsHtml = ''
+
+  data.forEach((d, idx) => {
+    const yCenter = padding.top + idx * rowH + rowH / 2
+    const barY = yCenter - barH / 2
+    const barWidth = Math.max(2, (d.count / maxCount) * chartW)
+    const color = statusColors[d.status] || '#0284c7'
+    const pct = d.percentage || (d.count / totalCount) * 100
+
+    rowsHtml += `
+      <line x1="${padding.left}" y1="${(padding.top + (idx + 1) * rowH).toFixed(1)}" x2="${padding.left + chartW}" y2="${(padding.top + (idx + 1) * rowH).toFixed(1)}" stroke="#f8fafc" stroke-width="1" />
+      <text x="${padding.left - 8}" y="${(yCenter + 3.5).toFixed(1)}" text-anchor="end" font-size="8.5" font-weight="600" fill="#334155" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+        ${escapeHtml(d.label)}
+      </text>
+      <rect x="${padding.left}" y="${barY.toFixed(1)}" width="${chartW}" height="${barH}" fill="#f1f5f9" rx="3" />
+      <rect x="${padding.left}" y="${barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH}" fill="${color}" rx="3" />
+      <text x="${(padding.left + barWidth + 6).toFixed(1)}" y="${(yCenter + 3.5).toFixed(1)}" font-size="8.5" font-weight="700" fill="#1e293b" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+        ${d.count} <tspan fill="#64748b" font-weight="normal" font-size="7.5">(${pct.toFixed(1)}%)</tspan>
+      </text>
+    `
+  })
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" style="display: block; max-width: 100%;" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+      ${rowsHtml}
+      <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${padding.left + chartW}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+    </svg>
+  `
+}
+
+/**
+ * Gera e dispara impressão / download em PDF institucional para o Relatório de Matrículas e Alunos.
+ */
+export function exportMatriculasReportToPdf(payload: MatriculasReportExportPayload): void {
+  const {
+    portalName,
+    periodLabel,
+    generatedAt,
+    generatedBy,
+    kpis,
+    coursesDistribution,
+    evolutionChartData = [],
+    statusChartData = [],
+  } = payload
+
+  const formattedDate = formatDateTime(generatedAt)
+  const dateStr = generatedAt.toISOString().slice(0, 10)
+  const periodStr = sanitizeFilenamePart(payload.periodKey || payload.periodLabel)
+  const documentTitle = `Relatorio_Matriculas_Alunos_${periodStr}_${dateStr}`
+
+  const evolutionChartSvg = generateEnrollmentEvolutionChartSvg(evolutionChartData)
+  const statusChartSvg = generateStatusChartSvg(statusChartData)
+
+  const coursesRowsHtml = coursesDistribution
+    .map((c, idx) => {
+      let statusColor = '#059669'
+      let statusBg = '#ecfdf5'
+      if (c.occupancyRate < 50) {
+        statusColor = '#e11d48'
+        statusBg = '#fff1f2'
+      } else if (c.occupancyRate < 75) {
+        statusColor = '#d97706'
+        statusBg = '#fffbeb'
+      }
+
+      const active = (c.byStatus.ativo || 0) + (c.byStatus.matriculado || 0)
+
+      return `
+        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+          <td style="padding: 8px 10px; font-weight: 600; color: #0f172a;">
+            <div>${escapeHtml(c.courseName)}</div>
+            <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 2px;">
+              <span style="font-family: monospace; font-weight: 600;">${escapeHtml(c.courseCode)}</span> • 
+              <span style="text-transform: capitalize;">${escapeHtml(c.level.replace('_', ' '))}</span> • 
+              <span style="text-transform: uppercase;">${escapeHtml(c.modality)}</span>
+            </div>
+          </td>
+          <td style="padding: 8px 10px; text-align: center; font-weight: 700; color: #0f172a;">
+            ${c.totalStudents}
+          </td>
+          <td style="padding: 8px 10px; text-align: center; color: #0284c7; font-weight: 600;">
+            ${c.newInPeriod > 0 ? `+${c.newInPeriod}` : '0'}
+          </td>
+          <td style="padding: 8px 10px; text-align: center; color: #334155; font-size: 11px;">
+            ${c.graduacaoCount} / ${c.posGraduacaoCount}
+          </td>
+          <td style="padding: 8px 10px; text-align: center; font-size: 11px;">
+            <span style="color: #059669; font-weight: 600;">${active}</span> / 
+            <span style="color: #d97706;">${c.byStatus.pre_matricula || 0}</span> / 
+            <span style="color: #e11d48;">${(c.byStatus.trancado || 0) + (c.byStatus.inativo || 0)}</span>
+          </td>
+          <td style="padding: 8px 10px; text-align: center; color: #334155; font-size: 11px;">
+            ${c.vacancies}
+          </td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; color: ${statusColor}; background-color: ${statusBg};">
+              ${c.occupancyRate.toFixed(1)}%
+            </span>
+          </td>
+        </tr>
+      `
+    })
+    .join('')
+
+  const printWindow = window.open('', '_blank', 'width=1000,height=900')
+  if (!printWindow) {
+    alert(
+      'O navegador bloqueou a abertura da janela para geração do PDF. Por favor, permita pop-ups para este site.',
+    )
+    return
+  }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>${escapeHtml(documentTitle)}</title>
+      <style>
+        @page {
+          size: A4 portrait;
+          margin: 12mm 15mm 15mm 15mm;
+        }
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          color: #0f172a;
+          background: #ffffff;
+          margin: 0;
+          padding: 10px;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #0284c7;
+          padding-bottom: 12px;
+          margin-bottom: 16px;
+        }
+        .brand-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #0284c7;
+          letter-spacing: -0.5px;
+        }
+        .report-subtitle {
+          font-size: 12px;
+          font-weight: 600;
+          color: #475569;
+          margin-top: 2px;
+        }
+        .meta-box {
+          text-align: right;
+          font-size: 10.5px;
+          color: #64748b;
+          line-height: 1.5;
+        }
+        .badge-period {
+          display: inline-block;
+          background: #e0f2fe;
+          color: #0369a1;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 4px;
+          margin-bottom: 4px;
+        }
+        .section-title {
+          font-size: 12px;
+          font-weight: 700;
+          color: #1e293b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-top: 18px;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          border-bottom: 1px solid #e2e8f0;
+          padding-bottom: 4px;
+        }
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+        .kpi-card {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 10px 12px;
+        }
+        .kpi-label {
+          font-size: 10px;
+          font-weight: 600;
+          color: #64748b;
+          text-transform: uppercase;
+        }
+        .kpi-value {
+          font-size: 18px;
+          font-weight: 800;
+          color: #0f172a;
+          margin: 4px 0 2px 0;
+        }
+        .kpi-sub {
+          font-size: 10px;
+          color: #64748b;
+        }
+        .charts-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .chart-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 10px;
+        }
+        .chart-header {
+          margin-bottom: 8px;
+        }
+        .chart-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: #0f172a;
+        }
+        .chart-desc {
+          font-size: 9.5px;
+          color: #64748b;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 11px;
+          margin-top: 6px;
+        }
+        th {
+          background-color: #f1f5f9;
+          color: #334155;
+          text-align: left;
+          padding: 7px 10px;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          border-bottom: 1px solid #cbd5e1;
+        }
+        td {
+          border-bottom: 1px solid #e2e8f0;
+        }
+        .footer {
+          margin-top: 24px;
+          padding-top: 10px;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          font-size: 9.5px;
+          color: #94a3b8;
+        }
+        @media print {
+          body { padding: 0; }
+          .no-print { display: none !important; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="background: #f1f5f9; padding: 12px 16px; margin-bottom: 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 13px; color: #1e293b; font-weight: 600;">
+          Visualização para Impressão e Salvamento em PDF - Matrículas e Alunos
+        </span>
+        <div>
+          <button onclick="window.print()" style="background: #0284c7; color: #ffffff; border: none; padding: 6px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 12px; margin-right: 8px;">
+            Imprimir / Salvar PDF
+          </button>
+          <button onclick="window.close()" style="background: #e2e8f0; color: #475569; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 12px;">
+            Fechar
+          </button>
+        </div>
+      </div>
+
+      <div class="header">
+        <div>
+          <div class="brand-title">${escapeHtml(portalName)}</div>
+          <div class="report-subtitle">Relatório Executivo de Matrículas e Alunos</div>
+        </div>
+        <div class="meta-box">
+          <div class="badge-period">Período: ${escapeHtml(periodLabel)}</div>
+          <div>Gerado em: <strong>${formattedDate}</strong></div>
+          <div>Emissor: <strong>${escapeHtml(generatedBy.name)}</strong> (${escapeHtml(generatedBy.roleTitle)})</div>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <span>1. Indicadores de Alunos e Matrículas (KPIs)</span>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total de Alunos na Base</div>
+          <div class="kpi-value" style="color: #0284c7;">${kpis.totalStudents}</div>
+          <div class="kpi-sub">Cadastros acumulados no sistema</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Novas Matrículas no Período</div>
+          <div class="kpi-value" style="color: #059669;">${kpis.newEnrollmentsInPeriod}</div>
+          <div class="kpi-sub">Ingressos durante o período selecionado</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Alunos Ativos / Matriculados</div>
+          <div class="kpi-value" style="color: #059669;">${kpis.activeOrMatriculatedTotal}</div>
+          <div class="kpi-sub">${kpis.totalStudents > 0 ? ((kpis.activeOrMatriculatedTotal / kpis.totalStudents) * 100).toFixed(1) : 0}% da base total</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Graduação (Total / No Período)</div>
+          <div class="kpi-value" style="color: #0369a1;">${kpis.graduacaoTotal} <span style="font-size: 12px; color: #059669;">(+${kpis.graduacaoInPeriod})</span></div>
+          <div class="kpi-sub">${kpis.totalStudents > 0 ? ((kpis.graduacaoTotal / kpis.totalStudents) * 100).toFixed(1) : 0}% da base</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Pós-Graduação (Total / No Período)</div>
+          <div class="kpi-value" style="color: #7c3aed;">${kpis.posGraduacaoTotal} <span style="font-size: 12px; color: #059669;">(+${kpis.posInPeriod})</span></div>
+          <div class="kpi-sub">${kpis.totalStudents > 0 ? ((kpis.posGraduacaoTotal / kpis.totalStudents) * 100).toFixed(1) : 0}% da base</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Em Pré-Matrícula / Pendentes</div>
+          <div class="kpi-value" style="color: #d97706;">${kpis.statusBreakdown.pre_matricula}</div>
+          <div class="kpi-sub">Trancados: ${kpis.statusBreakdown.trancado} | Inativos: ${kpis.statusBreakdown.inativo}</div>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <span>2. Análise Gráfica: Evolução e Distribuição por Status</span>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Evolução Temporal de Matrículas</div>
+            <div class="chart-desc">Volume de novos alunos cadastrados ao longo do período</div>
+          </div>
+          <div class="chart-container">
+            ${evolutionChartSvg}
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Distribuição de Alunos por Status</div>
+            <div class="chart-desc">Situação cadastral dos alunos na base</div>
+          </div>
+          <div class="chart-container">
+            ${statusChartSvg}
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <span>3. Distribuição de Alunos por Curso e Nível</span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align: left;">Curso & Nível</th>
+            <th style="text-align: center;">Total Alunos</th>
+            <th style="text-align: center;">No Período</th>
+            <th style="text-align: center;">Grad. / Pós</th>
+            <th style="text-align: center;">Ativo / Pré / Outros</th>
+            <th style="text-align: center;">Vagas</th>
+            <th style="text-align: center;">Ocupação</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${coursesRowsHtml}
+        </tbody>
+      </table>
+
+      <div class="footer">
+        <div>PortalCursos.NG • Relatórios Gerenciais • Documento Oficial para Tomada de Decisão</div>
+        <div>Página 1 de 1</div>
+      </div>
+
+      <script>
+        window.addEventListener('load', function() {
+          setTimeout(function() {
+            window.print();
+          }, 300);
+        });
+      </script>
+    </body>
+    </html>
+  `
+
+  printWindow.document.open()
+  printWindow.document.write(htmlContent)
+  printWindow.document.close()
 }
 
 /** Helper para escapar HTML em strings */

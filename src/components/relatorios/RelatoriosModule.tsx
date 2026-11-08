@@ -30,12 +30,21 @@ import { FinancialCharts } from './FinancialCharts'
 import { DecisionInsights, DecisionInsight } from './DecisionInsights'
 import { ExpenseManager } from './ExpenseManager'
 import { Charge, Student, Course, Expense } from '@/types/portal'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   exportReportToCsv,
   exportReportToPdf,
+  exportMatriculasReportToCsv,
+  exportMatriculasReportToPdf,
   canUserExportReports,
   ReportExportPayload,
+  MatriculasReportExportPayload,
+  StudentCourseDistribution,
+  EnrollmentEvolutionPoint,
+  StudentStatusCount,
+  MatriculasReportKpis,
 } from '@/lib/reportExport'
+import { MatriculasAlunosSection } from './MatriculasAlunosSection'
 
 export type PeriodFilter =
   | 'last_30_days'
@@ -58,6 +67,7 @@ export const RelatoriosModule: React.FC = () => {
   const { charges, students, courses, expenses, addExpense, deleteExpense, currentUser } =
     usePortal()
 
+  const [activeTab, setActiveTab] = useState<'financeiro' | 'matriculas'>('financeiro')
   const [period, setPeriod] = useState<PeriodFilter>('current_month')
   const [isExportingCsv, setIsExportingCsv] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -147,6 +157,278 @@ export const RelatoriosModule: React.FC = () => {
     const d = new Date(dateStr)
     return d >= range.start && d <= range.end
   }
+
+  // Date helper for student creation / enrollment
+  const getStudentDate = (s: Student): string => {
+    return s.createdAt || s.created || s.enrolledAt || ''
+  }
+
+  // ==========================================
+  // CÁLCULOS DO RELATÓRIO DE MATRÍCULAS E ALUNOS
+  // ==========================================
+  const {
+    matriculasKpis,
+    studentCoursesDistribution,
+    enrollmentEvolution,
+    studentStatusChartData,
+    newEnrollmentsInPrevPeriod,
+  } = useMemo(() => {
+    const totalStudents = students.length
+
+    // Alunos criados no período atual vs período anterior
+    const currentPeriodStudents = students.filter((s) => {
+      if (period === 'all_time') return true
+      const dateStr = getStudentDate(s)
+      return isDateInRange(dateStr, dateRange)
+    })
+
+    const prevPeriodStudents = students.filter((s) => {
+      if (period === 'all_time') return false
+      const dateStr = getStudentDate(s)
+      return isDateInRange(dateStr, prevRange)
+    })
+
+    // Breakdown de status da base total
+    const statusBreakdown = {
+      ativo: 0,
+      matriculado: 0,
+      pre_matricula: 0,
+      trancado: 0,
+      inativo: 0,
+      concluido: 0,
+    }
+
+    let activeOrMatriculatedTotal = 0
+    let graduacaoTotal = 0
+    let posGraduacaoTotal = 0
+
+    students.forEach((s) => {
+      const st = s.status as keyof typeof statusBreakdown
+      if (statusBreakdown[st] !== undefined) {
+        statusBreakdown[st] += 1
+      }
+      if (s.status === 'ativo' || s.status === 'matriculado') {
+        activeOrMatriculatedTotal += 1
+      }
+      if (s.type === 'graduacao') {
+        graduacaoTotal += 1
+      } else if (s.type === 'pos_graduacao') {
+        posGraduacaoTotal += 1
+      }
+    })
+
+    // Novos no período por tipo
+    let graduacaoInPeriod = 0
+    let posInPeriod = 0
+    currentPeriodStudents.forEach((s) => {
+      if (s.type === 'graduacao') {
+        graduacaoInPeriod += 1
+      } else if (s.type === 'pos_graduacao') {
+        posInPeriod += 1
+      }
+    })
+
+    const matriculasKpis: MatriculasReportKpis = {
+      totalStudents,
+      newEnrollmentsInPeriod: currentPeriodStudents.length,
+      activeOrMatriculatedTotal,
+      graduacaoTotal,
+      posGraduacaoTotal,
+      graduacaoInPeriod,
+      posInPeriod,
+      statusBreakdown,
+    }
+
+    // Distribuição por curso
+    const studentCoursesDistribution: StudentCourseDistribution[] = courses.map((course) => {
+      const courseStudents = students.filter((s) => s.courseId === course.id)
+      const courseNewInPeriod = currentPeriodStudents.filter((s) => s.courseId === course.id)
+
+      const byStatus: {
+        ativo: number
+        matriculado: number
+        pre_matricula: number
+        trancado: number
+        inativo: number
+        concluido: number
+      } = {
+        ativo: 0,
+        matriculado: 0,
+        pre_matricula: 0,
+        trancado: 0,
+        inativo: 0,
+        concluido: 0,
+      }
+
+      let graduacaoCount = 0
+      let posGraduacaoCount = 0
+
+      courseStudents.forEach((s) => {
+        const st = s.status
+        if (st in byStatus) {
+          byStatus[st as keyof typeof byStatus] += 1
+        }
+        if (s.type === 'graduacao') graduacaoCount += 1
+        else if (s.type === 'pos_graduacao') posGraduacaoCount += 1
+      })
+
+      const totalCourseStudents = courseStudents.length
+      const vacancies = course.vacancies || 40
+      const occupancyRate = vacancies > 0 ? (totalCourseStudents / vacancies) * 100 : 0
+
+      return {
+        courseId: course.id,
+        courseName: course.name,
+        courseCode: course.code,
+        level: course.level,
+        modality: course.modality,
+        totalStudents: totalCourseStudents,
+        newInPeriod: courseNewInPeriod.length,
+        graduacaoCount,
+        posGraduacaoCount,
+        vacancies,
+        occupancyRate,
+        byStatus,
+      }
+    })
+
+    // Evolução temporal de novas matrículas
+    let enrollmentEvolution: EnrollmentEvolutionPoint[] = []
+
+    if (period === 'last_30_days') {
+      // 4 semanas
+      const buckets = [
+        { label: 'Semana 1', startDay: 0, endDay: 7, count: 0, grad: 0, pos: 0 },
+        { label: 'Semana 2', startDay: 7, endDay: 14, count: 0, grad: 0, pos: 0 },
+        { label: 'Semana 3', startDay: 14, endDay: 21, count: 0, grad: 0, pos: 0 },
+        { label: 'Semana 4', startDay: 21, endDay: 31, count: 0, grad: 0, pos: 0 },
+      ]
+
+      const nowTime = dateRange.end.getTime()
+      currentPeriodStudents.forEach((s) => {
+        const dStr = getStudentDate(s)
+        if (!dStr) return
+        const diffDays = Math.floor((nowTime - new Date(dStr).getTime()) / (1000 * 60 * 60 * 24))
+        const bucket = buckets.find((b) => diffDays >= b.startDay && diffDays < b.endDay)
+        if (bucket) {
+          bucket.count += 1
+          if (s.type === 'graduacao') bucket.grad += 1
+          else if (s.type === 'pos_graduacao') bucket.pos += 1
+        }
+      })
+
+      enrollmentEvolution = buckets.map((b, idx) => ({
+        dateKey: `sem_${idx}`,
+        dateLabel: b.label,
+        count: b.count,
+        graduacaoCount: b.grad,
+        posCount: b.pos,
+      }))
+    } else if (period === 'current_month' || period === 'last_month') {
+      // 4 semanas do mês
+      const buckets = [
+        { label: 'Dias 1-7', start: 1, end: 7, count: 0, grad: 0, pos: 0 },
+        { label: 'Dias 8-14', start: 8, end: 14, count: 0, grad: 0, pos: 0 },
+        { label: 'Dias 15-21', start: 15, end: 21, count: 0, grad: 0, pos: 0 },
+        { label: 'Dias 22-31', start: 22, end: 31, count: 0, grad: 0, pos: 0 },
+      ]
+
+      currentPeriodStudents.forEach((s) => {
+        const dStr = getStudentDate(s)
+        if (!dStr) return
+        const day = new Date(dStr).getDate()
+        const bucket = buckets.find((b) => day >= b.start && day <= b.end)
+        if (bucket) {
+          bucket.count += 1
+          if (s.type === 'graduacao') bucket.grad += 1
+          else if (s.type === 'pos_graduacao') bucket.pos += 1
+        }
+      })
+
+      enrollmentEvolution = buckets.map((b, idx) => ({
+        dateKey: `week_${idx}`,
+        dateLabel: b.label,
+        count: b.count,
+        graduacaoCount: b.grad,
+        posCount: b.pos,
+      }))
+    } else {
+      // Meses do ano (Jan .. Dez)
+      const monthNames = [
+        'Jan',
+        'Fev',
+        'Mar',
+        'Abr',
+        'Mai',
+        'Jun',
+        'Jul',
+        'Ago',
+        'Set',
+        'Out',
+        'Nov',
+        'Dez',
+      ]
+      const monthBuckets = monthNames.map((name, mIdx) => ({
+        monthIdx: mIdx,
+        label: name,
+        count: 0,
+        grad: 0,
+        pos: 0,
+      }))
+
+      currentPeriodStudents.forEach((s) => {
+        const dStr = getStudentDate(s)
+        if (!dStr) return
+        const d = new Date(dStr)
+        const m = d.getMonth()
+        if (monthBuckets[m]) {
+          monthBuckets[m].count += 1
+          if (s.type === 'graduacao') monthBuckets[m].grad += 1
+          else if (s.type === 'pos_graduacao') monthBuckets[m].pos += 1
+        }
+      })
+
+      enrollmentEvolution = monthBuckets.map((mb) => ({
+        dateKey: `m_${mb.monthIdx}`,
+        dateLabel: mb.label,
+        count: mb.count,
+        graduacaoCount: mb.grad,
+        posCount: mb.pos,
+      }))
+    }
+
+    // Gráfico de distribuição por status
+    const statusLabels: Record<string, string> = {
+      ativo: 'Ativos',
+      matriculado: 'Matriculados',
+      pre_matricula: 'Pré-Matrícula',
+      trancado: 'Trancados',
+      inativo: 'Inativos',
+      concluido: 'Concluídos',
+    }
+
+    const validStatuses: Array<
+      'ativo' | 'inativo' | 'trancado' | 'matriculado' | 'pre_matricula' | 'concluido'
+    > = ['ativo', 'matriculado', 'pre_matricula', 'trancado', 'inativo', 'concluido']
+
+    const studentStatusChartData: StudentStatusCount[] = validStatuses.map((st) => {
+      const count = statusBreakdown[st] || 0
+      return {
+        status: st,
+        label: statusLabels[st] || st,
+        count,
+        percentage: totalStudents > 0 ? (count / totalStudents) * 100 : 0,
+      }
+    })
+
+    return {
+      matriculasKpis,
+      studentCoursesDistribution,
+      enrollmentEvolution,
+      studentStatusChartData,
+      newEnrollmentsInPrevPeriod: prevPeriodStudents.length,
+    }
+  }, [students, courses, period, dateRange, prevRange])
 
   // Filtered charges and expenses for current vs previous period
   const { currentCharges, prevCharges, currentExpenses, prevExpenses } = useMemo(() => {
@@ -431,8 +713,8 @@ export const RelatoriosModule: React.FC = () => {
     return list
   }, [currentMetrics, deltas, prevMetrics, currentCharges, coursePerformance])
 
-  // Prepara payload compartilhado de exportação
-  const getExportPayload = (): ReportExportPayload => {
+  // Prepara payload compartilhado de exportação Financeiro
+  const getFinanceiroExportPayload = (): ReportExportPayload => {
     return {
       portalName: 'PortalCursos.NG',
       periodLabel,
@@ -450,7 +732,40 @@ export const RelatoriosModule: React.FC = () => {
     }
   }
 
-  // Handler para exportação em CSV
+  // Prepara payload compartilhado de exportação Matrículas e Alunos
+  const getMatriculasExportPayload = (): MatriculasReportExportPayload => {
+    return {
+      portalName: 'PortalCursos.NG',
+      periodLabel,
+      periodKey: period,
+      generatedAt: new Date(),
+      generatedBy: {
+        name: currentUser?.name || 'Administrador',
+        roleTitle: currentUser?.roleTitle || 'Gestor',
+        email: currentUser?.email || 'admin@portalcursos.ng',
+      },
+      kpis: matriculasKpis,
+      coursesDistribution: studentCoursesDistribution,
+      evolutionChartData: enrollmentEvolution,
+      statusChartData: studentStatusChartData,
+      detailedStudents: students.map((s) => {
+        const c = courses.find((item) => item.id === s.courseId)
+        return {
+          id: s.id,
+          fullName: s.fullName,
+          cpf: s.cpf,
+          email: s.email,
+          courseName: c?.name || s.courseName || '—',
+          type: s.type,
+          status: s.status,
+          enrolledAt: s.enrolledAt,
+          createdAt: s.createdAt || s.created,
+        }
+      }),
+    }
+  }
+
+  // Handler para exportação em CSV (contextual da aba ativa)
   const handleExportCsv = () => {
     if (!canExport) {
       toast({
@@ -464,12 +779,21 @@ export const RelatoriosModule: React.FC = () => {
 
     try {
       setIsExportingCsv(true)
-      const payload = getExportPayload()
-      exportReportToCsv(payload)
-      toast({
-        title: 'Exportação CSV concluída',
-        description: `Arquivo CSV gerado com sucesso para o período "${periodLabel}". Compatível com Excel.`,
-      })
+      if (activeTab === 'matriculas') {
+        const payload = getMatriculasExportPayload()
+        exportMatriculasReportToCsv(payload)
+        toast({
+          title: 'Exportação CSV de Matrículas concluída',
+          description: `Planilha de Matrículas e Alunos gerada com sucesso para "${periodLabel}". Compatível com Excel.`,
+        })
+      } else {
+        const payload = getFinanceiroExportPayload()
+        exportReportToCsv(payload)
+        toast({
+          title: 'Exportação CSV Financeiro concluída',
+          description: `Planilha Financeira gerada com sucesso para "${periodLabel}". Compatível com Excel.`,
+        })
+      }
     } catch (err) {
       console.error('Erro ao exportar CSV:', err)
       toast({
@@ -482,7 +806,7 @@ export const RelatoriosModule: React.FC = () => {
     }
   }
 
-  // Handler para exportação em PDF
+  // Handler para exportação em PDF (contextual da aba ativa)
   const handleExportPdf = () => {
     if (!canExport) {
       toast({
@@ -496,12 +820,21 @@ export const RelatoriosModule: React.FC = () => {
 
     try {
       setIsExportingPdf(true)
-      const payload = getExportPayload()
-      exportReportToPdf(payload)
-      toast({
-        title: 'Relatório PDF gerado',
-        description: `Janela de impressão e download aberta com o cabeçalho institucional e dados do período "${periodLabel}".`,
-      })
+      if (activeTab === 'matriculas') {
+        const payload = getMatriculasExportPayload()
+        exportMatriculasReportToPdf(payload)
+        toast({
+          title: 'Relatório PDF de Matrículas gerado',
+          description: `Janela de impressão e download de Matrículas e Alunos aberta para o período "${periodLabel}".`,
+        })
+      } else {
+        const payload = getFinanceiroExportPayload()
+        exportReportToPdf(payload)
+        toast({
+          title: 'Relatório PDF Financeiro gerado',
+          description: `Janela de impressão e download financeiro aberta para o período "${periodLabel}".`,
+        })
+      }
     } catch (err) {
       console.error('Erro ao exportar PDF:', err)
       toast({
@@ -525,11 +858,10 @@ export const RelatoriosModule: React.FC = () => {
             </span>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                Relatórios Financeiros & Gestão de Cursos
+                Relatórios Gerenciais & Apoio à Decisão
               </h1>
               <p className="text-xs text-slate-500">
-                Painel analítico para apoio à decisão gerencial com dados reais de cobranças,
-                despesas e ocupação.
+                Painel analítico integrado com relatórios Financeiros e de Matrículas & Alunos.
               </p>
             </div>
           </div>
@@ -572,7 +904,7 @@ export const RelatoriosModule: React.FC = () => {
                 onClick={handleExportCsv}
                 disabled={isExportingCsv}
                 className="h-9 gap-1.5 text-xs font-medium border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                title="Exportar planilha CSV compatível com Excel (BOM UTF-8)"
+                title={`Exportar planilha CSV de ${activeTab === 'matriculas' ? 'Matrículas e Alunos' : 'Financeiro'} (BOM UTF-8)`}
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{isExportingCsv ? 'Exportando...' : 'Exportar CSV'}</span>
@@ -584,7 +916,7 @@ export const RelatoriosModule: React.FC = () => {
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
                 className="h-9 gap-1.5 text-xs font-medium bg-sky-700 hover:bg-sky-800 text-white shadow-xs"
-                title="Exportar documento PDF institucional pronto para impressão"
+                title={`Exportar relatório PDF de ${activeTab === 'matriculas' ? 'Matrículas e Alunos' : 'Financeiro'}`}
               >
                 <Download className="w-3.5 h-3.5 text-white" />
                 <span>{isExportingPdf ? 'Gerando...' : 'Exportar PDF'}</span>
@@ -594,114 +926,161 @@ export const RelatoriosModule: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. SEÇÃO DE KPIS (Visão Geral) */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-sky-700" />
-            Visão Geral dos Indicadores Chave ({periodLabel})
-          </h2>
-          <span className="text-xs text-slate-400">
-            Comparação base: <strong className="text-slate-600">{prevPeriodLabel}</strong>
-          </span>
-        </div>
+      {/* ABAS DE RELATÓRIO: FINANCEIRO vs MATRÍCULAS E ALUNOS */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setActiveTab(val as 'financeiro' | 'matriculas')}
+        className="w-full space-y-6"
+      >
+        <TabsList className="bg-slate-100/90 p-1 border border-slate-200/80 rounded-lg">
+          <TabsTrigger
+            value="financeiro"
+            className="text-xs font-medium gap-1.5 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-xs"
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Relatório Financeiro & Despesas</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="matriculas"
+            className="text-xs font-medium gap-1.5 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-xs"
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Matrículas e Alunos</span>
+            <span className="ml-1 bg-sky-100 text-sky-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+              Novo
+            </span>
+          </TabsTrigger>
+        </TabsList>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-          {/* Receita */}
-          <KpiCard
-            title="Receita Líquida"
-            value={`R$ ${currentMetrics.receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            subValue={`${currentMetrics.paidCount} títulos pagos`}
-            calculationExplanation="Soma do valor de todas as cobranças com status 'pago' liquidadas no período selecionado."
-            delta={deltas.receita}
-            deltaLabel={`vs. ${prevPeriodLabel}`}
-            icon={DollarSign}
+        {/* CONTEÚDO DA ABA 1: FINANCEIRO */}
+        <TabsContent value="financeiro" className="space-y-6 mt-0">
+          {/* 1. SEÇÃO DE KPIS (Visão Geral) */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-sky-700" />
+                Visão Geral dos Indicadores Chave ({periodLabel})
+              </h2>
+              <span className="text-xs text-slate-400">
+                Comparação base: <strong className="text-slate-600">{prevPeriodLabel}</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+              {/* Receita */}
+              <KpiCard
+                title="Receita Líquida"
+                value={`R$ ${currentMetrics.receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                subValue={`${currentMetrics.paidCount} títulos pagos`}
+                calculationExplanation="Soma do valor de todas as cobranças com status 'pago' liquidadas no período selecionado."
+                delta={deltas.receita}
+                deltaLabel={`vs. ${prevPeriodLabel}`}
+                icon={DollarSign}
+              />
+
+              {/* Despesas */}
+              <KpiCard
+                title="Despesas Operacionais"
+                value={`R$ ${currentMetrics.despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                subValue={`${currentExpenses.filter((e) => e.status === 'pago').length} lançamentos pagos`}
+                calculationExplanation="Total de custos operacionais (folha, infraestrutura, tecnologia e serviços) liquidados no período."
+                delta={deltas.despesas}
+                deltaLabel={`vs. ${prevPeriodLabel}`}
+                invertDeltaColor={true} // custo subindo é alerta
+                icon={TrendingDown}
+              />
+
+              {/* Lucro */}
+              <KpiCard
+                title="Resultado / Lucro"
+                value={`R$ ${currentMetrics.lucro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                subValue={`Margem: ${currentMetrics.receita > 0 ? ((currentMetrics.lucro / currentMetrics.receita) * 100).toFixed(1) : 0}%`}
+                calculationExplanation="Receita líquida realizada subtraída das despesas operacionais pagas (Receita − Despesas)."
+                delta={deltas.lucro}
+                deltaLabel={`vs. ${prevPeriodLabel}`}
+                icon={TrendingUp}
+              />
+
+              {/* Inadimplência */}
+              <KpiCard
+                title="Inadimplência"
+                value={`${currentMetrics.defaultRate.toFixed(1)}%`}
+                subValue={`${currentMetrics.overdueCount} títulos em atraso`}
+                calculationExplanation="Percentual de cobranças vencidas/atrasadas sobre o montante total faturado no período (Vencidos ÷ Total Faturado × 100)."
+                delta={deltas.defaultRate}
+                deltaLabel={`p.p. vs. ${prevPeriodLabel}`}
+                invertDeltaColor={true} // inadimplência subindo é ruim
+                icon={Percent}
+              />
+
+              {/* Ticket Médio */}
+              <KpiCard
+                title="Ticket Médio"
+                value={`R$ ${currentMetrics.ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                subValue="Por cobrança liquidada"
+                calculationExplanation="Valor médio recebido por cobrança liquidada no período (Receita Total ÷ Quantidade de Cobranças Pagas)."
+                delta={deltas.ticketMedio}
+                deltaLabel={`vs. ${prevPeriodLabel}`}
+                icon={CreditCard}
+              />
+
+              {/* Taxa de Ocupação */}
+              <KpiCard
+                title="Taxa de Ocupação"
+                value={`${currentMetrics.occupancyRate.toFixed(1)}%`}
+                subValue={`${currentMetrics.totalEnrolled} de ${currentMetrics.totalVacancies} vagas`}
+                calculationExplanation="Percentual de vagas preenchidas nos cursos em relação à capacidade total autorizada (Total de Alunos ÷ Total de Vagas × 100)."
+                delta={0}
+                deltaLabel="Capacidade ativa"
+                icon={Users}
+              />
+            </div>
+          </section>
+
+          {/* 2. SUGESTÕES / OBSERVAÇÕES PARA APOIO À DECISÃO */}
+          <section>
+            <DecisionInsights insights={insights} />
+          </section>
+
+          {/* 3. GRÁFICOS (Evolução + Distribuição por Categoria) */}
+          <section>
+            <FinancialCharts
+              categoriesData={categoriesChartData}
+              evolutionData={evolutionChartData}
+            />
+          </section>
+
+          {/* 4. DESEMPENHO POR CURSO */}
+          <section>
+            <CoursePerformanceTable data={coursePerformance} />
+          </section>
+
+          {/* 5. GESTÃO DE DESPESAS (Com formulário real no banco) */}
+          <section>
+            <ExpenseManager
+              expenses={currentExpenses}
+              courses={courses}
+              onAddExpense={addExpense}
+              onDeleteExpense={deleteExpense}
+              selectedPeriodLabel={periodLabel}
+            />
+          </section>
+        </TabsContent>
+
+        {/* CONTEÚDO DA ABA 2: MATRÍCULAS E ALUNOS */}
+        <TabsContent value="matriculas" className="space-y-6 mt-0">
+          <MatriculasAlunosSection
+            kpis={matriculasKpis}
+            coursesDistribution={studentCoursesDistribution}
+            evolutionData={enrollmentEvolution}
+            statusChartData={studentStatusChartData}
+            students={students}
+            periodLabel={periodLabel}
+            prevPeriodLabel={prevPeriodLabel}
+            newEnrollmentsInPrevPeriod={newEnrollmentsInPrevPeriod}
           />
-
-          {/* Despesas */}
-          <KpiCard
-            title="Despesas Operacionais"
-            value={`R$ ${currentMetrics.despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            subValue={`${currentExpenses.filter((e) => e.status === 'pago').length} lançamentos pagos`}
-            calculationExplanation="Total de custos operacionais (folha, infraestrutura, tecnologia e serviços) liquidados no período."
-            delta={deltas.despesas}
-            deltaLabel={`vs. ${prevPeriodLabel}`}
-            invertDeltaColor={true} // custo subindo é alerta
-            icon={TrendingDown}
-          />
-
-          {/* Lucro */}
-          <KpiCard
-            title="Resultado / Lucro"
-            value={`R$ ${currentMetrics.lucro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            subValue={`Margem: ${currentMetrics.receita > 0 ? ((currentMetrics.lucro / currentMetrics.receita) * 100).toFixed(1) : 0}%`}
-            calculationExplanation="Receita líquida realizada subtraída das despesas operacionais pagas (Receita − Despesas)."
-            delta={deltas.lucro}
-            deltaLabel={`vs. ${prevPeriodLabel}`}
-            icon={TrendingUp}
-          />
-
-          {/* Inadimplência */}
-          <KpiCard
-            title="Inadimplência"
-            value={`${currentMetrics.defaultRate.toFixed(1)}%`}
-            subValue={`${currentMetrics.overdueCount} títulos em atraso`}
-            calculationExplanation="Percentual de cobranças vencidas/atrasadas sobre o montante total faturado no período (Vencidos ÷ Total Faturado × 100)."
-            delta={deltas.defaultRate}
-            deltaLabel={`p.p. vs. ${prevPeriodLabel}`}
-            invertDeltaColor={true} // inadimplência subindo é ruim
-            icon={Percent}
-          />
-
-          {/* Ticket Médio */}
-          <KpiCard
-            title="Ticket Médio"
-            value={`R$ ${currentMetrics.ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            subValue="Por cobrança liquidada"
-            calculationExplanation="Valor médio recebido por cobrança liquidada no período (Receita Total ÷ Quantidade de Cobranças Pagas)."
-            delta={deltas.ticketMedio}
-            deltaLabel={`vs. ${prevPeriodLabel}`}
-            icon={CreditCard}
-          />
-
-          {/* Taxa de Ocupação */}
-          <KpiCard
-            title="Taxa de Ocupação"
-            value={`${currentMetrics.occupancyRate.toFixed(1)}%`}
-            subValue={`${currentMetrics.totalEnrolled} de ${currentMetrics.totalVacancies} vagas`}
-            calculationExplanation="Percentual de vagas preenchidas nos cursos em relação à capacidade total autorizada (Total de Alunos ÷ Total de Vagas × 100)."
-            delta={0}
-            deltaLabel="Capacidade ativa"
-            icon={Users}
-          />
-        </div>
-      </section>
-
-      {/* 2. SUGESTÕES / OBSERVAÇÕES PARA APOIO À DECISÃO */}
-      <section>
-        <DecisionInsights insights={insights} />
-      </section>
-
-      {/* 3. GRÁFICOS (Evolução + Distribuição por Categoria) */}
-      <section>
-        <FinancialCharts categoriesData={categoriesChartData} evolutionData={evolutionChartData} />
-      </section>
-
-      {/* 4. DESEMPENHO POR CURSO */}
-      <section>
-        <CoursePerformanceTable data={coursePerformance} />
-      </section>
-
-      {/* 5. GESTÃO DE DESPESAS (Com formulário real no banco) */}
-      <section>
-        <ExpenseManager
-          expenses={currentExpenses}
-          courses={courses}
-          onAddExpense={addExpense}
-          onDeleteExpense={deleteExpense}
-          selectedPeriodLabel={periodLabel}
-        />
-      </section>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

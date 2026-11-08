@@ -404,6 +404,8 @@ function mapStudent(rec: AnyRec): Student {
       return match ? { ...d, fileUrl: pbFileUrl('students', str(rec.id), match) } : d
     }),
     observations: str(rec.observations) || undefined,
+    createdAt: str(rec.created) || str(rec.createdAt) || str(rec.enrolledAt),
+    created: str(rec.created),
   }
 }
 

@@ -84,6 +84,9 @@ export interface Student {
   enrolledAt: string
   documents: StudentDocument[]
   observations?: string
+  /** Data/hora de criação do registro no banco (PocketBase created autodate). */
+  createdAt?: string
+  created?: string
   /** Arquivo de foto selecionado no formulário, enviado ao banco no cadastro. */
   photoFile?: File
 }
