@@ -26,6 +26,7 @@ import {
   LibraryBook,
   LibraryLoan,
   LibraryLoanStatus,
+  LibrarySettings,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
@@ -63,6 +64,7 @@ export const COLLECTIONS = {
   eadLessons: 'ead_lessons',
   libraryBooks: 'library_books',
   libraryLoans: 'library_loans',
+  librarySettings: 'library_settings',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -866,6 +868,18 @@ export function mapLibraryBook(rec: AnyRec): LibraryBook {
 export function mapLibraryLoan(rec: AnyRec): LibraryLoan {
   const due = str(rec.dueDate)
   const ret = str(rec.returnedAt) || undefined
+  let renewalHistory: string[] = []
+  if (Array.isArray(rec.renewalHistory)) {
+    renewalHistory = rec.renewalHistory.map(String)
+  } else if (typeof rec.renewalHistory === 'string' && rec.renewalHistory.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(rec.renewalHistory)
+      if (Array.isArray(parsed)) renewalHistory = parsed.map(String)
+    } catch {
+      renewalHistory = []
+    }
+  }
+
   return {
     id: str(rec.id),
     bookId: str(rec.bookId),
@@ -878,11 +892,27 @@ export function mapLibraryLoan(rec: AnyRec): LibraryLoan {
     dueDate: due,
     returnedAt: ret,
     renewals: num(rec.renewals, 0),
+    renewalHistory,
     notes: str(rec.notes) || undefined,
     status: computeLoanStatus(due, ret),
     created: str(rec.created),
     updated: str(rec.updated),
   }
+}
+
+export function mapLibrarySettings(rec: AnyRec): LibrarySettings {
+  return {
+    id: str(rec.id),
+    maxRenewals: num(rec.maxRenewals, 2),
+    renewalDays: num(rec.renewalDays, 7),
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export const DEFAULT_LIBRARY_SETTINGS: LibrarySettings = {
+  maxRenewals: 2,
+  renewalDays: 7,
 }
 
 // ---------- loaders ----------
@@ -912,6 +942,7 @@ export async function loadAllData(): Promise<{
   eadLessons: EadLesson[]
   libraryBooks: LibraryBook[]
   libraryLoans: LibraryLoan[]
+  librarySettings: LibrarySettings
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -939,6 +970,7 @@ export async function loadAllData(): Promise<{
     eadLessons,
     rawLibraryBooks,
     libraryLoans,
+    librarySettingsList,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -1104,7 +1136,17 @@ export async function loadAllData(): Promise<{
         ),
       [],
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.librarySettings).getFullList({ limit: 1 })).map(
+          mapLibrarySettings,
+        ),
+      [DEFAULT_LIBRARY_SETTINGS],
+    ),
   ])
+
+  const librarySettings: LibrarySettings =
+    librarySettingsList.length > 0 ? librarySettingsList[0] : DEFAULT_LIBRARY_SETTINGS
 
   // Deriva cópias disponíveis em cada livro: totalCopies - empréstimos ativos daquele bookId
   const activeLoansByBook: Record<string, number> = {}
@@ -1144,6 +1186,7 @@ export async function loadAllData(): Promise<{
     eadLessons,
     libraryBooks,
     libraryLoans,
+    librarySettings,
   }
 }
 
@@ -2359,13 +2402,22 @@ export const portalDb = {
       null as LibraryLoan | null,
     ),
 
-  renewLibraryLoan: (loanId: string, newDueDate: string, currentRenewals: number) =>
+  renewLibraryLoan: (
+    loanId: string,
+    newDueDate: string,
+    currentRenewals: number,
+    newHistory?: string[],
+  ) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.libraryLoans).update(loanId, {
+        const payload: Record<string, unknown> = {
           dueDate: newDueDate,
           renewals: currentRenewals + 1,
-        })
+        }
+        if (newHistory) {
+          payload.renewalHistory = JSON.stringify(newHistory)
+        }
+        const rec = await pb.collection(COLLECTIONS.libraryLoans).update(loanId, payload)
         return mapLibraryLoan(rec as unknown as AnyRec)
       },
       null as LibraryLoan | null,
@@ -2376,4 +2428,30 @@ export const portalDb = {
       await pb.collection(COLLECTIONS.libraryLoans).delete(loanId)
       return true
     }, false),
+
+  saveLibrarySettings: (settings: { id?: string; maxRenewals: number; renewalDays: number }) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          maxRenewals: Math.max(0, Math.min(20, Math.round(settings.maxRenewals))),
+          renewalDays: Math.max(1, Math.min(90, Math.round(settings.renewalDays))),
+        }
+        let rec
+        if (settings.id) {
+          rec = await pb.collection(COLLECTIONS.librarySettings).update(settings.id, payload)
+        } else {
+          // Tenta atualizar o primeiro registro se existir
+          const existing = await pb
+            .collection(COLLECTIONS.librarySettings)
+            .getFullList({ limit: 1 })
+          if (existing.length > 0) {
+            rec = await pb.collection(COLLECTIONS.librarySettings).update(existing[0].id, payload)
+          } else {
+            rec = await pb.collection(COLLECTIONS.librarySettings).create(payload)
+          }
+        }
+        return mapLibrarySettings(rec as unknown as AnyRec)
+      },
+      null as LibrarySettings | null,
+    ),
 }

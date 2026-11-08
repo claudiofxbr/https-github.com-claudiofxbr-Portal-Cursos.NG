@@ -37,6 +37,9 @@ import {
   History,
   AlertCircle,
   FileText,
+  Settings2,
+  ShieldAlert,
+  Info,
 } from 'lucide-react'
 
 interface BibliotecaEmprestimosTabProps {
@@ -51,11 +54,38 @@ export function BibliotecaEmprestimosTab({
   const {
     libraryBooks,
     libraryLoans,
+    librarySettings,
+    updateLibrarySettings,
+    canRenewLoan,
+    currentUser,
     students,
     createLibraryLoan,
     returnLibraryLoan,
     renewLibraryLoan,
   } = usePortal()
+
+  const canForceRenew = currentUser?.role === 'root' || currentUser?.role === 'admin'
+  const canManageSettings =
+    currentUser?.role === 'root' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'secretaria'
+
+  // Modal de Configurações da Biblioteca
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [settingsMaxRenewals, setSettingsMaxRenewals] = useState(librarySettings.maxRenewals)
+  const [settingsRenewalDays, setSettingsRenewalDays] = useState(librarySettings.renewalDays)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
+
+  // Sincroniza formulário de settings quando o contexto carregar
+  React.useEffect(() => {
+    setSettingsMaxRenewals(librarySettings.maxRenewals)
+    setSettingsRenewalDays(librarySettings.renewalDays)
+  }, [librarySettings])
+
+  // Diálogo de confirmação de Renovação Forçada (além do limite)
+  const [forceRenewTarget, setForceRenewTarget] = useState<LibraryLoan | null>(null)
+  const [forceRenewSubmitting, setForceRenewSubmitting] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | LibraryLoanStatus>('todos')
@@ -186,10 +216,44 @@ export function BibliotecaEmprestimosTab({
     if (!loanToRenew) return
     setRenewSubmitting(true)
     try {
-      await renewLibraryLoan(loanToRenew.id, 7) // +7 dias de renovação
+      await renewLibraryLoan(loanToRenew.id, librarySettings.renewalDays || 7)
       setLoanToRenew(null)
     } finally {
       setRenewSubmitting(false)
+    }
+  }
+
+  const handleConfirmForceRenew = async () => {
+    if (!forceRenewTarget) return
+    setForceRenewSubmitting(true)
+    try {
+      await renewLibraryLoan(forceRenewTarget.id, librarySettings.renewalDays || 7, { force: true })
+      setForceRenewTarget(null)
+    } finally {
+      setForceRenewSubmitting(false)
+    }
+  }
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSettingsSaving(true)
+    setSettingsMessage(null)
+    try {
+      const res = await updateLibrarySettings({
+        maxRenewals: Number(settingsMaxRenewals),
+        renewalDays: Number(settingsRenewalDays),
+      })
+      if (res.success) {
+        setSettingsMessage('Regras de renovação atualizadas com sucesso!')
+        setTimeout(() => {
+          setIsSettingsOpen(false)
+          setSettingsMessage(null)
+        }, 1200)
+      } else {
+        setSettingsMessage(res.error || 'Erro ao salvar configurações.')
+      }
+    } finally {
+      setSettingsSaving(false)
     }
   }
 
@@ -302,13 +366,30 @@ export function BibliotecaEmprestimosTab({
           </div>
         </div>
 
-        <Button
-          onClick={handleOpenNewLoan}
-          className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-9 gap-1.5 shadow-sm shadow-blue-500/20"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Empréstimo
-        </Button>
+        <div className="flex items-center gap-2">
+          {canManageSettings && (
+            <Button
+              variant="outline"
+              onClick={() => setIsSettingsOpen(true)}
+              className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs h-9 gap-1.5"
+              title="Configurar limites de renovação da biblioteca"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-blue-400" />
+              <span>Regras de Renovação</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded bg-slate-900 font-mono text-[10px] text-blue-300 border border-slate-700">
+                {librarySettings.maxRenewals}x / +{librarySettings.renewalDays}d
+              </span>
+            </Button>
+          )}
+
+          <Button
+            onClick={handleOpenNewLoan}
+            className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-9 gap-1.5 shadow-sm shadow-blue-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Empréstimo
+          </Button>
+        </div>
       </div>
 
       {/* Tabela / Lista de Empréstimos */}
@@ -390,28 +471,102 @@ export function BibliotecaEmprestimosTab({
                         )}
                       </td>
 
-                      <td className="py-3 px-4 text-center font-mono">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px]">
-                          {loan.renewals}x
-                        </span>
+                      <td className="py-3 px-4 text-center">
+                        <div className="inline-flex flex-col items-center">
+                          <span
+                            className={`px-2 py-0.5 rounded font-mono text-[11px] font-medium ${
+                              loan.renewals >= librarySettings.maxRenewals
+                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                : 'bg-slate-800 text-slate-200'
+                            }`}
+                            title={`${loan.renewals} de ${librarySettings.maxRenewals} renovações utilizadas`}
+                          >
+                            {loan.renewals}/{librarySettings.maxRenewals}
+                          </span>
+                          {loan.renewalHistory && loan.renewalHistory.length > 0 && (
+                            <span
+                              className="text-[10px] text-slate-400 font-mono mt-0.5"
+                              title={`Histórico: ${loan.renewalHistory
+                                .map((d) => d.slice(0, 10))
+                                .join(', ')}`}
+                            >
+                              Última:{' '}
+                              {loan.renewalHistory[loan.renewalHistory.length - 1].slice(0, 10)}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4">{renderStatusBadge(loan.status)}</td>
 
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {!isReturned ? (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setLoanToRenew(loan)}
-                                className="h-7 px-2.5 text-xs border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-blue-300 hover:text-white gap-1"
-                                title="Renovar por mais 7 dias"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                Renovar (+7d)
-                              </Button>
+                        {(() => {
+                          if (isReturned) {
+                            return (
+                              <span className="text-[11px] text-slate-500 font-medium italic">
+                                Finalizado
+                              </span>
+                            )
+                          }
+
+                          const check = canRenewLoan(loan)
+
+                          return (
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {check.allowed ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setLoanToRenew(loan)}
+                                  className="h-7 px-2.5 text-xs border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-blue-300 hover:text-white gap-1"
+                                  title={`Renovar por mais ${librarySettings.renewalDays} dias (${check.renewalsLeft} restante${check.renewalsLeft === 1 ? '' : 's'})`}
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Renovar (+{librarySettings.renewalDays}d)
+                                </Button>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  {check.reason === 'atrasado' && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-rose-500/10 text-rose-300 border-rose-500/30 text-[10px] h-6 px-2 gap-1 cursor-help"
+                                      title="Empréstimo atrasado, devolva primeiro"
+                                    >
+                                      <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
+                                      <span>Atrasado (bloqueado)</span>
+                                    </Badge>
+                                  )}
+
+                                  {check.reason === 'limite_atingido' && (
+                                    <>
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] h-6 px-2 gap-1 cursor-help"
+                                        title={`Limite esgotado: ${loan.renewals} de ${librarySettings.maxRenewals} renovações usadas`}
+                                      >
+                                        <ShieldAlert className="w-3 h-3 shrink-0 text-amber-400" />
+                                        <span>
+                                          Limite atingido ({loan.renewals}/
+                                          {librarySettings.maxRenewals})
+                                        </span>
+                                      </Badge>
+
+                                      {canForceRenew && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => setForceRenewTarget(loan)}
+                                          className="h-7 px-2 text-[10px] border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 gap-1 font-semibold"
+                                          title="Root/Admin: forçar renovação extra além do limite configurado"
+                                        >
+                                          <RotateCcw className="w-3 h-3" />
+                                          Forçar (+{librarySettings.renewalDays}d)
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
 
                               <Button
                                 size="sm"
@@ -422,13 +577,9 @@ export function BibliotecaEmprestimosTab({
                                 <CheckCircle2 className="w-3 h-3" />
                                 Devolver
                               </Button>
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-slate-500 font-medium italic">
-                              Finalizado
-                            </span>
-                          )}
-                        </div>
+                            </div>
+                          )
+                        })()}
                       </td>
                     </tr>
                   )
@@ -582,7 +733,7 @@ export function BibliotecaEmprestimosTab({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Diálogo de Renovação */}
+      {/* Diálogo de Renovação Padrão */}
       <AlertDialog open={!!loanToRenew} onOpenChange={(open) => !open && setLoanToRenew(null)}>
         <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-100">
           <AlertDialogHeader>
@@ -593,14 +744,28 @@ export function BibliotecaEmprestimosTab({
               <p>
                 Deseja estender o prazo de devolução de{' '}
                 <strong className="text-slate-200">"{loanToRenew?.bookTitle}"</strong> por mais{' '}
-                <strong>7 dias</strong>?
+                <strong className="text-blue-300">{librarySettings.renewalDays} dias</strong>?
               </p>
-              <p className="text-[11px] text-slate-400">
-                Prazo atual:{' '}
-                <span className="font-mono text-slate-200">{loanToRenew?.dueDate}</span> •
-                Renovações anteriores:{' '}
-                <span className="font-mono text-slate-200">{loanToRenew?.renewals}</span>
-              </p>
+              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                <div>
+                  Prazo atual:{' '}
+                  <span className="font-mono font-semibold text-slate-100">
+                    {loanToRenew?.dueDate}
+                  </span>
+                </div>
+                <div>
+                  Renovações utilizadas:{' '}
+                  <span className="font-mono font-semibold text-blue-300">
+                    {loanToRenew?.renewals || 0} de {librarySettings.maxRenewals}
+                  </span>
+                </div>
+                {loanToRenew?.renewalHistory && loanToRenew.renewalHistory.length > 0 && (
+                  <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
+                    Última renovação:{' '}
+                    {loanToRenew.renewalHistory[loanToRenew.renewalHistory.length - 1].slice(0, 10)}
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -612,11 +777,155 @@ export function BibliotecaEmprestimosTab({
               onClick={handleConfirmRenew}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
             >
-              {renewSubmitting ? 'Renovando...' : 'Confirmar Renovação (+7d)'}
+              {renewSubmitting
+                ? 'Renovando...'
+                : `Confirmar Renovação (+${librarySettings.renewalDays}d)`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Diálogo de Renovação Forçada (Root / Admin) */}
+      <AlertDialog
+        open={!!forceRenewTarget}
+        onOpenChange={(open) => !open && setForceRenewTarget(null)}
+      >
+        <AlertDialogContent className="bg-slate-900 border-amber-500/30 text-slate-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base text-amber-300 flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-amber-400" />
+              Forçar Renovação Extra (Privilégio Root/Admin)
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-300 space-y-2">
+              <p>
+                O empréstimo da obra{' '}
+                <strong className="text-white">"{forceRenewTarget?.bookTitle}"</strong> para o aluno{' '}
+                <strong className="text-white">{forceRenewTarget?.studentName}</strong> já atingiu o
+                limite de{' '}
+                <strong className="text-amber-300">{librarySettings.maxRenewals} renovações</strong>{' '}
+                (usadas: {forceRenewTarget?.renewals}).
+              </p>
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs space-y-1">
+                <p className="font-semibold text-amber-300">Confirmação explícita de exceção:</p>
+                <p className="text-[11px] text-amber-200/90">
+                  Esta ação concederá mais <strong>{librarySettings.renewalDays} dias</strong> a
+                  partir do prazo atual ({forceRenewTarget?.dueDate}), registrando a exceção no
+                  histórico.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={forceRenewSubmitting}
+              onClick={handleConfirmForceRenew}
+              className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold"
+            >
+              {forceRenewSubmitting
+                ? 'Gravando exceção...'
+                : `Sim, Forçar Renovação (+${librarySettings.renewalDays}d)`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal de Configuração de Regras de Renovação */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base text-white flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-blue-400" />
+              Regras de Renovação de Empréstimos
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-400">
+              Defina as políticas globais de empréstimos da biblioteca. As regras são aplicadas
+              tanto na gestão administrativa quanto no portal do aluno.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveSettings} className="space-y-4 py-2">
+            {settingsMessage && (
+              <div
+                className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                  settingsMessage.includes('sucesso')
+                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                    : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
+                }`}
+              >
+                <Info className="w-4 h-4 shrink-0" />
+                <span>{settingsMessage}</span>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-200">
+                Limite Máximo de Renovações por Empréstimo
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                max={20}
+                value={settingsMaxRenewals}
+                onChange={(e) => setSettingsMaxRenewals(Number(e.target.value))}
+                className="bg-slate-950 border-slate-800 text-xs text-white"
+                required
+              />
+              <p className="text-[11px] text-slate-500">
+                Padrão recomendado: 2 vezes. Zero desativa renovações regulares.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-200">Dias Adicionados por Renovação</Label>
+              <Input
+                type="number"
+                min={1}
+                max={90}
+                value={settingsRenewalDays}
+                onChange={(e) => setSettingsRenewalDays(Number(e.target.value))}
+                className="bg-slate-950 border-slate-800 text-xs text-white"
+                required
+              />
+              <p className="text-[11px] text-slate-500">
+                Padrão recomendado: 7 dias por ciclo de renovação.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-200 space-y-1">
+              <p className="font-semibold text-blue-300 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-blue-400" />
+                Regras automáticas do sistema:
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                <li>Empréstimos atrasados são bloqueados imediatamente.</li>
+                <li>Ao atingir o limite, o aluno e a secretaria são informados.</li>
+                <li>Perfis Root e Admin têm permissão para forçar exceções no balcão.</li>
+              </ul>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsSettingsOpen(false)}
+                className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
+              >
+                Fechar
+              </Button>
+              <Button
+                type="submit"
+                disabled={settingsSaving}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+              >
+                {settingsSaving ? 'Salvando...' : 'Salvar Regras'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

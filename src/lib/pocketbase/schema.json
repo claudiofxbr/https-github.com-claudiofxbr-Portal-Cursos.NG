@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T14:06:14.872Z",
+  "generatedAt": "2026-11-08T14:19:23.158Z",
   "collections": [
     {
       "name": "users",
@@ -2361,6 +2361,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "renewalHistory",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -2368,6 +2374,46 @@
         "CREATE INDEX idx_library_loans_student ON library_loans (studentId)",
         "CREATE INDEX idx_library_loans_due ON library_loans (dueDate)"
       ]
+    },
+    {
+      "name": "library_settings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "maxRenewals",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "renewalDays",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

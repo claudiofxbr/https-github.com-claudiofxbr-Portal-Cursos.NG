@@ -26,10 +26,19 @@ import {
   Library,
   Info,
   FileText,
+  ShieldAlert,
 } from 'lucide-react'
 
 export function AlunoBibliotecaModule() {
-  const { currentUser, students, libraryLoans, renewLibraryLoan, libraryBooks } = usePortal()
+  const {
+    currentUser,
+    students,
+    libraryLoans,
+    librarySettings,
+    canRenewLoan,
+    renewLibraryLoan,
+    libraryBooks,
+  } = usePortal()
 
   // Determina o ID do aluno associado ao usuário logado
   const currentStudent =
@@ -72,9 +81,11 @@ export function AlunoBibliotecaModule() {
     setRenewSubmitting(true)
     setRenewMessage(null)
     try {
-      const res = await renewLibraryLoan(loanToRenew.id, 7)
+      const res = await renewLibraryLoan(loanToRenew.id, librarySettings.renewalDays || 7)
       if (res.success) {
-        setRenewMessage('Empréstimo renovado com sucesso por mais 7 dias!')
+        setRenewMessage(
+          `Empréstimo renovado com sucesso por mais ${librarySettings.renewalDays || 7} dias!`,
+        )
       } else {
         setRenewMessage(res.error || 'Não foi possível renovar o empréstimo.')
       }
@@ -101,7 +112,6 @@ export function AlunoBibliotecaModule() {
           </p>
         </div>
       </div>
-
       {renewMessage && (
         <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -116,7 +126,6 @@ export function AlunoBibliotecaModule() {
           </button>
         </div>
       )}
-
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="bg-slate-900/60 border-slate-800">
@@ -158,7 +167,6 @@ export function AlunoBibliotecaModule() {
           </CardContent>
         </Card>
       </div>
-
       {/* Alerta de Atraso se houver */}
       {overdueLoans.length > 0 && (
         <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 flex items-start gap-3">
@@ -176,7 +184,6 @@ export function AlunoBibliotecaModule() {
           </div>
         </div>
       )}
-
       {/* Barra de busca */}
       <div className="flex items-center gap-2 max-w-md">
         <div className="relative flex-1">
@@ -189,7 +196,6 @@ export function AlunoBibliotecaModule() {
           />
         </div>
       </div>
-
       {/* Lista de Empréstimos do Aluno */}
       {filteredLoans.length === 0 ? (
         <Card className="bg-slate-900/30 border-slate-800/80">
@@ -288,17 +294,71 @@ export function AlunoBibliotecaModule() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                    {!isReturned && (
-                      <Button
-                        size="sm"
-                        onClick={() => setLoanToRenew(loan)}
-                        className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        Renovar Prazo (+7d)
-                      </Button>
-                    )}
+                  <div className="flex flex-col items-end gap-2 self-end sm:self-center shrink-0">
+                    {!isReturned &&
+                      (() => {
+                        const check = canRenewLoan(loan)
+
+                        if (check.allowed) {
+                          return (
+                            <div className="flex flex-col items-end gap-1">
+                              <Button
+                                size="sm"
+                                onClick={() => setLoanToRenew(loan)}
+                                className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Renovar Prazo (+{librarySettings.renewalDays}d)
+                              </Button>
+                              <span className="text-[11px] text-blue-300 font-medium">
+                                {check.message}
+                              </span>
+                            </div>
+                          )
+                        }
+
+                        if (check.reason === 'atrasado') {
+                          return (
+                            <div className="flex flex-col items-end gap-1">
+                              <Button
+                                size="sm"
+                                disabled
+                                className="h-8 text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-rose-500/20"
+                                title="Empréstimo atrasado, devolva primeiro"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 mr-1" />
+                                Renovação Indisponível
+                              </Button>
+                              <span className="text-[11px] text-rose-400 font-medium flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                Empréstimo atrasado, devolva primeiro
+                              </span>
+                            </div>
+                          )
+                        }
+
+                        if (check.reason === 'limite_atingido') {
+                          return (
+                            <div className="flex flex-col items-end gap-1">
+                              <Button
+                                size="sm"
+                                disabled
+                                className="h-8 text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-amber-500/20"
+                                title={`Limite de renovações atingido (${loan.renewals} de ${librarySettings.maxRenewals} usadas)`}
+                              >
+                                <ShieldAlert className="w-3.5 h-3.5 text-amber-400 mr-1" />
+                                Limite Atingido
+                              </Button>
+                              <span className="text-[11px] text-amber-300 font-medium flex items-center gap-1">
+                                <ShieldAlert className="w-3 h-3" />
+                                {check.message}
+                              </span>
+                            </div>
+                          )
+                        }
+
+                        return null
+                      })()}
                   </div>
                 </CardContent>
               </Card>
@@ -306,7 +366,6 @@ export function AlunoBibliotecaModule() {
           })}
         </div>
       )}
-
       {/* Regras e Orientações da Biblioteca */}
       <Card className="bg-slate-900/40 border-slate-800">
         <CardHeader className="p-4 pb-2">
@@ -330,7 +389,6 @@ export function AlunoBibliotecaModule() {
           </p>
         </CardContent>
       </Card>
-
       {/* Diálogo de Renovação do Aluno */}
       <AlertDialog open={!!loanToRenew} onOpenChange={(open) => !open && setLoanToRenew(null)}>
         <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-100">
@@ -342,14 +400,22 @@ export function AlunoBibliotecaModule() {
               <p>
                 Deseja prorrogar o prazo de devolução de{' '}
                 <strong className="text-slate-200">"{loanToRenew?.bookTitle}"</strong> por mais{' '}
-                <strong>7 dias</strong>?
+                <strong className="text-blue-300">{librarySettings.renewalDays} dias</strong>?
               </p>
-              <p className="text-[11px] text-slate-400">
-                Data de devolução atual:{' '}
-                <span className="font-mono text-slate-200">{loanToRenew?.dueDate}</span> •
-                Renovações já efetuadas:{' '}
-                <span className="font-mono text-slate-200">{loanToRenew?.renewals}</span>
-              </p>
+              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                <div>
+                  Data de devolução atual:{' '}
+                  <span className="font-mono font-semibold text-slate-100">
+                    {loanToRenew?.dueDate}
+                  </span>
+                </div>
+                <div>
+                  Renovações utilizadas:{' '}
+                  <span className="font-mono font-semibold text-blue-300">
+                    {loanToRenew?.renewals || 0} de {librarySettings.maxRenewals}
+                  </span>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -361,11 +427,13 @@ export function AlunoBibliotecaModule() {
               onClick={handleConfirmRenew}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
             >
-              {renewSubmitting ? 'Renovando...' : 'Confirmar Renovação'}
+              {renewSubmitting
+                ? 'Renovando...'
+                : `Confirmar Renovação (+${librarySettings.renewalDays}d)`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>{' '}
     </div>
   )
 }

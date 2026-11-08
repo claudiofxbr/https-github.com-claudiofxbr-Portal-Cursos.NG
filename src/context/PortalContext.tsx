@@ -24,6 +24,7 @@ import {
   EadLesson,
   LibraryBook,
   LibraryLoan,
+  LibrarySettings,
   SystemDiagnostic,
 } from '@/types/portal'
 import {
@@ -55,6 +56,7 @@ import {
   mapAuthUser,
   AnyRec,
   parseVideoUrl,
+  DEFAULT_LIBRARY_SETTINGS,
 } from '@/lib/portalDb'
 import { calculateConsolidatedAttendance } from '@/lib/academicCalculations'
 
@@ -210,6 +212,17 @@ interface PortalContextType {
   // Biblioteca (Acervo & Empréstimos)
   libraryBooks: LibraryBook[]
   libraryLoans: LibraryLoan[]
+  librarySettings: LibrarySettings
+  updateLibrarySettings: (
+    settings: Partial<Omit<LibrarySettings, 'id' | 'created' | 'updated'>>,
+  ) => Promise<{ success: boolean; settings?: LibrarySettings; error?: string }>
+  canRenewLoan: (loan: LibraryLoan) => {
+    allowed: boolean
+    reason?: 'atrasado' | 'limite_atingido' | 'devolvido'
+    message: string
+    renewalsLeft: number
+    maxRenewals: number
+  }
   createLibraryBook: (
     data: Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>,
   ) => Promise<LibraryBook | null>
@@ -232,6 +245,7 @@ interface PortalContextType {
   renewLibraryLoan: (
     loanId: string,
     additionalDays?: number,
+    options?: { force?: boolean },
   ) => Promise<{ success: boolean; loan?: LibraryLoan; error?: string }>
   deleteLibraryLoan: (id: string) => Promise<boolean>
 
@@ -442,6 +456,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [eadLessons, setEadLessons] = useState<EadLesson[]>([])
   const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([])
   const [libraryLoans, setLibraryLoans] = useState<LibraryLoan[]>([])
+  const [librarySettings, setLibrarySettings] = useState<LibrarySettings>(DEFAULT_LIBRARY_SETTINGS)
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -480,6 +495,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.eadLessons) setEadLessons(data.eadLessons)
       if (data.libraryBooks) setLibraryBooks(data.libraryBooks)
       if (data.libraryLoans) setLibraryLoans(data.libraryLoans)
+      if (data.librarySettings) setLibrarySettings(data.librarySettings)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -2277,35 +2293,143 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const canRenewLoan = useCallback(
+    (
+      loan: LibraryLoan,
+    ): {
+      allowed: boolean
+      reason?: 'atrasado' | 'limite_atingido' | 'devolvido'
+      message: string
+      renewalsLeft: number
+      maxRenewals: number
+    } => {
+      const maxRenewals = librarySettings?.maxRenewals ?? 2
+      const renewalsUsed = loan.renewals || 0
+      const renewalsLeft = Math.max(0, maxRenewals - renewalsUsed)
+      const todayIso = new Date().toISOString().slice(0, 10)
+
+      if (loan.returnedAt) {
+        return {
+          allowed: false,
+          reason: 'devolvido',
+          message: 'Livro já devolvido ao acervo.',
+          renewalsLeft: 0,
+          maxRenewals,
+        }
+      }
+
+      if (loan.status === 'atrasado' || (loan.dueDate && loan.dueDate < todayIso)) {
+        return {
+          allowed: false,
+          reason: 'atrasado',
+          message: 'Empréstimo atrasado, devolva primeiro.',
+          renewalsLeft,
+          maxRenewals,
+        }
+      }
+
+      if (renewalsUsed >= maxRenewals) {
+        return {
+          allowed: false,
+          reason: 'limite_atingido',
+          message: `Limite de renovações atingido (${renewalsUsed} de ${maxRenewals} usadas).`,
+          renewalsLeft: 0,
+          maxRenewals,
+        }
+      }
+
+      return {
+        allowed: true,
+        message: `Você pode renovar mais ${renewalsLeft} vez${renewalsLeft === 1 ? '' : 'es'}.`,
+        renewalsLeft,
+        maxRenewals,
+      }
+    },
+    [librarySettings],
+  )
+
+  const updateLibrarySettings = async (
+    newSettings: Partial<Omit<LibrarySettings, 'id' | 'created' | 'updated'>>,
+  ): Promise<{ success: boolean; settings?: LibrarySettings; error?: string }> => {
+    const merged: LibrarySettings = {
+      ...librarySettings,
+      ...newSettings,
+      maxRenewals:
+        newSettings.maxRenewals !== undefined
+          ? Math.max(0, Math.min(20, Math.round(newSettings.maxRenewals)))
+          : librarySettings.maxRenewals,
+      renewalDays:
+        newSettings.renewalDays !== undefined
+          ? Math.max(1, Math.min(90, Math.round(newSettings.renewalDays)))
+          : librarySettings.renewalDays,
+      updated: new Date().toISOString(),
+    }
+    setLibrarySettings(merged)
+
+    try {
+      const saved = await portalDb.saveLibrarySettings(merged)
+      if (saved) {
+        setLibrarySettings(saved)
+        return { success: true, settings: saved }
+      }
+      return { success: true, settings: merged }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao gravar configurações da biblioteca:', err)
+      return { success: true, settings: merged }
+    }
+  }
+
   const renewLibraryLoan = async (
     loanId: string,
-    additionalDays = 7,
+    additionalDays?: number,
+    options?: { force?: boolean },
   ): Promise<{ success: boolean; loan?: LibraryLoan; error?: string }> => {
     const loan = libraryLoans.find((l) => l.id === loanId)
     if (!loan) {
       return { success: false, error: 'Empréstimo não encontrado.' }
     }
-    if (loan.returnedAt) {
-      return { success: false, error: 'Não é possível renovar um empréstimo já devolvido.' }
+
+    // Validação das regras
+    const check = canRenewLoan(loan)
+    if (!check.allowed && !options?.force) {
+      return { success: false, error: check.message }
     }
 
+    // Se for atrasado ou devolvido, nem force permite
+    if (check.reason === 'devolvido') {
+      return { success: false, error: 'Não é possível renovar um empréstimo já devolvido.' }
+    }
+    if (check.reason === 'atrasado' && !options?.force) {
+      return { success: false, error: 'Empréstimo atrasado, devolva primeiro.' }
+    }
+
+    const daysToAdd = additionalDays ?? librarySettings.renewalDays ?? 7
     const baseDate = new Date(loan.dueDate + 'T12:00:00')
-    baseDate.setDate(baseDate.getDate() + additionalDays)
+    baseDate.setDate(baseDate.getDate() + daysToAdd)
     const newDueDate = baseDate.toISOString().slice(0, 10)
     const todayIso = new Date().toISOString().slice(0, 10)
+
+    const nowIso = new Date().toISOString()
+    const updatedHistory = [...(loan.renewalHistory || []), nowIso]
 
     const updatedLoan: LibraryLoan = {
       ...loan,
       dueDate: newDueDate,
       renewals: loan.renewals + 1,
+      renewalHistory: updatedHistory,
       status: newDueDate < todayIso ? 'atrasado' : 'ativo',
-      updated: new Date().toISOString(),
+      updated: nowIso,
     }
 
     setLibraryLoans((prev) => prev.map((l) => (l.id === loanId ? updatedLoan : l)))
 
     try {
-      const saved = await portalDb.renewLibraryLoan(loanId, newDueDate, loan.renewals)
+      const saved = await portalDb.renewLibraryLoan(
+        loanId,
+        newDueDate,
+        loan.renewals,
+        updatedHistory,
+      )
       if (saved) {
         setLibraryLoans((prev) => prev.map((l) => (l.id === loanId ? saved : l)))
         return { success: true, loan: saved }
@@ -2419,6 +2543,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         reorderEadLessons,
         libraryBooks,
         libraryLoans,
+        librarySettings,
+        updateLibrarySettings,
+        canRenewLoan,
         createLibraryBook,
         updateLibraryBook,
         deleteLibraryBook,

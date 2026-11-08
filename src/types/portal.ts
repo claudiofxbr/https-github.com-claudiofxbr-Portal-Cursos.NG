@@ -547,8 +547,17 @@ export interface LibraryLoan {
   dueDate: string // YYYY-MM-DD
   returnedAt?: string // YYYY-MM-DD
   renewals: number
+  renewalHistory?: string[] // lista de datas/timestamps ISO das renovações efetuadas
   notes?: string
   status: LibraryLoanStatus
+  created?: string
+  updated?: string
+}
+
+export interface LibrarySettings {
+  id?: string
+  maxRenewals: number // limite máximo de renovações por empréstimo (padrão 2)
+  renewalDays: number // dias concedidos a cada renovação (padrão 7)
   created?: string
   updated?: string
 }
