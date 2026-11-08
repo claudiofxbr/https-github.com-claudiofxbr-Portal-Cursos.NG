@@ -351,12 +351,15 @@ export function ProfessorEad({
                             studentId: s.id,
                             eadCourseId: selectedCourse.id,
                           })
-                          if (res.certificate) {
+                          if ('certificate' in res && res.certificate) {
+                            const alreadyIssued = Boolean(res.alreadyIssued)
                             toast({
-                              title: res.isDuplicate
-                                ? 'Certificado já existente'
+                              title: alreadyIssued
+                                ? 'Certificado já emitido'
                                 : 'Certificado emitido com sucesso',
-                              description: `Código: ${res.certificate.verificationCode}. Documento registrado no sistema.`,
+                              description: alreadyIssued
+                                ? `Certificado já emitido para este aluno (${res.certificate.verificationCode}).`
+                                : `Código: ${res.certificate.verificationCode}. Documento registrado no sistema.`,
                             })
                           } else {
                             toast({

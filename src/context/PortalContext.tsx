@@ -201,7 +201,7 @@ interface PortalContextType {
     issuedBy?: string
   }) => Promise<
     | { certificate: Certificate; error?: string; alreadyIssued?: boolean }
-    | { certificate?: null; error: string }
+    | { certificate?: null; error: string; alreadyIssued?: false }
   >
   revokeCertificate: (certificateId: string, options?: { reason?: string }) => Promise<boolean>
   getStudentCertificate: (studentId: string) => Certificate | undefined
@@ -1999,7 +1999,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     issuedBy?: string
   }): Promise<
     | { certificate: Certificate; error?: string; alreadyIssued?: boolean }
-    | { certificate?: null; error: string }
+    | { certificate?: null; error: string; alreadyIssued?: false }
   > => {
     // 1. Busca aluno
     const student = students.find((s) => s.id === params.studentId)
