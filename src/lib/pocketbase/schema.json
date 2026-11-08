@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T21:18:37.311Z",
+  "generatedAt": "2026-11-08T21:39:32.615Z",
   "collections": [
     {
       "name": "users",
@@ -2131,6 +2131,12 @@
         {
           "name": "requireSequentialLessons",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recommendedBookIds",
+          "type": "json",
           "required": false,
           "system": false
         }

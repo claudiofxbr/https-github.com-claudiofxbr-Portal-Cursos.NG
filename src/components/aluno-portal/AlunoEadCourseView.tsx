@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { EadCourse, EadLesson, EadMaterial, LessonProgress } from '@/types/portal'
+import { EadCourse, EadLesson, EadMaterial, LessonProgress, LibraryBook } from '@/types/portal'
 import { VideoPlayerEmbed } from '@/components/ead/VideoPlayerEmbed'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -23,8 +23,11 @@ import {
   HelpCircle,
   Info,
   Lock,
+  Library,
+  ArrowRight,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { usePortal } from '@/context/PortalContext'
 
 interface AlunoEadCourseViewProps {
   course: EadCourse
@@ -42,6 +45,7 @@ interface AlunoEadCourseViewProps {
     lessonTitle?: string,
   ) => Promise<void>
   onBackToList?: () => void
+  onNavigateToBiblioteca?: (searchQuery?: string) => void
 }
 
 export function AlunoEadCourseView({
@@ -54,7 +58,9 @@ export function AlunoEadCourseView({
   suspensionNotice,
   onToggleLessonProgress,
   onBackToList,
+  onNavigateToBiblioteca,
 }: AlunoEadCourseViewProps) {
+  const { libraryBooks } = usePortal()
   // Ordena aulas pela ordem cadastrada
   const sortedLessons = useMemo(() => {
     return [...lessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
@@ -122,6 +128,18 @@ export function AlunoEadCourseView({
 
   const totalLessons = sortedLessons.length
   const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0
+
+  // Obras da bibliografia recomendada vinculadas a este curso EAD
+  const recommendedBooks = useMemo<LibraryBook[]>(() => {
+    if (!course.recommendedBookIds || course.recommendedBookIds.length === 0) return []
+    const bookMap = new Map<string, LibraryBook>()
+    for (const b of libraryBooks) {
+      bookMap.set(b.id, b)
+    }
+    return course.recommendedBookIds
+      .map((id) => bookMap.get(id))
+      .filter((b): b is LibraryBook => Boolean(b))
+  }, [course.recommendedBookIds, libraryBooks])
 
   const isActiveCompleted = useMemo(() => {
     if (!activeLesson) return false
@@ -486,6 +504,111 @@ export function AlunoEadCourseView({
                       </div>
                     )}
                   </div>
+
+                  {/* Seção de Bibliografia Recomendada do Curso EAD */}
+                  {recommendedBooks.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800/80 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <Library className="w-4 h-4 text-amber-400" />
+                          <h4 className="text-sm font-semibold text-white">
+                            Bibliografia Recomendada
+                          </h4>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/30 bg-amber-500/10 text-amber-300 text-[10px] px-2"
+                          >
+                            {recommendedBooks.length}{' '}
+                            {recommendedBooks.length === 1 ? 'obra' : 'obras'}
+                          </Badge>
+                        </div>
+
+                        {onNavigateToBiblioteca && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onNavigateToBiblioteca()}
+                            className="text-[11px] h-7 px-2 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-950/40 gap-1 self-start sm:self-center"
+                          >
+                            <Library className="w-3 h-3" />
+                            <span>Ver acervo completo</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-400">
+                        Obras da biblioteca institucional selecionadas para apoiar os seus estudos
+                        neste curso.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {recommendedBooks.map((book) => {
+                          const isAvailable = (book.availableCopies || 0) > 0
+                          return (
+                            <div
+                              key={book.id}
+                              className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between gap-2.5"
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                                  {book.category && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] px-2 py-0.2 border-slate-700 text-slate-300 bg-slate-900"
+                                    >
+                                      {book.category}
+                                    </Badge>
+                                  )}
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] px-2 py-0.2 font-medium ${
+                                      isAvailable
+                                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                        : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                                    }`}
+                                  >
+                                    {isAvailable
+                                      ? `${book.availableCopies} de ${book.totalCopies} disponível(is)`
+                                      : 'Exemplares esgotados'}
+                                  </Badge>
+                                </div>
+
+                                <h5 className="text-xs font-semibold text-slate-100 line-clamp-2">
+                                  {book.title}
+                                </h5>
+
+                                <p className="text-[11px] text-slate-400">
+                                  <span className="font-medium text-slate-300">{book.author}</span>
+                                  {book.year ? ` · ${book.year}` : ''}
+                                  {book.publisher ? ` · ${book.publisher}` : ''}
+                                </p>
+
+                                {book.description && (
+                                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                                    {book.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              {onNavigateToBiblioteca && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => onNavigateToBiblioteca(book.title)}
+                                  className="w-full text-xs h-7 text-indigo-300 border-indigo-500/30 bg-indigo-950/30 hover:bg-indigo-900/40 hover:text-white transition-all gap-1.5"
+                                >
+                                  <Library className="w-3 h-3" />
+                                  <span>Consultar na Biblioteca</span>
+                                  <ArrowRight className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Navegação Entre Aulas */}
                   <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">

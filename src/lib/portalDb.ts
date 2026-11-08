@@ -815,12 +815,24 @@ export function mapEadCourse(rec: AnyRec): EadCourse {
   let enrolled: string[] = []
   if (Array.isArray(rec.enrolledStudentIds)) {
     enrolled = rec.enrolledStudentIds.map(String)
-  } else if (typeof rec.enrolledStudentIds === 'string') {
+  } else if (typeof rec.enrolledStudentIds === 'string' && rec.enrolledStudentIds.trim()) {
     try {
       const parsed = JSON.parse(rec.enrolledStudentIds)
       if (Array.isArray(parsed)) enrolled = parsed.map(String)
     } catch {
       enrolled = []
+    }
+  }
+
+  let recommendedBooks: string[] = []
+  if (Array.isArray(rec.recommendedBookIds)) {
+    recommendedBooks = rec.recommendedBookIds.map(String)
+  } else if (typeof rec.recommendedBookIds === 'string' && rec.recommendedBookIds.trim()) {
+    try {
+      const parsed = JSON.parse(rec.recommendedBookIds)
+      if (Array.isArray(parsed)) recommendedBooks = parsed.map(String)
+    } catch {
+      recommendedBooks = []
     }
   }
 
@@ -837,6 +849,7 @@ export function mapEadCourse(rec: AnyRec): EadCourse {
     instructorName: str(rec.instructorName) || undefined,
     enrolledStudentIds: enrolled,
     requireSequentialLessons: Boolean(rec.requireSequentialLessons),
+    recommendedBookIds: recommendedBooks,
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -2348,6 +2361,7 @@ export const portalDb = {
           instructorName: data.instructorName || '',
           enrolledStudentIds: JSON.stringify(data.enrolledStudentIds || []),
           requireSequentialLessons: Boolean(data.requireSequentialLessons),
+          recommendedBookIds: JSON.stringify(data.recommendedBookIds || []),
         }
         const rec = await pb.collection(COLLECTIONS.eadCourses).create(payload)
         return mapEadCourse(rec as unknown as AnyRec)
@@ -2377,6 +2391,9 @@ export const portalDb = {
         }
         if (updates.requireSequentialLessons !== undefined) {
           payload.requireSequentialLessons = Boolean(updates.requireSequentialLessons)
+        }
+        if (updates.recommendedBookIds !== undefined) {
+          payload.recommendedBookIds = JSON.stringify(updates.recommendedBookIds)
         }
         const rec = await pb.collection(COLLECTIONS.eadCourses).update(courseId, payload)
         return mapEadCourse(rec as unknown as AnyRec)

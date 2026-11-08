@@ -29,7 +29,15 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 
-export function AlunoBibliotecaModule() {
+export interface AlunoBibliotecaModuleProps {
+  initialSearch?: string
+  initialTab?: 'acervo' | 'meus_emprestimos'
+}
+
+export function AlunoBibliotecaModule({
+  initialSearch = '',
+  initialTab = 'meus_emprestimos',
+}: AlunoBibliotecaModuleProps = {}) {
   const {
     currentUser,
     students,
@@ -50,8 +58,26 @@ export function AlunoBibliotecaModule() {
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id
 
-  const [searchTerm, setSearchTerm] = useState('')
+  const [activeViewTab, setActiveViewTab] = useState<'acervo' | 'meus_emprestimos'>(initialTab)
+  const [searchTerm, setSearchTerm] = useState(initialSearch)
+  const [acervoSearch, setAcervoSearch] = useState(initialSearch)
+  const [selectedCategory, setSelectedCategory] = useState<string>('todos')
   const [loanToRenew, setLoanToRenew] = useState<LibraryLoan | null>(null)
+
+  // Sincroniza busca inicial quando alterada externamente
+  React.useEffect(() => {
+    if (initialSearch) {
+      setAcervoSearch(initialSearch)
+      setSearchTerm(initialSearch)
+      setActiveViewTab('acervo')
+    }
+  }, [initialSearch])
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveViewTab(initialTab)
+    }
+  }, [initialTab])
   const [renewSubmitting, setRenewSubmitting] = useState(false)
   const [renewMessage, setRenewMessage] = useState<string | null>(null)
 
@@ -75,6 +101,32 @@ export function AlunoBibliotecaModule() {
   const activeLoans = myLoans.filter((l) => l.status === 'ativo')
   const overdueLoans = myLoans.filter((l) => l.status === 'atrasado')
   const returnedLoans = myLoans.filter((l) => l.status === 'devolvido')
+
+  // Categorias disponíveis no acervo
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    libraryBooks.forEach((b) => {
+      if (b.category) set.add(b.category)
+    })
+    return Array.from(set).sort()
+  }, [libraryBooks])
+
+  // Filtragem de livros do acervo
+  const filteredBooks = useMemo(() => {
+    return libraryBooks.filter((book) => {
+      if (selectedCategory !== 'todos' && book.category !== selectedCategory) {
+        return false
+      }
+      const q = acervoSearch.toLowerCase().trim()
+      if (!q) return true
+      return (
+        (book.title && book.title.toLowerCase().includes(q)) ||
+        (book.author && book.author.toLowerCase().includes(q)) ||
+        (book.isbn && book.isbn.toLowerCase().includes(q)) ||
+        (book.category && book.category.toLowerCase().includes(q))
+      )
+    })
+  }, [libraryBooks, acervoSearch, selectedCategory])
 
   const handleConfirmRenew = async () => {
     if (!loanToRenew) return
@@ -184,20 +236,170 @@ export function AlunoBibliotecaModule() {
           </div>
         </div>
       )}
-      {/* Barra de busca */}
-      <div className="flex items-center gap-2 max-w-md">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por título ou autor..."
-            className="pl-9 bg-slate-900 border-slate-800 text-xs text-slate-200"
-          />
-        </div>
+      {/* Abas: Meus Empréstimos vs Acervo Completo */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveViewTab('meus_emprestimos')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+            activeViewTab === 'meus_emprestimos'
+              ? 'bg-blue-600 text-white shadow'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Meus Empréstimos</span>
+          <Badge
+            variant="outline"
+            className={`text-[10px] px-1.5 py-0 ${
+              activeViewTab === 'meus_emprestimos'
+                ? 'bg-blue-500/20 text-white border-blue-400/40'
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}
+          >
+            {activeLoans.length}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveViewTab('acervo')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+            activeViewTab === 'acervo'
+              ? 'bg-blue-600 text-white shadow'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <Library className="w-3.5 h-3.5" />
+          <span>Consultar Acervo da Biblioteca</span>
+          <Badge
+            variant="outline"
+            className={`text-[10px] px-1.5 py-0 ${
+              activeViewTab === 'acervo'
+                ? 'bg-blue-500/20 text-white border-blue-400/40'
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}
+          >
+            {libraryBooks.length}
+          </Badge>
+        </button>
       </div>
-      {/* Lista de Empréstimos do Aluno */}
-      {filteredLoans.length === 0 ? (
+
+      {activeViewTab === 'acervo' ? (
+        /* Visão de Acervo */
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={acervoSearch}
+                onChange={(e) => setAcervoSearch(e.target.value)}
+                placeholder="Buscar obras por título, autor, categoria..."
+                className="pl-9 bg-slate-900 border-slate-800 text-xs text-slate-200"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-md text-xs text-slate-300 px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="todos">Todas as Categorias ({libraryBooks.length})</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {filteredBooks.length === 0 ? (
+            <Card className="bg-slate-900/30 border-slate-800/80">
+              <CardContent className="p-8 text-center space-y-2">
+                <BookOpen className="w-10 h-10 text-slate-600 mx-auto" />
+                <p className="text-sm font-semibold text-slate-300">
+                  Nenhuma obra encontrada no acervo
+                </p>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Tente ajustar os termos de busca ou remover o filtro de categoria.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredBooks.map((book) => {
+                const isAvailable = (book.availableCopies || 0) > 0
+                return (
+                  <Card
+                    key={book.id}
+                    className="bg-slate-900/60 border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between"
+                  >
+                    <CardContent className="p-4 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        {book.category && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-2 py-0.5 border-slate-700 text-slate-300 bg-slate-950"
+                          >
+                            {book.category}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-2 py-0.5 font-medium ml-auto ${
+                            isAvailable
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                          }`}
+                        >
+                          {isAvailable
+                            ? `${book.availableCopies} de ${book.totalCopies} disponível(is)`
+                            : 'Esgotado'}
+                        </Badge>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-bold text-white line-clamp-2">{book.title}</h4>
+                        <p className="text-xs text-slate-400 mt-1">
+                          <span className="font-medium text-slate-300">{book.author}</span>
+                          {book.year ? ` · ${book.year}` : ''}
+                        </p>
+                      </div>
+
+                      {book.description && (
+                        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                          {book.description}
+                        </p>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-1">
+                        {book.publisher && <span>Ed: {book.publisher}</span>}
+                        {book.isbn && <span className="font-mono text-[10px]">ISBN: {book.isbn}</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Visão de Meus Empréstimos */
+        <div className="space-y-4">
+          {/* Barra de busca */}
+          <div className="flex items-center gap-2 max-w-md">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por título ou autor..."
+                className="pl-9 bg-slate-900 border-slate-800 text-xs text-slate-200"
+              />
+            </div>
+          </div>
         <Card className="bg-slate-900/30 border-slate-800/80">
           <CardContent className="p-8 text-center space-y-2">
             <BookOpen className="w-10 h-10 text-slate-600 mx-auto" />
