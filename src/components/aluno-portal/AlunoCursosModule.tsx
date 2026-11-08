@@ -296,6 +296,7 @@ export function AlunoCursosModule() {
                 courseLessons.length > 0
                   ? Math.round((completedLessonsCount / courseLessons.length) * 100)
                   : 0
+              const isCourseCompleted = pct >= 100 && courseLessons.length > 0
 
               return (
                 <Card
@@ -304,9 +305,21 @@ export function AlunoCursosModule() {
                 >
                   <CardHeader className="p-4 pb-2">
                     <div className="flex items-center justify-between mb-2">
-                      <Badge className="bg-indigo-600/20 text-indigo-300 border-indigo-500/30 text-[10px]">
-                        EAD Videoaulas
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className="bg-indigo-600/20 text-indigo-300 border-indigo-500/30 text-[10px]">
+                          EAD Videoaulas
+                        </Badge>
+                        {isCourseCompleted ? (
+                          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] font-bold">
+                            <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-400" />
+                            Concluído
+                          </Badge>
+                        ) : pct > 0 ? (
+                          <Badge className="bg-sky-500/20 text-sky-300 border-sky-500/40 text-[10px]">
+                            {pct}%
+                          </Badge>
+                        ) : null}
+                      </div>
                       <span className="text-xs text-slate-400 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {eadCourse.workloadHours || 20}h
@@ -322,23 +335,41 @@ export function AlunoCursosModule() {
                   </CardHeader>
 
                   <CardContent className="p-4 pt-2 space-y-3">
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex justify-between text-[11px] text-slate-400">
-                        <span>Progresso</span>
-                        <span className="font-semibold text-emerald-400 font-mono">
+                        <span>Progresso Geral do Curso</span>
+                        <span
+                          className={`font-semibold font-mono ${
+                            isCourseCompleted
+                              ? 'text-emerald-400'
+                              : pct > 0
+                                ? 'text-indigo-300'
+                                : 'text-slate-400'
+                          }`}
+                        >
                           {completedLessonsCount}/{courseLessons.length} aulas ({pct}%)
                         </span>
                       </div>
-                      <Progress value={pct} className="h-1.5 bg-slate-800" />
+                      <Progress
+                        value={pct}
+                        className={`h-2 bg-slate-800 ${
+                          isCourseCompleted ? '[&>div]:bg-emerald-500' : '[&>div]:bg-indigo-500'
+                        }`}
+                      />
                     </div>
 
                     <Button
                       size="sm"
                       onClick={() => setActiveEadCourseId(eadCourse.id)}
-                      className="w-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white gap-1.5 shadow-sm"
+                      className={`w-full text-xs font-semibold gap-1.5 shadow-sm text-white ${
+                        isCourseCompleted
+                          ? 'bg-emerald-700 hover:bg-emerald-600'
+                          : 'bg-indigo-600 hover:bg-indigo-500'
+                      }`}
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      Assistir Aulas ({courseLessons.length})
+                      {isCourseCompleted ? 'Rever Aulas' : 'Assistir Aulas'} ({courseLessons.length}
+                      )
                     </Button>
                   </CardContent>
                 </Card>

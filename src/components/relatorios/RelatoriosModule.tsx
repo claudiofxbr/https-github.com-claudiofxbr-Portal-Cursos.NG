@@ -13,6 +13,7 @@ import {
   BarChart3,
   Layers,
   ArrowUpRight,
+  Tv,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -67,6 +68,13 @@ import {
   exportFrequenciaReportToCsv,
   exportFrequenciaReportToPdf,
 } from '@/lib/frequenciaReportExport'
+import { EadReportSection } from './EadReportSection'
+import {
+  calculateEadReportData,
+  EadReportFilterState,
+  EadReportExportPayload,
+} from '@/lib/eadReportData'
+import { exportEadReportToCsv, exportEadReportToPdf } from '@/lib/eadReportExport'
 import { getChargeCategoryLabel, INSTITUTIONAL_FEE_CATEGORIES } from '@/lib/feeCategories'
 
 export type PeriodFilter =
@@ -113,8 +121,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
   } = usePortal()
 
   const [activeTab, setActiveTab] = useState<
-    'financeiro' | 'matriculas' | 'inadimplencia' | 'frequencia'
+    'financeiro' | 'matriculas' | 'inadimplencia' | 'frequencia' | 'ead'
   >('financeiro')
+
+  // Filtros da aba de EAD
+  const [eadFilters, setEadFilters] = useState<EadReportFilterState>({
+    courseId: 'all',
+    searchTerm: '',
+  })
 
   // Filtros da aba de Frequência persistidos em localStorage
   const [frequenciaFilters, setFrequenciaFilters] = useState<FrequenciaFilterState>(() => {
@@ -142,6 +156,17 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
       console.warn('Erro ao persistir filtros de frequência:', e)
     }
   }
+
+  // Cálculos do Relatório de EAD
+  const eadData = useMemo(() => {
+    return calculateEadReportData({
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      students,
+      filters: eadFilters,
+    })
+  }, [eadCourses, eadLessons, lessonProgress, students, eadFilters])
 
   // Cálculos do Relatório de Frequência
   const frequenciaData = useMemo(() => {
@@ -1159,6 +1184,23 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
     }
   }
 
+  // Constrói payload de exportação para EAD
+  const getEadExportPayload = (): EadReportExportPayload => {
+    return {
+      portalName: 'PortalCursos.NG',
+      periodLabel,
+      generatedAt: new Date(),
+      generatedBy: {
+        name: currentUser?.name || 'Administrador',
+        roleTitle: currentUser?.roleTitle || 'Gestor',
+        email: currentUser?.email || 'admin@portalcursos.ng',
+      },
+      kpis: eadData.kpis,
+      courses: eadData.courseStats,
+      students: eadData.studentProgressList,
+    }
+  }
+
   // Handler para exportação em CSV (contextual da aba ativa)
   const handleExportCsv = () => {
     if (!canExport) {
@@ -1173,7 +1215,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
 
     try {
       setIsExportingCsv(true)
-      if (activeTab === 'frequencia') {
+      if (activeTab === 'ead') {
+        const payload = getEadExportPayload()
+        exportEadReportToCsv(payload)
+        toast({
+          title: 'Exportação CSV de EAD concluída',
+          description: `Planilha de Cursos EAD gerada com sucesso para "${periodLabel}". Compatível com Excel.`,
+        })
+      } else if (activeTab === 'frequencia') {
         const payload = getFrequenciaExportPayload()
         exportFrequenciaReportToCsv(payload)
         toast({
@@ -1228,7 +1277,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
 
     try {
       setIsExportingPdf(true)
-      if (activeTab === 'frequencia') {
+      if (activeTab === 'ead') {
+        const payload = getEadExportPayload()
+        exportEadReportToPdf(payload)
+        toast({
+          title: 'Relatório PDF de EAD gerado',
+          description: `Janela de impressão e download de EAD aberta para o período "${periodLabel}".`,
+        })
+      } else if (activeTab === 'frequencia') {
         const payload = getFrequenciaExportPayload()
         exportFrequenciaReportToPdf(payload)
         toast({
@@ -1368,7 +1424,7 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
       <Tabs
         value={activeTab}
         onValueChange={(val) =>
-          setActiveTab(val as 'financeiro' | 'matriculas' | 'inadimplencia' | 'frequencia')
+          setActiveTab(val as 'financeiro' | 'matriculas' | 'inadimplencia' | 'frequencia' | 'ead')
         }
         className="w-full space-y-6"
       >
@@ -1400,7 +1456,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
           >
             <Calendar className="w-3.5 h-3.5 text-sky-700" />
             <span>Frequência</span>
-            <span className="ml-1 bg-sky-100 text-sky-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+          </TabsTrigger>
+          <TabsTrigger
+            value="ead"
+            className="text-xs font-medium gap-1.5 data-[state=active]:bg-white data-[state=active]:text-indigo-800 data-[state=active]:shadow-xs text-indigo-700"
+          >
+            <Tv className="w-3.5 h-3.5 text-indigo-600" />
+            <span>EAD</span>
+            <span className="ml-1 bg-indigo-100 text-indigo-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
               Novo
             </span>
           </TabsTrigger>
@@ -1561,6 +1624,18 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
             filters={frequenciaFilters}
             onFiltersChange={handleFrequenciaFiltersChange}
             periodLabel={periodLabel}
+          />
+        </TabsContent>
+
+        {/* CONTEÚDO DA ABA 5: EAD */}
+        <TabsContent value="ead" className="space-y-6 mt-0">
+          <EadReportSection
+            kpis={eadData.kpis}
+            courseStats={eadData.courseStats}
+            studentProgressList={eadData.studentProgressList}
+            courseOptions={eadData.courseOptions}
+            filters={eadFilters}
+            onFiltersChange={setEadFilters}
           />
         </TabsContent>
       </Tabs>

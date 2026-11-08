@@ -19,7 +19,9 @@ import {
   Sparkles,
   Info,
   Users,
+  Tv,
 } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -127,6 +129,40 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
   const classBreakdown = useMemo(() => {
     return calculateClassAttendanceBreakdown(student.id, classes, studentAtt, student.cpf)
   }, [student, classes, studentAtt])
+
+  // Cursos EAD em que o aluno está matriculado com progresso detalhado
+  const studentEadCourses = useMemo(() => {
+    const enrolled = eadCourses.filter(
+      (c) => Array.isArray(c.enrolledStudentIds) && c.enrolledStudentIds.includes(student.id),
+    )
+
+    return enrolled.map((course) => {
+      const lessons = eadLessons.filter((l) => l.eadCourseId === course.id)
+      const totalLessons = lessons.length
+      const lessonIds = new Set(lessons.map((l) => l.id))
+
+      const completedCount = lessonProgress.filter(
+        (p) =>
+          p.studentId === student.id &&
+          (p.courseId === course.id || lessonIds.has(p.lessonId)) &&
+          p.status === 'concluido',
+      ).length
+
+      const percent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0
+      const isCompleted = percent >= 100 && totalLessons > 0
+
+      return {
+        courseId: course.id,
+        courseTitle: course.title,
+        instructorName: course.instructorName || 'Professor',
+        workloadHours: course.workloadHours || 20,
+        totalLessons,
+        completedLessons: completedCount,
+        percent,
+        isCompleted,
+      }
+    })
+  }, [student.id, eadCourses, eadLessons, lessonProgress])
 
   // Média geral das notas lançadas (base do indicador MEC)
   const overallAverage = useMemo(() => {
@@ -563,6 +599,70 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
           <p className="text-[10px] text-slate-400 italic">{consolidatedAtt.formulaExplanation}</p>
         </div>
       </>
+
+      {/* Bloco de Cursos EAD Matriculados com Progresso e Conclusão */}
+      {studentEadCourses.length > 0 && (
+        <div className="bg-slate-950/70 border border-indigo-900/40 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-indigo-900/30 pb-2">
+            <h4 className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+              <Tv className="w-4 h-4 text-indigo-400" />
+              Cursos EAD Matriculados ({studentEadCourses.length})
+            </h4>
+            <span className="text-[10px] text-slate-400">
+              Progresso individual de videoaulas e conclusão automática
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {studentEadCourses.map((item) => (
+              <div
+                key={item.courseId}
+                className="bg-slate-900/80 border border-slate-800 rounded-lg p-3 space-y-2 hover:border-indigo-800/60 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{item.courseTitle}</p>
+                    <p className="text-[11px] text-slate-400">
+                      Instrutor: {item.instructorName} • {item.workloadHours}h carga horária
+                    </p>
+                  </div>
+                  {item.isCompleted ? (
+                    <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] font-bold shrink-0">
+                      <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-400" />
+                      Concluído
+                    </Badge>
+                  ) : item.percent > 0 ? (
+                    <Badge className="bg-sky-500/20 text-sky-300 border-sky-500/40 text-[10px] font-medium shrink-0">
+                      <Clock className="w-3 h-3 mr-1 text-sky-400" />
+                      Em Andamento
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="border-slate-700 text-slate-400 text-[10px] shrink-0"
+                    >
+                      Não Iniciado
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">
+                      Aulas:{' '}
+                      <span className="text-slate-200 font-semibold font-mono">
+                        {item.completedLessons} / {item.totalLessons}
+                      </span>
+                    </span>
+                    <span className="font-mono font-bold text-indigo-300">{item.percent}%</span>
+                  </div>
+                  <Progress value={item.percent} className="h-1.5 bg-slate-800" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Resumo de Frequência por Turma */}
       {classBreakdown.length > 0 && (
