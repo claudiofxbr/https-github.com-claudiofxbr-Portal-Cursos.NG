@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react'
 import {
-  UserAccount,
   UserRole,
+  UserAccount,
+  ModuleKey,
   Student,
   Course,
   Charge,
@@ -10,8 +11,6 @@ import {
   BillingException,
   MaintenanceTicket,
   LgpdRequest,
-  SystemDiagnostic,
-  ModuleKey,
   Expense,
   Grade,
   AttendanceRecord,
@@ -21,6 +20,9 @@ import {
   StudentNotification,
   StudentSupportTicket,
   Certificate,
+  EadCourse,
+  EadLesson,
+  SystemDiagnostic,
 } from '@/types/portal'
 import {
   PORTAL_GATE_PASSCODE,
@@ -50,6 +52,7 @@ import {
   confirmPasswordReset,
   mapAuthUser,
   AnyRec,
+  parseVideoUrl,
 } from '@/lib/portalDb'
 
 interface PortalContextType {
@@ -178,6 +181,28 @@ interface PortalContextType {
   revokeCertificate: (certificateId: string, options?: { reason?: string }) => Promise<boolean>
   getStudentCertificate: (studentId: string) => Certificate | undefined
   getStudentCertificates: (studentId: string) => Certificate[]
+
+  // EAD (Cursos e Videoaulas)
+  eadCourses: EadCourse[]
+  eadLessons: EadLesson[]
+  createEadCourse: (
+    data: Omit<EadCourse, 'id' | 'created' | 'updated'>,
+  ) => Promise<EadCourse | null>
+  updateEadCourse: (
+    id: string,
+    updates: Partial<Omit<EadCourse, 'id' | 'created' | 'updated'>>,
+  ) => Promise<EadCourse | null>
+  deleteEadCourse: (id: string) => Promise<boolean>
+  enrollStudentsInEadCourse: (courseId: string, studentIds: string[]) => Promise<boolean>
+  createEadLesson: (
+    data: Omit<EadLesson, 'id' | 'created' | 'updated'>,
+  ) => Promise<EadLesson | null>
+  updateEadLesson: (
+    id: string,
+    updates: Partial<Omit<EadLesson, 'id' | 'created' | 'updated'>>,
+  ) => Promise<EadLesson | null>
+  deleteEadLesson: (id: string) => Promise<boolean>
+  reorderEadLessons: (orderedLessonIds: string[]) => Promise<boolean>
 
   // Diagnostic
   diagnostic: SystemDiagnostic
@@ -382,6 +407,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [studentNotifications, setStudentNotifications] = useState<StudentNotification[]>([])
   const [studentSupportTickets, setStudentSupportTickets] = useState<StudentSupportTicket[]>([])
   const [certificates, setCertificates] = useState<Certificate[]>([])
+  const [eadCourses, setEadCourses] = useState<EadCourse[]>([])
+  const [eadLessons, setEadLessons] = useState<EadLesson[]>([])
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -416,6 +443,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.studentNotifications) setStudentNotifications(data.studentNotifications)
       if (data.studentSupportTickets) setStudentSupportTickets(data.studentSupportTickets)
       if (data.certificates) setCertificates(data.certificates)
+      if (data.eadCourses) setEadCourses(data.eadCourses)
+      if (data.eadLessons) setEadLessons(data.eadLessons)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -1860,6 +1889,161 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // --- EAD: Métodos ---
+  const createEadCourse = async (
+    data: Omit<EadCourse, 'id' | 'created' | 'updated'>,
+  ): Promise<EadCourse | null> => {
+    const tempId = `ead-crs-${Date.now()}`
+    const optimistic: EadCourse = {
+      ...data,
+      id: tempId,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+    setEadCourses((prev) => [optimistic, ...prev])
+
+    try {
+      const saved = await portalDb.createEadCourse(data)
+      if (saved) {
+        setEadCourses((prev) => prev.map((c) => (c.id === tempId ? saved : c)))
+        return saved
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar curso EAD no banco:', err)
+    }
+    return optimistic
+  }
+
+  const updateEadCourse = async (
+    id: string,
+    updates: Partial<Omit<EadCourse, 'id' | 'created' | 'updated'>>,
+  ): Promise<EadCourse | null> => {
+    setEadCourses((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updates, updated: new Date().toISOString() } : c)),
+    )
+
+    try {
+      const saved = await portalDb.updateEadCourse(id, updates)
+      if (saved) {
+        setEadCourses((prev) => prev.map((c) => (c.id === id ? saved : c)))
+        return saved
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao atualizar curso EAD:', err)
+    }
+    return null
+  }
+
+  const deleteEadCourse = async (id: string): Promise<boolean> => {
+    setEadCourses((prev) => prev.filter((c) => c.id !== id))
+    setEadLessons((prev) => prev.filter((l) => l.eadCourseId !== id))
+
+    try {
+      return await portalDb.deleteEadCourse(id)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao excluir curso EAD:', err)
+      return false
+    }
+  }
+
+  const enrollStudentsInEadCourse = async (
+    courseId: string,
+    studentIds: string[],
+  ): Promise<boolean> => {
+    setEadCourses((prev) =>
+      prev.map((c) =>
+        c.id === courseId
+          ? { ...c, enrolledStudentIds: studentIds, updated: new Date().toISOString() }
+          : c,
+      ),
+    )
+
+    try {
+      const updated = await portalDb.updateEadCourse(courseId, { enrolledStudentIds: studentIds })
+      return Boolean(updated)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao matricular alunos no EAD:', err)
+      return false
+    }
+  }
+
+  const createEadLesson = async (
+    data: Omit<EadLesson, 'id' | 'created' | 'updated'>,
+  ): Promise<EadLesson | null> => {
+    const tempId = `ead-les-${Date.now()}`
+    const parsed = parseVideoUrl(data.videoUrl)
+    const optimistic: EadLesson = {
+      ...data,
+      id: tempId,
+      videoProvider: data.videoProvider || (parsed.provider as EadLesson['videoProvider']),
+      videoEmbedId: data.videoEmbedId || parsed.embedId,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+    setEadLessons((prev) => [...prev, optimistic])
+
+    try {
+      const saved = await portalDb.createEadLesson(data)
+      if (saved) {
+        setEadLessons((prev) => prev.map((l) => (l.id === tempId ? saved : l)))
+        return saved
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar aula EAD:', err)
+    }
+    return optimistic
+  }
+
+  const updateEadLesson = async (
+    id: string,
+    updates: Partial<Omit<EadLesson, 'id' | 'created' | 'updated'>>,
+  ): Promise<EadLesson | null> => {
+    setEadLessons((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, ...updates, updated: new Date().toISOString() } : l)),
+    )
+
+    try {
+      const saved = await portalDb.updateEadLesson(id, updates)
+      if (saved) {
+        setEadLessons((prev) => prev.map((l) => (l.id === id ? saved : l)))
+        return saved
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao atualizar aula EAD:', err)
+    }
+    return null
+  }
+
+  const deleteEadLesson = async (id: string): Promise<boolean> => {
+    setEadLessons((prev) => prev.filter((l) => l.id !== id))
+
+    try {
+      return await portalDb.deleteEadLesson(id)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao excluir aula EAD:', err)
+      return false
+    }
+  }
+
+  const reorderEadLessons = async (orderedLessonIds: string[]): Promise<boolean> => {
+    setEadLessons((prev) => {
+      return prev.map((l) => {
+        const idx = orderedLessonIds.indexOf(l.id)
+        if (idx >= 0) {
+          return { ...l, orderIndex: idx + 1 }
+        }
+        return l
+      })
+    })
+
+    try {
+      return await portalDb.reorderEadLessons(orderedLessonIds)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao reordenar aulas EAD:', err)
+      return false
+    }
+  }
+
   // Diagnostic
   const refreshDiagnostic = () => {
     setDiagnostic((prev) => ({
@@ -1944,6 +2128,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         revokeCertificate,
         getStudentCertificate,
         getStudentCertificates,
+        eadCourses,
+        eadLessons,
+        createEadCourse,
+        updateEadCourse,
+        deleteEadCourse,
+        enrollStudentsInEadCourse,
+        createEadLesson,
+        updateEadLesson,
+        deleteEadLesson,
+        reorderEadLessons,
         isBackendReady,
         isSyncing,
       }}

@@ -27,13 +27,27 @@ import {
 } from 'lucide-react'
 import { LessonProgress } from '@/types/portal'
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tv, Play } from 'lucide-react'
+import { AlunoEadCourseView } from '@/components/aluno-portal/AlunoEadCourseView'
+
 export function AlunoCursosModule() {
-  const { currentUser, students, courses, lessonProgress, updateLessonProgress } = usePortal()
+  const {
+    currentUser,
+    students,
+    courses,
+    lessonProgress,
+    updateLessonProgress,
+    eadCourses,
+    eadLessons,
+    toggleEadLessonProgress,
+  } = usePortal()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCourseId, setSelectedCourseId] = useState<string>('')
   const [activeLessonModal, setActiveLessonModal] = useState<LessonProgress | null>(null)
   const [savingLessonId, setSavingLessonId] = useState<string | null>(null)
+  const [activeEadCourseId, setActiveEadCourseId] = useState<string | null>(null)
 
   const currentStudent =
     students.find(
@@ -43,6 +57,18 @@ export function AlunoCursosModule() {
     ) || students[0]
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
+
+  // Cursos EAD em que o aluno está matriculado/vinculado (ou todos se não houver filtro restrito)
+  const myEadCourses = eadCourses.filter((c) => {
+    if (!c.studentIds || c.studentIds.length === 0) return true
+    return c.studentIds.includes(effectiveStudentId)
+  })
+
+  // Se o aluno clicou para assistir um curso EAD específico
+  const selectedEadCourse = myEadCourses.find((c) => c.id === activeEadCourseId)
+  const selectedEadLessons = selectedEadCourse
+    ? eadLessons.filter((l) => l.courseId === selectedEadCourse.id)
+    : []
 
   // Cursos do aluno: o matriculado explicitamente + cursos do catálogo para navegação rica
   const enrolledCourseId = currentStudent?.courseId || courses[0]?.id || 'crs-eng-soft'
@@ -186,6 +212,22 @@ export function AlunoCursosModule() {
     setSavingLessonId(null)
   }
 
+  // Se o aluno estiver assistindo a um curso EAD específico
+  if (selectedEadCourse) {
+    return (
+      <AlunoEadCourseView
+        course={selectedEadCourse}
+        lessons={selectedEadLessons}
+        lessonProgress={lessonProgress}
+        studentId={effectiveStudentId}
+        onToggleLessonProgress={async (lessonId, completed, courseId, moduleName, lessonTitle) => {
+          await toggleEadLessonProgress(lessonId, completed, courseId, moduleName, lessonTitle)
+        }}
+        onBackToList={() => setActiveEadCourseId(null)}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -193,10 +235,10 @@ export function AlunoCursosModule() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
             <GraduationCap className="w-6 h-6 text-blue-400" />
-            Meus Cursos & Trilhas de Aulas
+            Meus Cursos & Trilhas de Videoaulas
           </h1>
           <p className="text-xs sm:text-sm text-slate-400">
-            Acompanhe a grade curricular, assista às videoaulas e conclua cada etapa com
+            Acompanhe a grade curricular, assista às videoaulas do EAD e conclua cada etapa com
             persistência.
           </p>
         </div>
@@ -208,8 +250,95 @@ export function AlunoCursosModule() {
           >
             Matrícula Regular
           </Badge>
+          {myEadCourses.length > 0 && (
+            <Badge className="bg-indigo-600/30 text-indigo-300 border-indigo-500/40 text-xs">
+              {myEadCourses.length} Curso{myEadCourses.length !== 1 ? 's' : ''} EAD
+            </Badge>
+          )}
         </div>
       </div>
+
+      {/* Seção de Cursos EAD com Videoaulas */}
+      {myEadCourses.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tv className="w-5 h-5 text-indigo-400" />
+              <h2 className="text-base font-bold text-white">Cursos EAD com Videoaulas</h2>
+            </div>
+            <span className="text-xs text-slate-400">
+              Player integrado com YouTube, Vimeo e MP4
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {myEadCourses.map((eadCourse) => {
+              const courseLessons = eadLessons.filter((l) => l.courseId === eadCourse.id)
+              const completedLessonsCount = courseLessons.filter((l) => {
+                const prog = lessonProgress.find(
+                  (p) =>
+                    p.studentId === effectiveStudentId &&
+                    p.courseId === eadCourse.id &&
+                    p.lessonId === l.id,
+                )
+                return prog?.status === 'concluida'
+              }).length
+
+              const pct =
+                courseLessons.length > 0
+                  ? Math.round((completedLessonsCount / courseLessons.length) * 100)
+                  : 0
+
+              return (
+                <Card
+                  key={eadCourse.id}
+                  className="bg-slate-900/90 border-slate-800 hover:border-indigo-500/50 transition-all flex flex-col justify-between overflow-hidden group shadow-md"
+                >
+                  <CardHeader className="p-4 pb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge className="bg-indigo-600/20 text-indigo-300 border-indigo-500/30 text-[10px]">
+                        EAD Videoaulas
+                      </Badge>
+                      <span className="text-xs text-slate-400 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {eadCourse.workloadHours || 20}h
+                      </span>
+                    </div>
+
+                    <CardTitle className="text-base font-bold text-white group-hover:text-indigo-300 transition-colors line-clamp-1">
+                      {eadCourse.title}
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-400 line-clamp-2 mt-1">
+                      {eadCourse.description || 'Videoaulas exclusivas com material interativo.'}
+                    </CardDescription>
+                  </CardHeader>
+
+                  <CardContent className="p-4 pt-2 space-y-3">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px] text-slate-400">
+                        <span>Progresso</span>
+                        <span className="font-semibold text-emerald-400 font-mono">
+                          {completedLessonsCount}/{courseLessons.length} aulas ({pct}%)
+                        </span>
+                      </div>
+                      <Progress value={pct} className="h-1.5 bg-slate-800" />
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => setActiveEadCourseId(eadCourse.id)}
+                      className="w-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white gap-1.5 shadow-sm"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Assistir Aulas ({courseLessons.length})
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Card do Curso Ativo com Progresso e Detalhes */}
       {activeCourse && (

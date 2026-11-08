@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T11:06:15.974Z",
+  "generatedAt": "2026-11-08T11:25:31.860Z",
   "collections": [
     {
       "name": "users",
@@ -2004,6 +2004,191 @@
         "CREATE INDEX idx_certificates_student ON certificates (studentId)",
         "CREATE INDEX idx_certificates_course ON certificates (courseId)",
         "CREATE UNIQUE INDEX idx_certificates_code ON certificates (verificationCode)"
+      ]
+    },
+    {
+      "name": "ead_courses",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "workloadHours",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "catalogCourseId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "catalogCourseName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["publicado", "rascunho", "arquivado"]
+        },
+        {
+          "name": "instructorId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "instructorName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enrolledStudentIds",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_ead_courses_status ON ead_courses (status)",
+        "CREATE INDEX idx_ead_courses_catalog ON ead_courses (catalogCourseId)",
+        "CREATE INDEX idx_ead_courses_instructor ON ead_courses (instructorId)"
+      ]
+    },
+    {
+      "name": "ead_lessons",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "eadCourseId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "moduleName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "orderIndex",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "videoUrl",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "videoProvider",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["youtube", "vimeo", "mp4", "outro"]
+        },
+        {
+          "name": "videoEmbedId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "durationMinutes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "isOptional",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_ead_lessons_course ON ead_lessons (eadCourseId)",
+        "CREATE INDEX idx_ead_lessons_order ON ead_lessons (eadCourseId, orderIndex)"
       ]
     }
   ]

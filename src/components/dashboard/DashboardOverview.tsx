@@ -21,6 +21,7 @@ import {
   Clock,
   Sparkles,
   CheckCircle2,
+  Tv,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -34,6 +35,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   ShieldCheck,
   Cpu,
   UserCheck,
+  Tv,
 }
 
 // Navegação validada: o atalho só dispara se o perfil pode acessar o módulo.

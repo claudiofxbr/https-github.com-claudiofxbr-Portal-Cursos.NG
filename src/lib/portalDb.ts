@@ -21,6 +21,8 @@ import {
   StudentNotification,
   StudentSupportTicket,
   Certificate,
+  EadCourse,
+  EadLesson,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
@@ -54,6 +56,8 @@ export const COLLECTIONS = {
   studentNotifications: 'student_notifications',
   studentSupportTickets: 'student_support_tickets',
   certificates: 'certificates',
+  eadCourses: 'ead_courses',
+  eadLessons: 'ead_lessons',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -718,6 +722,111 @@ export function mapCertificate(rec: AnyRec): Certificate {
   }
 }
 
+export function parseVideoUrl(rawUrl: string): {
+  provider: 'youtube' | 'vimeo' | 'mp4' | 'outro'
+  embedId: string
+  normalizedEmbedUrl?: string
+} {
+  const url = (rawUrl || '').trim()
+  if (!url) return { provider: 'outro', embedId: '' }
+
+  // YouTube matchers:
+  // - https://www.youtube.com/watch?v=VIDEO_ID
+  // - https://youtu.be/VIDEO_ID
+  // - https://www.youtube.com/embed/VIDEO_ID
+  // - https://www.youtube.com/shorts/VIDEO_ID
+  const ytMatch = url.match(
+    /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i,
+  )
+  if (ytMatch && ytMatch[1]) {
+    const embedId = ytMatch[1]
+    return {
+      provider: 'youtube',
+      embedId,
+      normalizedEmbedUrl: `https://www.youtube.com/embed/${embedId}?rel=0`,
+    }
+  }
+
+  // Vimeo matcher:
+  // - https://vimeo.com/123456789
+  // - https://player.vimeo.com/video/123456789
+  const vimeoMatch = url.match(
+    /(?:vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|)(\d+))/i,
+  )
+  if (vimeoMatch && vimeoMatch[1]) {
+    const embedId = vimeoMatch[1]
+    return {
+      provider: 'vimeo',
+      embedId,
+      normalizedEmbedUrl: `https://player.vimeo.com/video/${embedId}`,
+    }
+  }
+
+  // MP4 direto:
+  if (/\.mp4(\?.*)?$/i.test(url)) {
+    return {
+      provider: 'mp4',
+      embedId: url,
+      normalizedEmbedUrl: url,
+    }
+  }
+
+  return {
+    provider: 'outro',
+    embedId: url,
+    normalizedEmbedUrl: url,
+  }
+}
+
+export function mapEadCourse(rec: AnyRec): EadCourse {
+  let enrolled: string[] = []
+  if (Array.isArray(rec.enrolledStudentIds)) {
+    enrolled = rec.enrolledStudentIds.map(String)
+  } else if (typeof rec.enrolledStudentIds === 'string') {
+    try {
+      const parsed = JSON.parse(rec.enrolledStudentIds)
+      if (Array.isArray(parsed)) enrolled = parsed.map(String)
+    } catch {
+      enrolled = []
+    }
+  }
+
+  return {
+    id: str(rec.id),
+    title: str(rec.title),
+    description: str(rec.description),
+    workloadHours: num(rec.workloadHours, 20),
+    catalogCourseId: str(rec.catalogCourseId) || undefined,
+    catalogCourseName: str(rec.catalogCourseName) || undefined,
+    thumbnail: str(rec.thumbnail) || undefined,
+    status: (str(rec.status, 'publicado') as EadCourse['status']) || 'publicado',
+    instructorId: str(rec.instructorId) || undefined,
+    instructorName: str(rec.instructorName) || undefined,
+    enrolledStudentIds: enrolled,
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapEadLesson(rec: AnyRec): EadLesson {
+  const provider = str(rec.videoProvider, 'youtube') as EadLesson['videoProvider']
+  return {
+    id: str(rec.id),
+    eadCourseId: str(rec.eadCourseId),
+    title: str(rec.title),
+    description: str(rec.description) || undefined,
+    moduleName: str(rec.moduleName) || undefined,
+    orderIndex: num(rec.orderIndex, 1),
+    videoUrl: str(rec.videoUrl),
+    videoProvider: provider,
+    videoEmbedId: str(rec.videoEmbedId) || undefined,
+    durationMinutes: num(rec.durationMinutes, 15),
+    isOptional: Boolean(rec.isOptional),
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
 // ---------- loaders ----------
 
 // Carrega todos os dados do banco (com seed inicial em coleções vazias).
@@ -741,6 +850,8 @@ export async function loadAllData(): Promise<{
   studentNotifications: StudentNotification[]
   studentSupportTickets: StudentSupportTicket[]
   certificates: Certificate[]
+  eadCourses: EadCourse[]
+  eadLessons: EadLesson[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -764,6 +875,8 @@ export async function loadAllData(): Promise<{
     studentNotifications,
     studentSupportTickets,
     certificates,
+    eadCourses,
+    eadLessons,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -901,6 +1014,20 @@ export async function loadAllData(): Promise<{
         ),
       [],
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.eadCourses).getFullList({ sort: '-created' })).map(
+          mapEadCourse,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.eadLessons).getFullList({ sort: 'orderIndex' })).map(
+          mapEadLesson,
+        ),
+      [],
+    ),
   ])
 
   return {
@@ -922,6 +1049,8 @@ export async function loadAllData(): Promise<{
     studentNotifications,
     studentSupportTickets,
     certificates,
+    eadCourses,
+    eadLessons,
   }
 }
 
@@ -1910,6 +2039,144 @@ export const portalDb = {
         await pb.collection('users').update(userId, buildFormData(userPayload))
       }
 
+      return true
+    }, false),
+
+  // ---------- EAD (Cursos e Videoaulas) ----------
+
+  createEadCourse: (data: Omit<EadCourse, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          title: data.title,
+          description: data.description || '',
+          workloadHours: data.workloadHours || 20,
+          catalogCourseId: data.catalogCourseId || '',
+          catalogCourseName: data.catalogCourseName || '',
+          thumbnail: data.thumbnail || '',
+          status: data.status || 'publicado',
+          instructorId: data.instructorId || '',
+          instructorName: data.instructorName || '',
+          enrolledStudentIds: JSON.stringify(data.enrolledStudentIds || []),
+        }
+        const rec = await pb.collection(COLLECTIONS.eadCourses).create(payload)
+        return mapEadCourse(rec as unknown as AnyRec)
+      },
+      null as EadCourse | null,
+    ),
+
+  updateEadCourse: (
+    courseId: string,
+    updates: Partial<Omit<EadCourse, 'id' | 'created' | 'updated'>>,
+  ) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.title !== undefined) payload.title = updates.title
+        if (updates.description !== undefined) payload.description = updates.description
+        if (updates.workloadHours !== undefined) payload.workloadHours = updates.workloadHours
+        if (updates.catalogCourseId !== undefined) payload.catalogCourseId = updates.catalogCourseId
+        if (updates.catalogCourseName !== undefined)
+          payload.catalogCourseName = updates.catalogCourseName
+        if (updates.thumbnail !== undefined) payload.thumbnail = updates.thumbnail
+        if (updates.status !== undefined) payload.status = updates.status
+        if (updates.instructorId !== undefined) payload.instructorId = updates.instructorId
+        if (updates.instructorName !== undefined) payload.instructorName = updates.instructorName
+        if (updates.enrolledStudentIds !== undefined) {
+          payload.enrolledStudentIds = JSON.stringify(updates.enrolledStudentIds)
+        }
+        const rec = await pb.collection(COLLECTIONS.eadCourses).update(courseId, payload)
+        return mapEadCourse(rec as unknown as AnyRec)
+      },
+      null as EadCourse | null,
+    ),
+
+  deleteEadCourse: (courseId: string) =>
+    safeWrite(async () => {
+      // Exclui também as aulas vinculadas
+      try {
+        const lessons = await pb.collection(COLLECTIONS.eadLessons).getFullList({
+          filter: `eadCourseId = "${courseId}"`,
+        })
+        for (const l of lessons) {
+          await pb
+            .collection(COLLECTIONS.eadLessons)
+            .delete(l.id)
+            .catch(() => null)
+        }
+      } catch {
+        /* intentionally ignored */
+      }
+      await pb.collection(COLLECTIONS.eadCourses).delete(courseId)
+      return true
+    }, false),
+
+  createEadLesson: (data: Omit<EadLesson, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const parsed = parseVideoUrl(data.videoUrl)
+        const payload = {
+          eadCourseId: data.eadCourseId,
+          title: data.title,
+          description: data.description || '',
+          moduleName: data.moduleName || 'Módulo 1: Introdução',
+          orderIndex: data.orderIndex ?? 1,
+          videoUrl: data.videoUrl,
+          videoProvider: data.videoProvider || parsed.provider,
+          videoEmbedId: data.videoEmbedId || parsed.embedId,
+          durationMinutes: data.durationMinutes || 15,
+          isOptional: Boolean(data.isOptional),
+        }
+        const rec = await pb.collection(COLLECTIONS.eadLessons).create(payload)
+        return mapEadLesson(rec as unknown as AnyRec)
+      },
+      null as EadLesson | null,
+    ),
+
+  updateEadLesson: (
+    lessonId: string,
+    updates: Partial<Omit<EadLesson, 'id' | 'created' | 'updated'>>,
+  ) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.title !== undefined) payload.title = updates.title
+        if (updates.description !== undefined) payload.description = updates.description
+        if (updates.moduleName !== undefined) payload.moduleName = updates.moduleName
+        if (updates.orderIndex !== undefined) payload.orderIndex = updates.orderIndex
+        if (updates.videoUrl !== undefined) {
+          payload.videoUrl = updates.videoUrl
+          const parsed = parseVideoUrl(updates.videoUrl)
+          payload.videoProvider = updates.videoProvider || parsed.provider
+          payload.videoEmbedId = updates.videoEmbedId || parsed.embedId
+        } else {
+          if (updates.videoProvider !== undefined) payload.videoProvider = updates.videoProvider
+          if (updates.videoEmbedId !== undefined) payload.videoEmbedId = updates.videoEmbedId
+        }
+        if (updates.durationMinutes !== undefined) payload.durationMinutes = updates.durationMinutes
+        if (updates.isOptional !== undefined) payload.isOptional = updates.isOptional
+
+        const rec = await pb.collection(COLLECTIONS.eadLessons).update(lessonId, payload)
+        return mapEadLesson(rec as unknown as AnyRec)
+      },
+      null as EadLesson | null,
+    ),
+
+  deleteEadLesson: (lessonId: string) =>
+    safeWrite(async () => {
+      await pb.collection(COLLECTIONS.eadLessons).delete(lessonId)
+      return true
+    }, false),
+
+  reorderEadLessons: (orderedLessonIds: string[]) =>
+    safeWrite(async () => {
+      for (let i = 0; i < orderedLessonIds.length; i++) {
+        const id = orderedLessonIds[i]
+        await pb
+          .collection(COLLECTIONS.eadLessons)
+          .update(id, { orderIndex: i + 1 })
+          .catch(() => null)
+      }
       return true
     }, false),
 }

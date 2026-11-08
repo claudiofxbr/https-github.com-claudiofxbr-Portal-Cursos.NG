@@ -16,6 +16,7 @@ import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
 import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
+import { EADModule } from '@/components/ead/EADModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -86,6 +87,7 @@ export default function Index() {
             />
           )}
           {safeActiveModule === 'cursos' && <CursosModule />}
+          {safeActiveModule === 'ead' && <EADModule />}
           {safeActiveModule === 'financeiro' && (
             <FinanceiroModule
               initialChargeId={targetChargeId}

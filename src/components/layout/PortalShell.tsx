@@ -32,6 +32,7 @@ import {
   X,
   UserCheck,
   Award,
+  Tv,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -46,6 +47,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   BarChart3,
   UserCheck,
   Award,
+  Tv,
 }
 
 interface PortalHeaderAndSidebarProps {

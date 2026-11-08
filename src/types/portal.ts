@@ -30,6 +30,7 @@ export type ModuleKey =
   | 'alunos'
   | 'matriculas'
   | 'cursos'
+  | 'ead'
   | 'financeiro'
   | 'relatorios'
   | 'usuarios'
@@ -476,4 +477,38 @@ export interface SystemDiagnostic {
     status: 'concluido' | 'planejado' | 'em_desenvolvimento'
     items: string[]
   }[]
+}
+
+export type EadVideoProvider = 'youtube' | 'vimeo' | 'mp4' | 'outro'
+
+export interface EadLesson {
+  id: string
+  eadCourseId: string
+  title: string
+  description?: string
+  moduleName?: string
+  orderIndex: number
+  videoUrl: string
+  videoProvider: EadVideoProvider
+  videoEmbedId?: string
+  durationMinutes: number
+  isOptional?: boolean
+  created?: string
+  updated?: string
+}
+
+export interface EadCourse {
+  id: string
+  title: string
+  description: string
+  workloadHours: number
+  catalogCourseId?: string
+  catalogCourseName?: string
+  thumbnail?: string
+  status: 'publicado' | 'rascunho' | 'arquivado'
+  instructorId?: string
+  instructorName?: string
+  enrolledStudentIds: string[]
+  created?: string
+  updated?: string
 }

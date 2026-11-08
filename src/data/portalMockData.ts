@@ -64,6 +64,13 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     ],
   },
   {
+    key: 'ead',
+    label: 'EAD & Videoaulas',
+    description: 'Gestão de cursos EAD, videoaulas (YouTube, Vimeo, MP4) e vínculo de alunos',
+    icon: 'Tv',
+    requiredRoles: ['root', 'admin', 'coordenador', 'professor'],
+  },
+  {
     key: 'financeiro',
     label: 'Financeiro & Pagamentos',
     description: 'Cobranças, checkout Pix/Cartão demonstrativo, tabela de preços e isenções',
