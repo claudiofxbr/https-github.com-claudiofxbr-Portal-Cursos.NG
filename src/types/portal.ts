@@ -550,6 +550,7 @@ export interface LibraryLoan {
   renewalHistory?: string[] // lista de datas/timestamps ISO das renovações efetuadas
   notes?: string
   status: LibraryLoanStatus
+  lastOverdueNotifiedAt?: string // timestamp ISO do último envio de e-mail de atraso (anti-spam)
   created?: string
   updated?: string
 }
@@ -558,6 +559,7 @@ export interface LibrarySettings {
   id?: string
   maxRenewals: number // limite máximo de renovações por empréstimo (padrão 2)
   renewalDays: number // dias concedidos a cada renovação (padrão 7)
+  libraryEmail?: string // e-mail oficial da biblioteca que recebe cópia dos avisos de atraso
   created?: string
   updated?: string
 }

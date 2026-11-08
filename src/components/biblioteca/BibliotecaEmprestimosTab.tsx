@@ -40,7 +40,10 @@ import {
   Settings2,
   ShieldAlert,
   Info,
+  Mail,
+  Send,
 } from 'lucide-react'
+import { portalDb } from '@/lib/portalDb'
 
 interface BibliotecaEmprestimosTabProps {
   preSelectedBookId?: string | null
@@ -74,13 +77,21 @@ export function BibliotecaEmprestimosTab({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsMaxRenewals, setSettingsMaxRenewals] = useState(librarySettings.maxRenewals)
   const [settingsRenewalDays, setSettingsRenewalDays] = useState(librarySettings.renewalDays)
+  const [settingsLibraryEmail, setSettingsLibraryEmail] = useState(
+    librarySettings.libraryEmail || 'biblioteca@portalcursos.ng',
+  )
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
+
+  // Disparo manual de verificação de atrasados
+  const [triggeringNotif, setTriggeringNotif] = useState(false)
+  const [triggerResult, setTriggerResult] = useState<string | null>(null)
 
   // Sincroniza formulário de settings quando o contexto carregar
   React.useEffect(() => {
     setSettingsMaxRenewals(librarySettings.maxRenewals)
     setSettingsRenewalDays(librarySettings.renewalDays)
+    setSettingsLibraryEmail(librarySettings.libraryEmail || 'biblioteca@portalcursos.ng')
   }, [librarySettings])
 
   // Diálogo de confirmação de Renovação Forçada (além do limite)
@@ -242,9 +253,10 @@ export function BibliotecaEmprestimosTab({
       const res = await updateLibrarySettings({
         maxRenewals: Number(settingsMaxRenewals),
         renewalDays: Number(settingsRenewalDays),
+        libraryEmail: settingsLibraryEmail.trim() || 'biblioteca@portalcursos.ng',
       })
       if (res.success) {
-        setSettingsMessage('Regras de renovação atualizadas com sucesso!')
+        setSettingsMessage('Configurações da biblioteca salvas com sucesso!')
         setTimeout(() => {
           setIsSettingsOpen(false)
           setSettingsMessage(null)
@@ -254,6 +266,25 @@ export function BibliotecaEmprestimosTab({
       }
     } finally {
       setSettingsSaving(false)
+    }
+  }
+
+  const handleTriggerNotifications = async () => {
+    setTriggeringNotif(true)
+    setTriggerResult(null)
+    try {
+      const res = await portalDb.triggerOverdueNotifications()
+      if (res && res.success) {
+        setTriggerResult(
+          `Disparo concluído: ${res.sentCount} e-mails enviados, ${res.skippedCount} pulados (anti-spam / sem e-mail) de ${res.overdueCount} atrasados.`,
+        )
+      } else {
+        setTriggerResult('Aviso disparado via servidor.')
+      }
+    } catch {
+      setTriggerResult('Erro ao disparar rotina de e-mails.')
+    } finally {
+      setTriggeringNotif(false)
     }
   }
 
@@ -894,16 +925,54 @@ export function BibliotecaEmprestimosTab({
               </p>
             </div>
 
-            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-200 space-y-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-200 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-blue-400" />
+                E-mail da Biblioteca (Cópia dos Avisos de Atraso)
+              </Label>
+              <Input
+                type="email"
+                value={settingsLibraryEmail}
+                onChange={(e) => setSettingsLibraryEmail(e.target.value)}
+                placeholder="biblioteca@portalcursos.ng"
+                className="bg-slate-950 border-slate-800 text-xs text-white"
+                required
+              />
+              <p className="text-[11px] text-slate-500">
+                Endereço que recebe cópia institucional e atua como remetente dos alertas
+                automáticos.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-200 space-y-1.5">
               <p className="font-semibold text-blue-300 flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-blue-400" />
-                Regras automáticas do sistema:
+                Aviso Automático de Atraso:
               </p>
               <ul className="list-disc list-inside space-y-0.5 text-slate-300">
-                <li>Empréstimos atrasados são bloqueados imediatamente.</li>
-                <li>Ao atingir o limite, o aluno e a secretaria são informados.</li>
-                <li>Perfis Root e Admin têm permissão para forçar exceções no balcão.</li>
+                <li>Rotina cron diária automática no servidor (08:00 UTC).</li>
+                <li>Envia para o e-mail do aluno e para o e-mail da biblioteca.</li>
+                <li>Anti-spam: no máximo 1 e-mail por empréstimo por dia.</li>
               </ul>
+              <div className="pt-2 border-t border-blue-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-400">Deseja forçar verificação agora?</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleTriggerNotifications}
+                  disabled={triggeringNotif}
+                  className="border-blue-500/30 text-blue-300 hover:bg-blue-500/20 text-[11px] h-7 gap-1"
+                >
+                  <Send className="w-3 h-3" />
+                  {triggeringNotif ? 'Verificando...' : 'Testar Envio Agora'}
+                </Button>
+              </div>
+              {triggerResult && (
+                <p className="text-[11px] text-amber-300 bg-amber-500/10 p-1.5 rounded border border-amber-500/20">
+                  {triggerResult}
+                </p>
+              )}
             </div>
 
             <DialogFooter className="gap-2 pt-2">

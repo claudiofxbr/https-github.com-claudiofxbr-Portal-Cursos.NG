@@ -2362,6 +2362,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         newSettings.renewalDays !== undefined
           ? Math.max(1, Math.min(90, Math.round(newSettings.renewalDays)))
           : librarySettings.renewalDays,
+      libraryEmail:
+        newSettings.libraryEmail !== undefined
+          ? newSettings.libraryEmail.trim()
+          : librarySettings.libraryEmail || 'biblioteca@portalcursos.ng',
       updated: new Date().toISOString(),
     }
     setLibrarySettings(merged)

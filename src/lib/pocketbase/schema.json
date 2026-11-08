@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T14:19:23.158Z",
+  "generatedAt": "2026-11-08T14:38:34.043Z",
   "collections": [
     {
       "name": "users",
@@ -2367,12 +2367,19 @@
           "type": "json",
           "required": false,
           "system": false
+        },
+        {
+          "name": "lastOverdueNotifiedAt",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_library_loans_book ON library_loans (bookId)",
         "CREATE INDEX idx_library_loans_student ON library_loans (studentId)",
-        "CREATE INDEX idx_library_loans_due ON library_loans (dueDate)"
+        "CREATE INDEX idx_library_loans_due ON library_loans (dueDate)",
+        "CREATE INDEX `idx_library_loans_notif` ON `library_loans` (lastOverdueNotifiedAt)"
       ]
     },
     {
@@ -2411,6 +2418,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "libraryEmail",
+          "type": "email",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

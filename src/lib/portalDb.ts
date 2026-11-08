@@ -895,6 +895,7 @@ export function mapLibraryLoan(rec: AnyRec): LibraryLoan {
     renewalHistory,
     notes: str(rec.notes) || undefined,
     status: computeLoanStatus(due, ret),
+    lastOverdueNotifiedAt: str(rec.lastOverdueNotifiedAt) || undefined,
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -905,6 +906,7 @@ export function mapLibrarySettings(rec: AnyRec): LibrarySettings {
     id: str(rec.id),
     maxRenewals: num(rec.maxRenewals, 2),
     renewalDays: num(rec.renewalDays, 7),
+    libraryEmail: str(rec.libraryEmail) || 'biblioteca@portalcursos.ng',
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -913,6 +915,7 @@ export function mapLibrarySettings(rec: AnyRec): LibrarySettings {
 export const DEFAULT_LIBRARY_SETTINGS: LibrarySettings = {
   maxRenewals: 2,
   renewalDays: 7,
+  libraryEmail: 'biblioteca@portalcursos.ng',
 }
 
 // ---------- loaders ----------
@@ -2429,12 +2432,20 @@ export const portalDb = {
       return true
     }, false),
 
-  saveLibrarySettings: (settings: { id?: string; maxRenewals: number; renewalDays: number }) =>
+  saveLibrarySettings: (settings: {
+    id?: string
+    maxRenewals: number
+    renewalDays: number
+    libraryEmail?: string
+  }) =>
     safeWrite(
       async () => {
-        const payload = {
+        const payload: Record<string, unknown> = {
           maxRenewals: Math.max(0, Math.min(20, Math.round(settings.maxRenewals))),
           renewalDays: Math.max(1, Math.min(90, Math.round(settings.renewalDays))),
+          libraryEmail: (settings.libraryEmail || 'biblioteca@portalcursos.ng')
+            .trim()
+            .toLowerCase(),
         }
         let rec
         if (settings.id) {
@@ -2454,4 +2465,23 @@ export const portalDb = {
       },
       null as LibrarySettings | null,
     ),
+
+  triggerOverdueNotifications: () =>
+    safeWrite(async () => {
+      const res = await pb.send('/backend/v1/library/notify-overdue', {
+        method: 'POST',
+      })
+      return res as {
+        success: boolean
+        overdueCount: number
+        sentCount: number
+        skippedCount: number
+        details?: Array<{
+          loanId: string
+          studentName?: string
+          recipients?: string[]
+          sent?: boolean
+        }>
+      }
+    }, null),
 }
