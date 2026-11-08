@@ -23,6 +23,8 @@ import {
   Certificate,
   EadCourse,
   EadLesson,
+  EadMaterial,
+  EadMaterialType,
   LibraryBook,
   LibraryLoan,
   LibraryLoanStatus,
@@ -66,6 +68,7 @@ export const COLLECTIONS = {
   certificates: 'certificates',
   eadCourses: 'ead_courses',
   eadLessons: 'ead_lessons',
+  eadMaterials: 'ead_materials',
   libraryBooks: 'library_books',
   libraryLoans: 'library_loans',
   librarySettings: 'library_settings',
@@ -853,6 +856,32 @@ export function mapEadLesson(rec: AnyRec): EadLesson {
   }
 }
 
+export function mapEadMaterial(rec: AnyRec): EadMaterial {
+  const rawType = str(rec.type, 'link') as EadMaterial['type']
+  const validTypes: EadMaterial['type'][] = [
+    'link',
+    'pdf',
+    'exercicio',
+    'artigo',
+    'referencia',
+    'outro',
+  ]
+  const type = validTypes.includes(rawType) ? rawType : 'link'
+
+  return {
+    id: str(rec.id),
+    lessonId: str(rec.lessonId),
+    eadCourseId: str(rec.eadCourseId) || undefined,
+    title: str(rec.title),
+    description: str(rec.description) || undefined,
+    type,
+    url: str(rec.url),
+    orderIndex: num(rec.orderIndex, 1),
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
 export function computeLoanStatus(dueDateStr: string, returnedAtStr?: string): LibraryLoanStatus {
   if (returnedAtStr && returnedAtStr.trim().length > 0) {
     return 'devolvido'
@@ -1004,6 +1033,7 @@ export async function loadAllData(): Promise<{
   certificates: Certificate[]
   eadCourses: EadCourse[]
   eadLessons: EadLesson[]
+  eadMaterials: EadMaterial[]
   libraryBooks: LibraryBook[]
   libraryLoans: LibraryLoan[]
   librarySettings: LibrarySettings
@@ -1034,6 +1064,7 @@ export async function loadAllData(): Promise<{
     certificates,
     eadCourses,
     eadLessons,
+    eadMaterials,
     rawLibraryBooks,
     libraryLoans,
     librarySettingsList,
@@ -1192,6 +1223,13 @@ export async function loadAllData(): Promise<{
     ),
     safeList(
       async () =>
+        (await pb.collection(COLLECTIONS.eadMaterials).getFullList({ sort: 'orderIndex' })).map(
+          mapEadMaterial,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
         (await pb.collection(COLLECTIONS.libraryBooks).getFullList({ sort: 'title' })).map(
           mapLibraryBook,
         ),
@@ -1274,6 +1312,7 @@ export async function loadAllData(): Promise<{
     certificates,
     eadCourses,
     eadLessons,
+    eadMaterials,
     libraryBooks,
     libraryLoans,
     librarySettings,
@@ -2414,6 +2453,51 @@ export const portalDb = {
           .update(id, { orderIndex: i + 1 })
           .catch(() => null)
       }
+      return true
+    }, false),
+
+  createEadMaterial: (data: Omit<EadMaterial, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          lessonId: data.lessonId,
+          eadCourseId: data.eadCourseId || '',
+          title: data.title,
+          description: data.description || '',
+          type: data.type || 'link',
+          url: data.url,
+          orderIndex: data.orderIndex ?? 1,
+        }
+        const rec = await pb.collection(COLLECTIONS.eadMaterials).create(payload)
+        return mapEadMaterial(rec as unknown as AnyRec)
+      },
+      null as EadMaterial | null,
+    ),
+
+  updateEadMaterial: (
+    materialId: string,
+    updates: Partial<Omit<EadMaterial, 'id' | 'created' | 'updated'>>,
+  ) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.title !== undefined) payload.title = updates.title
+        if (updates.description !== undefined) payload.description = updates.description
+        if (updates.type !== undefined) payload.type = updates.type
+        if (updates.url !== undefined) payload.url = updates.url
+        if (updates.orderIndex !== undefined) payload.orderIndex = updates.orderIndex
+        if (updates.lessonId !== undefined) payload.lessonId = updates.lessonId
+        if (updates.eadCourseId !== undefined) payload.eadCourseId = updates.eadCourseId
+
+        const rec = await pb.collection(COLLECTIONS.eadMaterials).update(materialId, payload)
+        return mapEadMaterial(rec as unknown as AnyRec)
+      },
+      null as EadMaterial | null,
+    ),
+
+  deleteEadMaterial: (materialId: string) =>
+    safeWrite(async () => {
+      await pb.collection(COLLECTIONS.eadMaterials).delete(materialId)
       return true
     }, false),
 

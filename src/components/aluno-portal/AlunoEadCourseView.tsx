@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { EadCourse, EadLesson, LessonProgress } from '@/types/portal'
+import { EadCourse, EadLesson, EadMaterial, LessonProgress } from '@/types/portal'
 import { VideoPlayerEmbed } from '@/components/ead/VideoPlayerEmbed'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -15,12 +15,20 @@ import {
   Award,
   RotateCcw,
   Sparkles,
+  ExternalLink,
+  FileText,
+  FileCode2,
+  BookmarkCheck,
+  Link as LinkIcon,
+  HelpCircle,
+  Info,
 } from 'lucide-react'
 
 interface AlunoEadCourseViewProps {
   course: EadCourse
   lessons: EadLesson[]
   lessonProgress: LessonProgress[]
+  materials?: EadMaterial[]
   studentId: string
   canToggleProgress?: boolean
   suspensionNotice?: string
@@ -38,6 +46,7 @@ export function AlunoEadCourseView({
   course,
   lessons,
   lessonProgress,
+  materials = [],
   studentId,
   canToggleProgress = true,
   suspensionNotice,
@@ -56,6 +65,14 @@ export function AlunoEadCourseView({
   const activeLesson = useMemo(() => {
     return sortedLessons.find((l) => l.id === activeLessonId) || sortedLessons[0]
   }, [sortedLessons, activeLessonId])
+
+  // Materiais complementares da aula selecionada
+  const activeLessonMaterials = useMemo(() => {
+    if (!activeLesson) return []
+    return materials
+      .filter((m) => m.lessonId === activeLesson.id)
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+  }, [materials, activeLesson])
 
   // Map de progresso por lessonId
   const progressMap = useMemo(() => {
@@ -276,6 +293,121 @@ export function AlunoEadCourseView({
                       {activeLesson.description}
                     </div>
                   )}
+
+                  {/* Seção de Material Complementar da Aula */}
+                  <div className="pt-2 border-t border-slate-800/80 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-cyan-400" />
+                        <h4 className="text-sm font-semibold text-white">Material Complementar</h4>
+                        <Badge
+                          variant="outline"
+                          className="border-slate-700 text-slate-400 text-[10px] px-2"
+                        >
+                          {activeLessonMaterials.length}{' '}
+                          {activeLessonMaterials.length === 1 ? 'item' : 'itens'}
+                        </Badge>
+                      </div>
+
+                      {/* Aviso explicativo de que material não afeta progresso nem frequência MEC */}
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        Leitura opcional: o progresso é registrado apenas pelo botão de conclusão da
+                        aula
+                      </span>
+                    </div>
+
+                    {activeLessonMaterials.length === 0 ? (
+                      <div className="p-4 rounded-lg bg-slate-950/40 border border-slate-800/60 text-center space-y-1">
+                        <p className="text-xs text-slate-400">
+                          Nenhum material complementar cadastrado para esta aula.
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Os slides, links e referências extras serão listados aqui quando
+                          disponibilizados pelo professor.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {activeLessonMaterials.map((mat) => {
+                          const badgeMap: Record<
+                            string,
+                            { label: string; color: string; icon: React.ReactNode }
+                          > = {
+                            pdf: {
+                              label: 'PDF / Documento',
+                              color: 'bg-rose-500/10 text-rose-300 border-rose-500/30',
+                              icon: <FileText className="w-3 h-3 text-rose-400" />,
+                            },
+                            exercicio: {
+                              label: 'Exercício / Desafio',
+                              color: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+                              icon: <FileCode2 className="w-3 h-3 text-amber-400" />,
+                            },
+                            artigo: {
+                              label: 'Artigo / Leitura',
+                              color: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
+                              icon: <BookmarkCheck className="w-3 h-3 text-emerald-400" />,
+                            },
+                            referencia: {
+                              label: 'Referência Bibliográfica',
+                              color: 'bg-purple-500/10 text-purple-300 border-purple-500/30',
+                              icon: <BookOpen className="w-3 h-3 text-purple-400" />,
+                            },
+                            link: {
+                              label: 'Link Externo',
+                              color: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30',
+                              icon: <LinkIcon className="w-3 h-3 text-cyan-400" />,
+                            },
+                            outro: {
+                              label: 'Material de Apoio',
+                              color: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
+                              icon: <HelpCircle className="w-3 h-3 text-blue-400" />,
+                            },
+                          }
+
+                          const meta = badgeMap[mat.type || 'link'] || badgeMap.link
+
+                          return (
+                            <div
+                              key={mat.id}
+                              className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between gap-2.5"
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] px-2 py-0.5 flex items-center gap-1 ${meta.color}`}
+                                  >
+                                    {meta.icon}
+                                    {meta.label}
+                                  </Badge>
+                                </div>
+                                <h5 className="text-xs font-semibold text-slate-100 line-clamp-2">
+                                  {mat.title}
+                                </h5>
+                                {mat.description && (
+                                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                                    {mat.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              <a
+                                href={mat.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center gap-1.5 w-full text-xs font-medium px-3 py-1.5 rounded-md bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 transition-all"
+                              >
+                                <span>Acessar Material</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Navegação Entre Aulas */}
                   <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">

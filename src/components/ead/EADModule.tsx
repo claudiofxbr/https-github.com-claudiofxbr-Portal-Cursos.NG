@@ -41,12 +41,15 @@ import {
   Search,
   Eye,
   ShieldAlert,
+  FileText,
 } from 'lucide-react'
+import { EadMaterialManagerModal } from '@/components/ead/EadMaterialManagerModal'
 
 export function EADModule() {
   const {
     eadCourses,
     eadLessons,
+    eadMaterials,
     courses,
     users,
     students,
@@ -107,6 +110,9 @@ export function EADModule() {
 
   // Modal de Preview de Aula
   const [previewLesson, setPreviewLesson] = useState<EadLesson | null>(null)
+
+  // Modal de Materiais Complementares da Aula
+  const [materialLesson, setMaterialLesson] = useState<EadLesson | null>(null)
 
   // Curso selecionado atualmente
   const selectedCourse = useMemo(() => {
@@ -761,6 +767,34 @@ export function EADModule() {
 
                         {/* Ações da Aula */}
                         <div className="flex items-center gap-1 shrink-0">
+                          {/* Botão Materiais Complementares */}
+                          {(() => {
+                            const matCount = eadMaterials.filter(
+                              (m) => m.lessonId === lesson.id,
+                            ).length
+                            return (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-7 px-2 text-xs transition-all ${
+                                  matCount > 0
+                                    ? 'text-cyan-700 border-cyan-300 bg-cyan-50/60 hover:bg-cyan-100'
+                                    : 'text-slate-600 border-slate-200 hover:bg-slate-50'
+                                }`}
+                                onClick={() => setMaterialLesson(lesson)}
+                                title="Gerenciar materiais complementares desta aula"
+                              >
+                                <FileText className="w-3.5 h-3.5 mr-1 text-cyan-600" />
+                                <span>Materiais</span>
+                                {matCount > 0 && (
+                                  <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-cyan-600 text-white">
+                                    {matCount}
+                                  </span>
+                                )}
+                              </Button>
+                            )
+                          })()}
+
                           <Button
                             variant="outline"
                             size="sm"
@@ -1146,6 +1180,14 @@ export function EADModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal: Gerenciamento de Materiais Complementares da Aula */}
+      <EadMaterialManagerModal
+        lesson={materialLesson}
+        courseTitle={selectedCourse?.title}
+        isOpen={Boolean(materialLesson)}
+        onClose={() => setMaterialLesson(null)}
+      />
 
       {/* Modal: Preview do Player de Vídeo */}
       <Dialog

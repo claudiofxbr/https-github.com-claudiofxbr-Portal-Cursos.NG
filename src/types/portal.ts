@@ -553,6 +553,21 @@ export interface EadCourse {
   updated?: string
 }
 
+export type EadMaterialType = 'link' | 'pdf' | 'exercicio' | 'artigo' | 'referencia' | 'outro'
+
+export interface EadMaterial {
+  id: string
+  lessonId: string
+  eadCourseId?: string
+  title: string
+  description?: string
+  type: EadMaterialType
+  url: string
+  orderIndex?: number
+  created?: string
+  updated?: string
+}
+
 export interface LibraryBook {
   id: string
   title: string

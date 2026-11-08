@@ -22,6 +22,7 @@ import {
   Certificate,
   EadCourse,
   EadLesson,
+  EadMaterial,
   LibraryBook,
   LibraryLoan,
   LibrarySettings,
@@ -199,9 +200,10 @@ interface PortalContextType {
   getStudentDiploma: (studentId: string) => Certificate | undefined
   getStudentCertificates: (studentId: string) => Certificate[]
 
-  // EAD (Cursos e Videoaulas)
+  // EAD (Cursos, Videoaulas e Materiais Complementares)
   eadCourses: EadCourse[]
   eadLessons: EadLesson[]
+  eadMaterials: EadMaterial[]
   createEadCourse: (
     data: Omit<EadCourse, 'id' | 'created' | 'updated'>,
   ) => Promise<EadCourse | null>
@@ -220,6 +222,14 @@ interface PortalContextType {
   ) => Promise<EadLesson | null>
   deleteEadLesson: (id: string) => Promise<boolean>
   reorderEadLessons: (orderedLessonIds: string[]) => Promise<boolean>
+  createEadMaterial: (
+    data: Omit<EadMaterial, 'id' | 'created' | 'updated'>,
+  ) => Promise<EadMaterial | null>
+  updateEadMaterial: (
+    id: string,
+    updates: Partial<Omit<EadMaterial, 'id' | 'created' | 'updated'>>,
+  ) => Promise<EadMaterial | null>
+  deleteEadMaterial: (id: string) => Promise<boolean>
 
   // Biblioteca (Acervo & Empréstimos)
   libraryBooks: LibraryBook[]
@@ -485,6 +495,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [eadCourses, setEadCourses] = useState<EadCourse[]>([])
   const [eadLessons, setEadLessons] = useState<EadLesson[]>([])
+  const [eadMaterials, setEadMaterials] = useState<EadMaterial[]>([])
   const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([])
   const [libraryLoans, setLibraryLoans] = useState<LibraryLoan[]>([])
   const [librarySettings, setLibrarySettings] = useState<LibrarySettings>(DEFAULT_LIBRARY_SETTINGS)
@@ -526,6 +537,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.certificates) setCertificates(data.certificates)
       if (data.eadCourses) setEadCourses(data.eadCourses)
       if (data.eadLessons) setEadLessons(data.eadLessons)
+      if (data.eadMaterials) setEadMaterials(data.eadMaterials)
       if (data.libraryBooks) setLibraryBooks(data.libraryBooks)
       if (data.libraryLoans) setLibraryLoans(data.libraryLoans)
       if (data.librarySettings) setLibrarySettings(data.librarySettings)
@@ -2385,6 +2397,61 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const createEadMaterial = async (
+    data: Omit<EadMaterial, 'id' | 'created' | 'updated'>,
+  ): Promise<EadMaterial | null> => {
+    const tempId = `ead-mat-${Date.now()}`
+    const optimistic: EadMaterial = {
+      ...data,
+      id: tempId,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+    setEadMaterials((prev) => [...prev, optimistic])
+
+    try {
+      const saved = await portalDb.createEadMaterial(data)
+      if (saved) {
+        setEadMaterials((prev) => prev.map((m) => (m.id === tempId ? saved : m)))
+        return saved
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar material complementar EAD:', err)
+    }
+    return optimistic
+  }
+
+  const updateEadMaterial = async (
+    id: string,
+    updates: Partial<Omit<EadMaterial, 'id' | 'created' | 'updated'>>,
+  ): Promise<EadMaterial | null> => {
+    setEadMaterials((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...updates, updated: new Date().toISOString() } : m)),
+    )
+
+    try {
+      const saved = await portalDb.updateEadMaterial(id, updates)
+      if (saved) {
+        setEadMaterials((prev) => prev.map((m) => (m.id === id ? saved : m)))
+        return saved
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao atualizar material complementar EAD:', err)
+    }
+    return null
+  }
+
+  const deleteEadMaterial = async (id: string): Promise<boolean> => {
+    setEadMaterials((prev) => prev.filter((m) => m.id !== id))
+
+    try {
+      return await portalDb.deleteEadMaterial(id)
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao excluir material complementar EAD:', err)
+      return false
+    }
+  }
+
   // Diagnostic
   const refreshDiagnostic = () => {
     setDiagnostic((prev) => ({
@@ -2974,6 +3041,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         updateEadLesson,
         deleteEadLesson,
         reorderEadLessons,
+        eadMaterials,
+        createEadMaterial,
+        updateEadMaterial,
+        deleteEadMaterial,
         libraryBooks,
         libraryLoans,
         librarySettings,

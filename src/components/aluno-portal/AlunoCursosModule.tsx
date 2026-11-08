@@ -62,6 +62,7 @@ export function AlunoCursosModule({
     updateLessonProgress,
     eadCourses,
     eadLessons,
+    eadMaterials,
     isSyncing,
     isBackendReady,
     refreshDiagnostic,
@@ -448,6 +449,7 @@ export function AlunoCursosModule({
           course={selectedEadCourse}
           lessons={selectedEadLessons}
           lessonProgress={lessonProgress}
+          materials={eadMaterials}
           studentId={effectiveStudentId}
           onToggleLessonProgress={async (
             lessonId,

@@ -18,7 +18,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
-import { ChevronRight, PlusCircle, Tv, Users, Video } from 'lucide-react'
+import { ChevronRight, PlusCircle, Tv, Users, Video, FileText } from 'lucide-react'
+import { EadMaterialManagerModal } from '@/components/ead/EadMaterialManagerModal'
 
 interface ProfessorEadProps {
   eadCourses: EadCourse[]
@@ -42,9 +43,12 @@ export function ProfessorEad({
   const { toast } = useToast()
   const { currentUser } = usePortal()
 
+  const { eadMaterials } = usePortal()
+
   const [selectedCourseId, setSelectedCourseId] = useState<string>(eadCourses[0]?.id || 'none')
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false)
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false)
+  const [materialLesson, setMaterialLesson] = useState<EadLesson | null>(null)
 
   const [lessonTitle, setLessonTitle] = useState('')
   const [lessonDesc, setLessonDesc] = useState('')
@@ -232,18 +236,50 @@ export function ProfessorEad({
                     </p>
                   ) : (
                     <ol className="divide-y">
-                      {courseLessons.map((l, i) => (
-                        <li key={l.id} className="flex items-center gap-3 py-2">
-                          <span className="text-xs text-muted-foreground">{i + 1}.</span>
-                          <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">{l.title}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {l.moduleName} · {l.durationMinutes} min
-                            </p>
-                          </div>
-                        </li>
-                      ))}
+                      {courseLessons.map((l, i) => {
+                        const matCount = eadMaterials.filter((m) => m.lessonId === l.id).length
+                        return (
+                          <li
+                            key={l.id}
+                            className="flex items-center justify-between gap-3 py-2 hover:bg-slate-50/80 px-2 rounded-md transition-colors"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="text-xs text-muted-foreground font-semibold w-4 text-right">
+                                {i + 1}.
+                              </span>
+                              <Video className="h-4 w-4 shrink-0 text-indigo-600" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-slate-900">
+                                  {l.title}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {l.moduleName} · {l.durationMinutes} min
+                                </p>
+                              </div>
+                            </div>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`h-7 px-2 text-xs shrink-0 transition-all ${
+                                matCount > 0
+                                  ? 'text-cyan-700 border-cyan-300 bg-cyan-50/60 hover:bg-cyan-100'
+                                  : 'text-slate-600 border-slate-200 hover:bg-slate-50'
+                              }`}
+                              onClick={() => setMaterialLesson(l)}
+                              title="Gerenciar materiais complementares desta aula"
+                            >
+                              <FileText className="w-3.5 h-3.5 mr-1 text-cyan-600" />
+                              <span>Materiais</span>
+                              {matCount > 0 && (
+                                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-cyan-600 text-white">
+                                  {matCount}
+                                </span>
+                              )}
+                            </Button>
+                          </li>
+                        )
+                      })}
                     </ol>
                   )}
                 </CardContent>
@@ -296,6 +332,14 @@ export function ProfessorEad({
           </div>
         </div>
       )}
+
+      {/* Modal de Gestão de Materiais Complementares da Aula */}
+      <EadMaterialManagerModal
+        lesson={materialLesson}
+        courseTitle={selectedCourse?.title}
+        isOpen={Boolean(materialLesson)}
+        onClose={() => setMaterialLesson(null)}
+      />
 
       {/* Modal: Nova Aula */}
       <Dialog open={isLessonModalOpen} onOpenChange={setIsLessonModalOpen}>
