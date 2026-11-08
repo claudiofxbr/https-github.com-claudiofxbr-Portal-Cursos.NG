@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T13:22:06.472Z",
+  "generatedAt": "2026-11-08T13:54:54.678Z",
   "collections": [
     {
       "name": "users",
@@ -2195,6 +2195,178 @@
       "indexes": [
         "CREATE INDEX idx_ead_lessons_course ON ead_lessons (eadCourseId)",
         "CREATE INDEX idx_ead_lessons_order ON ead_lessons (eadCourseId, orderIndex)"
+      ]
+    },
+    {
+      "name": "library_books",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "author",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "isbn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "publisher",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "year",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "totalCopies",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_library_books_title ON library_books (title)",
+        "CREATE INDEX idx_library_books_author ON library_books (author)",
+        "CREATE INDEX idx_library_books_isbn ON library_books (isbn)"
+      ]
+    },
+    {
+      "name": "library_loans",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "bookId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "bookTitle",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "studentName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "studentCpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "loanDate",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dueDate",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "returnedAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "renewals",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_library_loans_book ON library_loans (bookId)",
+        "CREATE INDEX idx_library_loans_student ON library_loans (studentId)",
+        "CREATE INDEX idx_library_loans_due ON library_loans (dueDate)"
       ]
     }
   ]
