@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Charge, PriceTableItem, BillingException } from '@/types/portal'
+import { EmitirTaxaAvulsaModal } from './EmitirTaxaAvulsaModal'
+import { getChargeCategoryLabel, getChargeCategoryBadgeStyle } from '@/lib/feeCategories'
 import {
   SimuladoCardCheckoutModal,
   CardPaymentResult,
@@ -35,6 +37,8 @@ import {
   User,
   Search,
   X,
+  PlusCircle,
+  Tag,
 } from 'lucide-react'
 
 interface FinanceiroModuleProps {
@@ -62,6 +66,7 @@ export function FinanceiroModule({
     updateBillingExceptionStatus,
     students,
     currentUser,
+    createCharge,
   } = usePortal()
 
   const { toast } = useToast()
@@ -116,6 +121,22 @@ export function FinanceiroModule({
   const [newExcDiscount, setNewExcDiscount] = useState(10)
   const [newExcJustification, setNewExcJustification] = useState('')
   const [excModalOpen, setExcModalOpen] = useState(false)
+
+  // Modal de Emissão de Taxa Avulsa
+  const [taxaModalOpen, setTaxaModalOpen] = useState(false)
+  const canEmitTaxa =
+    currentUser?.role === 'root' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'financeiro'
+
+  const handleEmitTaxaSubmit = async (newCharge: Charge) => {
+    await createCharge(newCharge)
+    setHighlightedChargeId(newCharge.id)
+    toast({
+      title: 'Taxa avulsa emitida com sucesso!',
+      description: `Código: ${newCharge.code} • Aluno: ${newCharge.studentName} • Valor: ${formatCurrency(newCharge.amount)}`,
+    })
+  }
 
   // Refs para os timers (Pix copiado, checkout de cartão): o useEffect de
   // cleanup abaixo garante clearTimeout no unmount — nada de setState após
@@ -343,7 +364,7 @@ export function FinanceiroModule({
 
         {/* TAB 1: COBRANÇAS */}
         <TabsContent value="cobrancas" className="space-y-4 mt-4">
-          {/* Barra de Filtros e Busca */}
+          {/* Barra de Ações Rápidas, Filtros e Busca */}
           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between bg-slate-900/60 p-3 rounded-lg border border-slate-800">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -401,6 +422,17 @@ export function FinanceiroModule({
               >
                 Liquidadas
               </Button>
+
+              {canEmitTaxa && (
+                <Button
+                  size="sm"
+                  onClick={() => setTaxaModalOpen(true)}
+                  className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-sm ml-1"
+                >
+                  <PlusCircle className="w-3.5 h-3.5 mr-1" />
+                  Emitir Taxa Avulsa
+                </Button>
+              )}
             </div>
           </div>
 
@@ -491,10 +523,10 @@ export function FinanceiroModule({
                             {isPaid ? 'LIQUIDADO' : 'PENDENTE'}
                           </Badge>
                           <Badge
-                            variant="secondary"
-                            className="text-[10px] bg-slate-800 text-slate-300"
+                            variant="outline"
+                            className={`text-[10px] ${getChargeCategoryBadgeStyle(charge.category)}`}
                           >
-                            {charge.category}
+                            {getChargeCategoryLabel(charge.category)}
                           </Badge>
                           {isHighlighted && (
                             <Badge className="text-[10px] bg-blue-600 text-white animate-pulse">
@@ -1175,6 +1207,15 @@ export function FinanceiroModule({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* MODAL EMITIR TAXA AVULSA */}
+      <EmitirTaxaAvulsaModal
+        open={taxaModalOpen}
+        onOpenChange={setTaxaModalOpen}
+        students={students}
+        priceTable={priceTable}
+        onSubmit={handleEmitTaxaSubmit}
+      />
     </div>
   )
 }

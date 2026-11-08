@@ -127,8 +127,15 @@ export interface Charge {
   category:
     | 'mensalidade'
     | 'matricula'
+    | 'renegociacao'
     | 'rematricula'
+    | 'taxa_segunda_via'
+    | 'taxa_biblioteca'
+    | 'taxa_material'
+    | 'taxa_rematricula'
     | 'taxa_diploma'
+    | 'taxa_trancamento'
+    | 'taxa_avulsa'
     | 'segunda_chamada'
     | 'outro'
   description: string

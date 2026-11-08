@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T15:51:19.176Z",
+  "generatedAt": "2026-11-08T16:10:38.885Z",
   "collections": [
     {
       "name": "users",
@@ -575,12 +575,16 @@
           "required": true,
           "system": false,
           "selectValues": [
-            "mensalidade",
             "matricula",
-            "rematricula",
+            "mensalidade",
+            "renegociacao",
+            "taxa_segunda_via",
+            "taxa_biblioteca",
+            "taxa_material",
+            "taxa_rematricula",
             "taxa_diploma",
-            "segunda_chamada",
-            "outro"
+            "taxa_trancamento",
+            "taxa_avulsa"
           ]
         },
         {

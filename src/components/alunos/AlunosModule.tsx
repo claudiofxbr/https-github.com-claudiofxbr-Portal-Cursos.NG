@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Student, Charge, StudentDocument, ACADEMIC_RULES } from '@/types/portal'
+import { getChargeCategoryLabel, getChargeCategoryBadgeStyle } from '@/lib/feeCategories'
 import {
   calculateAcademicSummary,
   calculateConsolidatedAttendance,
@@ -1872,7 +1873,15 @@ export function AlunosModule({
                               <CreditCard className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-semibold text-white">{chg.description}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-white">{chg.description}</p>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[9px] py-0 px-1.5 ${getChargeCategoryBadgeStyle(chg.category)}`}
+                                >
+                                  {getChargeCategoryLabel(chg.category)}
+                                </Badge>
+                              </div>
                               <p className="text-[11px] text-slate-400">
                                 Código: <span className="font-mono text-slate-300">{chg.code}</span>{' '}
                                 • Vencimento: {chg.dueDate}

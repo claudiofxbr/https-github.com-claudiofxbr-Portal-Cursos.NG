@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Charge } from '@/types/portal'
+import { getChargeCategoryLabel, getChargeCategoryBadgeStyle } from '@/lib/feeCategories'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -376,9 +377,12 @@ export function AlunoCobrancasModule() {
                         >
                           {isPaid ? 'PAGO' : isOverdue ? 'VENCIDO' : 'A VENCER'}
                         </Badge>
-                        <span className="text-xs text-slate-500 capitalize">
-                          • Categoria: {chg.category.replace('_', ' ')}
-                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${getChargeCategoryBadgeStyle(chg.category)}`}
+                        >
+                          {getChargeCategoryLabel(chg.category)}
+                        </Badge>
                       </div>
 
                       <h3 className="text-sm font-semibold text-white truncate">
@@ -553,13 +557,7 @@ export function AlunoCobrancasModule() {
           open={cardModalOpen}
           onOpenChange={setCardModalOpen}
           amount={selectedCharge.amount}
-          categoryLabel={
-            selectedCharge.category === 'matricula'
-              ? 'Matrícula'
-              : selectedCharge.category === 'mensalidade'
-                ? 'Mensalidade'
-                : 'Taxa / Serviço'
-          }
+          categoryLabel={getChargeCategoryLabel(selectedCharge.category)}
           description={selectedCharge.description}
           studentName={selectedCharge.studentName || currentStudent?.fullName}
           chargeCode={selectedCharge.code}

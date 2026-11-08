@@ -60,6 +60,12 @@ const CATEGORY_LABEL_MAP: Record<string, string> = {
   taxa: 'Taxas & Serviços',
   material: 'Material Didático',
   certificacao: 'Certificação',
+  taxa_segunda_via: 'Taxa: 2ª Via de Documento',
+  taxa_biblioteca: 'Taxa: Biblioteca / Multa',
+  taxa_material: 'Taxa: Material Didático',
+  taxa_rematricula: 'Taxa: Matrícula / Rematrícula',
+  taxa_diploma: 'Taxa: Certificado / Diploma',
+  taxa_trancamento: 'Taxa: Trancamento / Transferência',
   outros: 'Outros',
 }
 

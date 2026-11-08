@@ -442,7 +442,7 @@ function mapCharge(rec: AnyRec): Charge {
     studentId: str(rec.studentId),
     studentName: str(rec.studentName),
     studentCpf: str(rec.studentCpf),
-    category: str(rec.category, 'mensalidade') as Charge['category'],
+    category: (str(rec.category, 'mensalidade') as Charge['category']) || 'mensalidade',
     description: str(rec.description),
     amount: num(rec.amount),
     dueDate: str(rec.dueDate),
