@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { generateId } from '@/lib/id'
 import { Course } from '@/types/portal'
@@ -37,8 +37,12 @@ import {
 } from 'lucide-react'
 
 export function CursosModule() {
-  const { courses, toggleCourseLock, updateCourse, addCourse, currentUser } = usePortal()
+  const { courses, users, toggleCourseLock, updateCourse, addCourse, currentUser } = usePortal()
   const { toast } = useToast()
+
+  // Opções de coordenador: membros da equipe (não alunos) da coleção `users`.
+  // O vínculo é salvo por ID do usuário — nunca por comparação de nome.
+  const coordinatorOptions = useMemo(() => users.filter((u) => u.role !== 'aluno'), [users])
 
   const [filterLevel, setFilterLevel] = useState<string>('todos')
   const [editingCourse, setEditingCourse] = useState<Course | null>(null)
@@ -54,6 +58,8 @@ export function CursosModule() {
   const [durationSemesters, setDurationSemesters] = useState(8)
   const [workloadHours, setWorkloadHours] = useState(3200)
   const [coordinator, setCoordinator] = useState('')
+  // Vínculo professor↔curso por ID do usuário selecionado (coleção `users`)
+  const [coordinatorId, setCoordinatorId] = useState('')
   const [emecCode, setEmecCode] = useState('')
   const [emecConcept, setEmecConcept] = useState(5)
   const [emecOrdinanceNumber, setEmecOrdinanceNumber] = useState('')
@@ -91,6 +97,7 @@ export function CursosModule() {
     setDurationSemesters(8)
     setWorkloadHours(3200)
     setCoordinator(currentUser?.name || '')
+    setCoordinatorId(currentUser?.id || '')
     setEmecCode('1099999')
     setEmecConcept(5)
     setEmecOrdinanceNumber('Portaria SERES/MEC nº 000/2025')
@@ -122,6 +129,7 @@ export function CursosModule() {
     setDurationSemesters(c.durationSemesters)
     setWorkloadHours(c.workloadHours)
     setCoordinator(c.coordinator)
+    setCoordinatorId(c.coordinatorId || '')
     setEmecCode(c.emecCode)
     setEmecConcept(c.emecConcept)
     setEmecOrdinanceNumber(c.emecOrdinanceNumber)
@@ -145,6 +153,7 @@ export function CursosModule() {
         durationSemesters: Number(durationSemesters),
         workloadHours: Number(workloadHours),
         coordinator,
+        coordinatorId: coordinatorId || undefined,
         status: 'ativo',
         lockedForEditing: false,
         emecCode,
@@ -564,13 +573,31 @@ export function CursosModule() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">Coordenador do Curso</label>
-              <Input
-                value={coordinator}
-                onChange={(e) => setCoordinator(e.target.value)}
-                placeholder="Prof. Nome do Coordenador"
-                className="bg-slate-900 border-slate-700 text-white text-xs"
-              />
+              <label className="text-xs text-slate-300">
+                Coordenador do Curso (vínculo por ID de usuário)
+              </label>
+              <select
+                value={coordinatorId}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setCoordinatorId(id)
+                  const found = coordinatorOptions.find((u) => u.id === id)
+                  setCoordinator(found?.name || '')
+                }}
+                className="w-full rounded-md bg-slate-900 border border-slate-700 text-white text-xs p-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">— Sem coordenador vinculado —</option>
+                {coordinatorOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+              {coordinator && !coordinatorId && (
+                <p className="text-[11px] text-amber-400">
+                  Coordenação legada por nome: selecione um usuário acima para vincular por ID.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">

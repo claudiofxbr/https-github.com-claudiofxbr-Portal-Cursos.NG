@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T12:47:24.864Z",
+  "generatedAt": "2026-11-08T13:22:06.472Z",
   "collections": [
     {
       "name": "users",
@@ -518,6 +518,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "coordinatorId",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_courses_code ON courses (code)"]

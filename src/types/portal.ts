@@ -97,6 +97,8 @@ export interface Course {
   durationSemesters: number
   workloadHours: number
   coordinator: string
+  /** ID do usuário (coleção `users`) vinculado ao curso — vínculo professor↔curso por ID. */
+  coordinatorId?: string
   status: 'ativo' | 'em_revisao' | 'trancado'
   lockedForEditing: boolean // trancado contra alteração indevida
   emecCode: string

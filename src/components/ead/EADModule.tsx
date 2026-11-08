@@ -48,6 +48,7 @@ export function EADModule() {
     eadCourses,
     eadLessons,
     courses,
+    users,
     students,
     currentUser,
     lessonProgress,
@@ -81,6 +82,13 @@ export function EADModule() {
   const [courseWorkload, setCourseWorkload] = useState(20)
   const [courseCatalogId, setCourseCatalogId] = useState<string>('none')
   const [courseStatus, setCourseStatus] = useState<EadCourse['status']>('publicado')
+  // Vínculo professor↔curso EAD por ID de usuário (coleção `users`)
+  const [courseInstructorId, setCourseInstructorId] = useState<string>('')
+  const instructorOptions = useMemo(() => users.filter((u) => u.role !== 'aluno'), [users])
+  const instructorNameFromId = useMemo(
+    () => instructorOptions.find((u) => u.id === courseInstructorId)?.name || '',
+    [instructorOptions, courseInstructorId],
+  )
 
   // Modais de Aula EAD
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false)
@@ -146,6 +154,7 @@ export function EADModule() {
     setCourseWorkload(20)
     setCourseCatalogId('none')
     setCourseStatus('publicado')
+    setCourseInstructorId(currentUser?.id || '')
     setIsCourseModalOpen(true)
   }
 
@@ -156,6 +165,7 @@ export function EADModule() {
     setCourseWorkload(course.workloadHours || 20)
     setCourseCatalogId(course.catalogCourseId || 'none')
     setCourseStatus(course.status || 'publicado')
+    setCourseInstructorId(course.instructorId || '')
     setIsCourseModalOpen(true)
   }
 
@@ -181,6 +191,10 @@ export function EADModule() {
         catalogCourseId,
         catalogCourseName,
         status: courseStatus,
+        instructorId: courseInstructorId,
+        instructorName: courseInstructorId
+          ? instructorNameFromId || editingCourse.instructorName
+          : '',
       })
       toast({
         title: 'Curso EAD atualizado',
@@ -195,8 +209,9 @@ export function EADModule() {
         catalogCourseName,
         thumbnail: '',
         status: courseStatus,
-        instructorId: currentUser?.id || '',
-        instructorName: currentUser?.name || 'Professor',
+        instructorId: courseInstructorId || currentUser?.id || '',
+        instructorName:
+          (courseInstructorId ? instructorNameFromId : currentUser?.name) || 'Professor',
         enrolledStudentIds: [],
       })
       if (created) {
@@ -893,6 +908,32 @@ export function EADModule() {
               </Select>
               <p className="text-[11px] text-slate-500 mt-1">
                 Alunos matriculados no curso do catálogo vinculado terão acesso facilitado.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">
+                Professor Responsável (vínculo por ID)
+              </label>
+              <Select
+                value={courseInstructorId || 'none'}
+                onValueChange={(val) => setCourseInstructorId(val === 'none' ? '' : val)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o professor responsável" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum professor vinculado</SelectItem>
+                  {instructorOptions.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-slate-500 mt-1">
+                O curso EAD fica vinculado ao ID do usuário selecionado — professores homônimos não
+                compartilham turmas.
               </p>
             </div>
           </div>

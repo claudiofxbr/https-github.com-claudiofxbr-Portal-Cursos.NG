@@ -277,6 +277,7 @@ export const INITIAL_COURSES: Course[] = [
     durationSemesters: 8,
     workloadHours: 3600,
     coordinator: 'Profª. Dra. Vanessa Moura',
+    coordinatorId: 'user-coordenador',
     status: 'ativo',
     lockedForEditing: true, // Trancado contra alteração indevida
     emecCode: '1092841',
@@ -299,6 +300,7 @@ export const INITIAL_COURSES: Course[] = [
     durationSemesters: 5,
     workloadHours: 2400,
     coordinator: 'Prof. Dr. Rodrigo Ramos',
+    coordinatorId: 'user-professor',
     status: 'ativo',
     lockedForEditing: false,
     emecCode: '1098322',
@@ -321,6 +323,7 @@ export const INITIAL_COURSES: Course[] = [
     durationSemesters: 3,
     workloadHours: 480,
     coordinator: 'Prof. Dr. Rodrigo Ramos',
+    coordinatorId: 'user-professor',
     status: 'ativo',
     lockedForEditing: true, // Trancado
     emecCode: '2100412',

@@ -20,6 +20,7 @@ export const MANAGEMENT_ROLES = ['root', 'admin', 'coordenador', 'secretaria']
 export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModuleProps) {
   const {
     currentUser,
+    users,
     students,
     courses,
     grades,
@@ -35,29 +36,54 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
 
   const isManagement = !!currentUser && MANAGEMENT_ROLES.includes(currentUser.role)
 
-  // Vínculo professor↔curso: reutiliza o campo existente `Course.coordinator`
-  // (o docente atua nos cursos em que aparece como coordenador) e o
-  // `EadCourse.instructorId/instructorName` para os cursos EAD dele.
-  const professorKey = useMemo(
+  // Vínculo professor↔curso por ID do usuário logado (coleção `users`):
+  // - cursos de graduação/pós: `Course.coordinatorId` (campo novo; cursos antigos
+  //   sem ID recebem backfill pela migração 0016, que casa o nome com um usuário);
+  // - cursos EAD: `EadCourse.instructorId`.
+  // Fallback legado: se nenhum registro da instituição usa o vínculo por ID,
+  // um curso antigo só com nome (`coordinator`) ainda é reconhecido — mas NUNCA
+  // quando houver mais de um professor/atendente com o mesmo nome (ambiguidade).
+  const professorNameKey = useMemo(
     () => (currentUser ? currentUser.name.trim().toLowerCase() : ''),
     [currentUser],
+  )
+
+  const legacyNameIsAmbiguous = useMemo(
+    () => users.filter((u) => (u.name || '').trim().toLowerCase() === professorNameKey).length > 1,
+    [users, professorNameKey],
+  )
+
+  const anyIdLinkInUse = useMemo(
+    () => courses.some((c) => !!c.coordinatorId) || eadCourses.some((e) => !!e.instructorId),
+    [courses, eadCourses],
   )
 
   const myCourses = useMemo(() => {
     if (isManagement) return courses
     if (!currentUser) return []
-    return courses.filter((c) => (c.coordinator || '').trim().toLowerCase() === professorKey)
-  }, [courses, currentUser, isManagement, professorKey])
+    return courses.filter((c) => {
+      if (c.coordinatorId) return c.coordinatorId === currentUser.id
+      if (legacyNameIsAmbiguous || anyIdLinkInUse) return false
+      return (c.coordinator || '').trim().toLowerCase() === professorNameKey
+    })
+  }, [courses, currentUser, isManagement, professorNameKey, legacyNameIsAmbiguous, anyIdLinkInUse])
 
   const myEadCourses = useMemo(() => {
     if (isManagement) return eadCourses
     if (!currentUser) return []
-    return eadCourses.filter(
-      (e) =>
-        e.instructorId === currentUser.id ||
-        (e.instructorName || '').trim().toLowerCase() === professorKey,
-    )
-  }, [eadCourses, currentUser, isManagement, professorKey])
+    return eadCourses.filter((e) => {
+      if (e.instructorId) return e.instructorId === currentUser.id
+      if (legacyNameIsAmbiguous || anyIdLinkInUse) return false
+      return (e.instructorName || '').trim().toLowerCase() === professorNameKey
+    })
+  }, [
+    eadCourses,
+    currentUser,
+    isManagement,
+    professorNameKey,
+    legacyNameIsAmbiguous,
+    anyIdLinkInUse,
+  ])
 
   const myCourseIds = useMemo(() => new Set(myCourses.map((c) => c.id)), [myCourses])
 

@@ -267,6 +267,7 @@ export function seedIfEmpty(): Promise<void> {
           durationSemesters: c.durationSemesters,
           workloadHours: c.workloadHours,
           coordinator: c.coordinator,
+          coordinatorId: c.coordinatorId || '',
           status: c.status,
           lockedForEditing: c.lockedForEditing,
           emecCode: c.emecCode,
@@ -410,6 +411,7 @@ function mapCourse(rec: AnyRec): Course {
     durationSemesters: num(rec.durationSemesters),
     workloadHours: num(rec.workloadHours),
     coordinator: str(rec.coordinator),
+    coordinatorId: str(rec.coordinatorId) || undefined,
     status: str(rec.status, 'ativo') as Course['status'],
     lockedForEditing: bool(rec.lockedForEditing),
     emecCode: str(rec.emecCode),
@@ -1196,6 +1198,7 @@ export const portalDb = {
           durationSemesters: course.durationSemesters,
           workloadHours: course.workloadHours,
           coordinator: course.coordinator,
+          coordinatorId: course.coordinatorId || '',
           status: course.status,
           lockedForEditing: course.lockedForEditing,
           emecCode: course.emecCode,
@@ -1253,6 +1256,7 @@ export const portalDb = {
           payload.durationSemesters = updates.durationSemesters
         if (updates.workloadHours !== undefined) payload.workloadHours = updates.workloadHours
         if (updates.coordinator !== undefined) payload.coordinator = updates.coordinator
+        if (updates.coordinatorId !== undefined) payload.coordinatorId = updates.coordinatorId
         if (updates.status !== undefined) payload.status = updates.status
         if (updates.lockedForEditing !== undefined)
           payload.lockedForEditing = updates.lockedForEditing
