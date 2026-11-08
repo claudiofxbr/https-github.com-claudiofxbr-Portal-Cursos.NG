@@ -1,16 +1,7 @@
-import { Student, Course, Grade, Certificate } from '@/types/portal'
+import { Student, Course, Grade, Certificate, SubjectAcademicSummary } from '@/types/portal'
 import { ConsolidatedAttendanceResult } from '@/lib/academicCalculations'
 
-export interface SubjectSummary {
-  subject: string
-  term: string
-  grades: { assessmentType: string; value: number; weight: number; date?: string }[]
-  averageGrade: number
-  presentsCount: number
-  totalClasses: number
-  attendancePercent: number
-  status: 'aprovado' | 'reprovado_nota' | 'reprovado_frequencia' | 'reprovado_ambos' | 'em_curso'
-}
+export type SubjectSummary = SubjectAcademicSummary
 
 export interface TranscriptPdfOptions {
   student: Student
@@ -628,15 +619,15 @@ export function generateTranscriptPdf(options: TranscriptPdfOptions): void {
               </div>
               <div class="mec-item">
                 <span class="label">Freq. Presencial</span>
-                <span class="val">${consolidatedAtt.presencialPercent.toFixed(0)}%</span>
+                <span class="val">${consolidatedAtt.manualAttendancePercent.toFixed(0)}%</span>
               </div>
               <div class="mec-item">
                 <span class="label">Aulas EAD Concluídas</span>
-                <span class="val">${consolidatedAtt.eadCompletedLessons}/${consolidatedAtt.eadTotalLessons} (${consolidatedAtt.eadPercent.toFixed(0)}%)</span>
+                <span class="val">${consolidatedAtt.eadCompletedLessons}/${consolidatedAtt.eadTotalLessons} (${consolidatedAtt.eadAttendancePercent.toFixed(0)}%)</span>
               </div>
               <div class="mec-item">
                 <span class="label">Frequência Consolidada</span>
-                <span class="val">${consolidatedAtt.consolidatedPercent.toFixed(1)}%</span>
+                <span class="val">${consolidatedAtt.overallAttendancePercent.toFixed(1)}%</span>
               </div>
               <div class="mec-item">
                 <span class="label">Situação MEC</span>

@@ -8,11 +8,11 @@ import {
   EadCourse,
   EadLesson,
   LessonProgress,
+  ACADEMIC_RULES,
 } from '@/types/portal'
 import {
   calculateAcademicSummary,
   calculateConsolidatedAttendance,
-  ACADEMIC_RULES,
 } from '@/lib/academicCalculations'
 import { generateTranscriptPdf } from '@/lib/transcriptPdfExport'
 import { Button } from '@/components/ui/button'
@@ -121,7 +121,7 @@ export function StudentTranscriptTab({
   const mecStatus = useMemo(() => {
     const gradeOk = overallAverage >= ACADEMIC_RULES.MIN_PASSING_GRADE
     const freqOk =
-      consolidatedAtt.consolidatedPercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+      consolidatedAtt.overallAttendancePercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
 
     if (student.status === 'concluido') {
       return { label: 'Concluído (Aprovado MEC)', approved: true }
@@ -251,17 +251,18 @@ export function StudentTranscriptTab({
           <div className="flex items-baseline gap-1 mt-1">
             <span
               className={`text-xl font-bold font-mono ${
-                consolidatedAtt.consolidatedPercent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                consolidatedAtt.overallAttendancePercent >=
+                ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
                   ? 'text-emerald-400'
                   : 'text-rose-400'
               }`}
             >
-              {consolidatedAtt.consolidatedPercent.toFixed(1)}%
+              {consolidatedAtt.overallAttendancePercent.toFixed(1)}%
             </span>
           </div>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            Presencial {consolidatedAtt.presencialPercent.toFixed(0)}% • EAD{' '}
-            {consolidatedAtt.eadPercent.toFixed(0)}%
+            Presencial {consolidatedAtt.manualAttendancePercent.toFixed(0)}% • EAD{' '}
+            {consolidatedAtt.eadAttendancePercent.toFixed(0)}%
           </span>
         </div>
 

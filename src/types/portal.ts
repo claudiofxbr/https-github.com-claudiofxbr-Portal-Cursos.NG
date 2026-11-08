@@ -262,6 +262,7 @@ export interface Grade {
   observations?: string
   createdAt?: string
   created?: string
+  updated?: string
 }
 export type AttendanceStatus = 'presente' | 'falta' | 'falta_justificada'
 

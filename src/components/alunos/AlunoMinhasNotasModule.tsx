@@ -25,6 +25,7 @@ import {
   Download,
   ShieldCheck,
   ExternalLink,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 import { generateDiplomaPdf } from '@/lib/diplomaPdfExport'
@@ -199,20 +200,19 @@ export function AlunoMinhasNotasModule() {
       summaries,
       overallAverage: overallAverage ?? 0,
       consolidatedAtt: consolidatedAtt || {
-        studentId: currentStudent.id,
         manualClasses: 0,
         manualPresents: 0,
+        manualAbsences: 0,
         manualAttendancePercent: 100,
+        eadEnrolledCoursesCount: 0,
         eadTotalLessons: 0,
         eadCompletedLessons: 0,
         eadAttendancePercent: 100,
-        overallAttendancePercent: 100,
-        presencialPercent: 100,
-        eadPercent: 100,
-        consolidatedPercent: 100,
+        hasEad: false,
         totalClassesCombined: 0,
         totalPresentsCombined: 0,
-        hasEad: false,
+        overallAttendancePercent: 100,
+        formulaExplanation: '100% presencial',
       },
       mecStatus: {
         label: mecStatus.label,
