@@ -46,6 +46,7 @@ import {
 } from '@/lib/reportExport'
 import { MatriculasAlunosSection } from './MatriculasAlunosSection'
 import { InadimplenciaSection } from './InadimplenciaSection'
+import { FrequenciaTurmasSection } from './FrequenciaTurmasSection'
 import {
   exportInadimplenciaReportToCsv,
   exportInadimplenciaReportToPdf,
@@ -57,6 +58,15 @@ import {
   DetailedOverdueCharge,
   InadimplenciaReportExportPayload,
 } from '@/lib/reportExport'
+import {
+  calculateFrequenciaReportData,
+  FrequenciaFilterState,
+  FrequenciaReportExportPayload,
+} from '@/lib/frequenciaReportData'
+import {
+  exportFrequenciaReportToCsv,
+  exportFrequenciaReportToPdf,
+} from '@/lib/frequenciaReportExport'
 import { getChargeCategoryLabel, INSTITUTIONAL_FEE_CATEGORIES } from '@/lib/feeCategories'
 
 export type PeriodFilter =
@@ -87,12 +97,78 @@ export interface RelatoriosModuleProps {
 }
 
 export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateToStudent }) => {
-  const { charges, students, courses, expenses, addExpense, deleteExpense, currentUser } =
-    usePortal()
+  const {
+    charges,
+    students,
+    courses,
+    expenses,
+    addExpense,
+    deleteExpense,
+    currentUser,
+    classes,
+    attendance,
+    eadCourses,
+    eadLessons,
+    lessonProgress,
+  } = usePortal()
 
-  const [activeTab, setActiveTab] = useState<'financeiro' | 'matriculas' | 'inadimplencia'>(
-    'financeiro',
-  )
+  const [activeTab, setActiveTab] = useState<
+    'financeiro' | 'matriculas' | 'inadimplencia' | 'frequencia'
+  >('financeiro')
+
+  // Filtros da aba de Frequência persistidos em localStorage
+  const [frequenciaFilters, setFrequenciaFilters] = useState<FrequenciaFilterState>(() => {
+    try {
+      const saved = localStorage.getItem('portal_relatorios_freq_filters')
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar filtros de frequência do storage:', e)
+    }
+    return {
+      classId: 'all',
+      startDate: '',
+      endDate: '',
+      searchTerm: '',
+    }
+  })
+
+  const handleFrequenciaFiltersChange = (newFilters: FrequenciaFilterState) => {
+    setFrequenciaFilters(newFilters)
+    try {
+      localStorage.setItem('portal_relatorios_freq_filters', JSON.stringify(newFilters))
+    } catch (e) {
+      console.warn('Erro ao persistir filtros de frequência:', e)
+    }
+  }
+
+  // Cálculos do Relatório de Frequência
+  const frequenciaData = useMemo(() => {
+    return calculateFrequenciaReportData({
+      classes,
+      attendance,
+      students,
+      courses,
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      filters: frequenciaFilters,
+      currentUserRole: currentUser?.role,
+      currentUserId: currentUser?.id,
+    })
+  }, [
+    classes,
+    attendance,
+    students,
+    courses,
+    eadCourses,
+    eadLessons,
+    lessonProgress,
+    frequenciaFilters,
+    currentUser?.role,
+    currentUser?.id,
+  ])
   const [period, setPeriod] = useState<PeriodFilter>('current_month')
   const [isExportingCsv, setIsExportingCsv] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -1065,6 +1141,24 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
     }
   }
 
+  // Constrói payload de exportação para Frequência por Turma
+  const getFrequenciaExportPayload = (): FrequenciaReportExportPayload => {
+    return {
+      portalName: 'PortalCursos.NG',
+      periodLabel,
+      periodKey: period,
+      generatedAt: new Date(),
+      generatedBy: {
+        name: currentUser?.name || 'Administrador',
+        roleTitle: currentUser?.roleTitle || 'Gestor',
+        email: currentUser?.email || 'admin@portalcursos.ng',
+      },
+      kpis: frequenciaData.kpis,
+      classes: frequenciaData.classReportList,
+      riskStudents: frequenciaData.riskStudentsRanking,
+    }
+  }
+
   // Handler para exportação em CSV (contextual da aba ativa)
   const handleExportCsv = () => {
     if (!canExport) {
@@ -1079,7 +1173,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
 
     try {
       setIsExportingCsv(true)
-      if (activeTab === 'inadimplencia') {
+      if (activeTab === 'frequencia') {
+        const payload = getFrequenciaExportPayload()
+        exportFrequenciaReportToCsv(payload)
+        toast({
+          title: 'Exportação CSV de Frequência concluída',
+          description: `Planilha de Frequência por Turma gerada com sucesso para "${periodLabel}". Compatível com Excel.`,
+        })
+      } else if (activeTab === 'inadimplencia') {
         const payload = getInadimplenciaExportPayload()
         exportInadimplenciaReportToCsv(payload)
         toast({
@@ -1127,7 +1228,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
 
     try {
       setIsExportingPdf(true)
-      if (activeTab === 'inadimplencia') {
+      if (activeTab === 'frequencia') {
+        const payload = getFrequenciaExportPayload()
+        exportFrequenciaReportToPdf(payload)
+        toast({
+          title: 'Relatório PDF de Frequência gerado',
+          description: `Janela de impressão e download de Frequência aberta para o período "${periodLabel}".`,
+        })
+      } else if (activeTab === 'inadimplencia') {
         const payload = getInadimplenciaExportPayload()
         exportInadimplenciaReportToPdf(payload)
         toast({
@@ -1219,11 +1327,13 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
                 disabled={isExportingCsv}
                 className="h-9 gap-1.5 text-xs font-medium border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                 title={`Exportar planilha CSV de ${
-                  activeTab === 'inadimplencia'
-                    ? 'Inadimplência'
-                    : activeTab === 'matriculas'
-                      ? 'Matrículas e Alunos'
-                      : 'Financeiro'
+                  activeTab === 'frequencia'
+                    ? 'Frequência por Turma'
+                    : activeTab === 'inadimplencia'
+                      ? 'Inadimplência'
+                      : activeTab === 'matriculas'
+                        ? 'Matrículas e Alunos'
+                        : 'Financeiro'
                 } (BOM UTF-8)`}
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -1237,11 +1347,13 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
                 disabled={isExportingPdf}
                 className="h-9 gap-1.5 text-xs font-medium bg-sky-700 hover:bg-sky-800 text-white shadow-xs"
                 title={`Exportar relatório PDF de ${
-                  activeTab === 'inadimplencia'
-                    ? 'Inadimplência'
-                    : activeTab === 'matriculas'
-                      ? 'Matrículas e Alunos'
-                      : 'Financeiro'
+                  activeTab === 'frequencia'
+                    ? 'Frequência por Turma'
+                    : activeTab === 'inadimplencia'
+                      ? 'Inadimplência'
+                      : activeTab === 'matriculas'
+                        ? 'Matrículas e Alunos'
+                        : 'Financeiro'
                 }`}
               >
                 <Download className="w-3.5 h-3.5 text-white" />
@@ -1252,10 +1364,12 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
         </div>
       </div>
 
-      {/* ABAS DE RELATÓRIO: FINANCEIRO vs MATRÍCULAS E ALUNOS vs INADIMPLÊNCIA */}
+      {/* ABAS DE RELATÓRIO: FINANCEIRO vs MATRÍCULAS E ALUNOS vs INADIMPLÊNCIA vs FREQUÊNCIA */}
       <Tabs
         value={activeTab}
-        onValueChange={(val) => setActiveTab(val as 'financeiro' | 'matriculas' | 'inadimplencia')}
+        onValueChange={(val) =>
+          setActiveTab(val as 'financeiro' | 'matriculas' | 'inadimplencia' | 'frequencia')
+        }
         className="w-full space-y-6"
       >
         <TabsList className="bg-slate-100/90 p-1 border border-slate-200/80 rounded-lg flex flex-wrap">
@@ -1279,7 +1393,14 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
           >
             <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
             <span>Inadimplência</span>
-            <span className="ml-1 bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+          </TabsTrigger>
+          <TabsTrigger
+            value="frequencia"
+            className="text-xs font-medium gap-1.5 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-xs text-sky-700"
+          >
+            <Calendar className="w-3.5 h-3.5 text-sky-700" />
+            <span>Frequência</span>
+            <span className="ml-1 bg-sky-100 text-sky-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
               Novo
             </span>
           </TabsTrigger>
@@ -1427,6 +1548,19 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
             prevPeriodOverdueAmount={inadimplenciaData.prevOverdueAmount}
             categoryOptions={inadimplenciaData.categoryOptions}
             onNavigateToStudent={onNavigateToStudent}
+          />
+        </TabsContent>
+
+        {/* CONTEÚDO DA ABA 4: FREQUÊNCIA POR TURMA */}
+        <TabsContent value="frequencia" className="space-y-6 mt-0">
+          <FrequenciaTurmasSection
+            kpis={frequenciaData.kpis}
+            classReportList={frequenciaData.classReportList}
+            riskStudentsRanking={frequenciaData.riskStudentsRanking}
+            allClassesOptions={frequenciaData.allClassesOptions}
+            filters={frequenciaFilters}
+            onFiltersChange={handleFrequenciaFiltersChange}
+            periodLabel={periodLabel}
           />
         </TabsContent>
       </Tabs>

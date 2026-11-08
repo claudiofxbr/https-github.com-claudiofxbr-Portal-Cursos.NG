@@ -83,6 +83,9 @@ export function TurmasModule() {
   const [isClassModalOpen, setIsClassModalOpen] = useState(false)
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null)
   const [selectedClassForDetails, setSelectedClassForDetails] = useState<ClassItem | null>(null)
+  const [detailActiveTab, setDetailActiveTab] = useState<'schedules' | 'students' | 'attendance'>(
+    'schedules',
+  )
 
   // Sub-modais dentro de detalhes
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)

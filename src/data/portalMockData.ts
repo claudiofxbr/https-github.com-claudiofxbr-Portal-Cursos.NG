@@ -104,9 +104,9 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     key: 'relatorios',
     label: 'Relatórios Gerenciais',
     description:
-      'Indicadores financeiros, receitas vs. despesas, inadimplência e performance dos cursos',
+      'Indicadores financeiros, receitas vs. despesas, inadimplência, performance dos cursos e frequência por turma',
     icon: 'BarChart3',
-    requiredRoles: ['root', 'admin', 'financeiro'],
+    requiredRoles: ['root', 'admin', 'financeiro', 'coordenador', 'professor'],
   },
   {
     key: 'usuarios',

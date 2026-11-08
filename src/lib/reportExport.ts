@@ -208,7 +208,7 @@ export interface InadimplenciaReportExportPayload {
   charges: DetailedOverdueCharge[]
 }
 
-const ALLOWED_EXPORT_ROLES = new Set(['root', 'admin', 'financeiro'])
+const ALLOWED_EXPORT_ROLES = new Set(['root', 'admin', 'financeiro', 'coordenador', 'professor'])
 
 /** Valida se o usuário tem permissão para exportar relatórios */
 export function canUserExportReports(role?: string): boolean {
