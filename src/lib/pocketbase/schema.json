@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T17:59:02.926Z",
+  "generatedAt": "2026-11-08T18:34:16.175Z",
   "collections": [
     {
       "name": "users",
@@ -1403,12 +1403,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "classId",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_attendance_student ON attendance (studentId)",
         "CREATE INDEX idx_attendance_subject ON attendance (subject)",
-        "CREATE INDEX idx_attendance_date ON attendance (date)"
+        "CREATE INDEX idx_attendance_date ON attendance (date)",
+        "CREATE INDEX idx_attendance_class ON attendance (classId)"
       ]
     },
     {

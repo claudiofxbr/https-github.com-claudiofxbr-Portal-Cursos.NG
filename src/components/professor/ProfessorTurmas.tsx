@@ -11,10 +11,19 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar, Clock, DoorOpen, Users, BookOpen, CalendarDays, UserCheck } from 'lucide-react'
 
+import { AttendanceRecord } from '@/types/portal'
+import { ClassAttendanceManager } from '@/components/turmas/ClassAttendanceManager'
+
 interface ProfessorTurmasProps {
   classes: ClassItem[]
   classSchedules: ClassSchedule[]
   students: Student[]
+  attendanceRecords?: AttendanceRecord[]
+  teacherId?: string
+  teacherName?: string
+  onSaveAttendance?: (
+    records: Omit<AttendanceRecord, 'id' | 'created' | 'updated'>[],
+  ) => Promise<boolean>
   onOpenStudent?: (id: string) => void
 }
 
@@ -22,6 +31,10 @@ export function ProfessorTurmas({
   classes,
   classSchedules,
   students,
+  attendanceRecords = [],
+  teacherId,
+  teacherName,
+  onSaveAttendance,
   onOpenStudent,
 }: ProfessorTurmasProps) {
   const [selectedClassId, setSelectedClassId] = useState<string | null>(classes[0]?.id || null)
@@ -170,62 +183,34 @@ export function ProfessorTurmas({
             </Card>
           </div>
 
-          {/* Lista de Alunos Matriculados na Turma */}
+          {/* Seção Principal: Chamada e Alunos da Turma */}
           <div className="lg:col-span-2 space-y-4">
             <Card className="bg-slate-900 border-slate-800">
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-base text-white flex items-center gap-2">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base text-white flex items-center justify-between">
+                  <span className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-emerald-400" />
-                    Alunos da Turma ({enrolledStudents.length} / {activeClass.capacity})
-                  </CardTitle>
-                  <CardDescription className="text-xs text-slate-400">
-                    Estudantes matriculados nesta turma letiva
-                  </CardDescription>
-                </div>
-                <Badge variant="outline" className="border-slate-700 text-slate-300 text-xs">
-                  {Math.round((enrolledStudents.length / activeClass.capacity) * 100)}% de ocupação
-                </Badge>
+                    Gestão de Chamada & Alunos ({enrolledStudents.length} / {activeClass.capacity})
+                  </span>
+                  <Badge variant="outline" className="border-slate-700 text-slate-300 text-xs">
+                    {Math.round((enrolledStudents.length / activeClass.capacity) * 100)}% de
+                    ocupação
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-400">
+                  Lançamento de presença/falta e acompanhamento da turma {activeClass.name}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {enrolledStudents.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-8 text-center">
-                    Nenhum aluno matriculado nesta turma ainda.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-slate-800/80 border border-slate-800 rounded-lg overflow-hidden bg-slate-950/40">
-                    {enrolledStudents.map((st) => (
-                      <div
-                        key={st.id}
-                        className="p-3 flex items-center justify-between hover:bg-slate-900/40 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-white border border-slate-700">
-                            {st.fullName.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-white">{st.fullName}</p>
-                            <p className="text-xs text-slate-400">
-                              CPF: {st.cpf} • {st.email}
-                            </p>
-                          </div>
-                        </div>
-
-                        {onOpenStudent && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onOpenStudent(st.id)}
-                            className="text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-950/30 h-8"
-                          >
-                            <UserCheck className="w-3.5 h-3.5 mr-1" />
-                            Ver Aluno
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ClassAttendanceManager
+                  classItem={activeClass}
+                  enrolledStudents={enrolledStudents}
+                  attendanceRecords={attendanceRecords}
+                  canManage={true}
+                  teacherId={teacherId}
+                  teacherName={teacherName}
+                  onSaveAttendance={onSaveAttendance}
+                />
               </CardContent>
             </Card>
           </div>

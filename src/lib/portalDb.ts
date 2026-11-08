@@ -588,6 +588,7 @@ function mapAttendance(rec: AnyRec): AttendanceRecord {
     studentName: str(rec.studentName) || undefined,
     studentCpf: str(rec.studentCpf) || undefined,
     courseId: str(rec.courseId) || undefined,
+    classId: str(rec.classId) || undefined,
     subject: str(rec.subject),
     term: str(rec.term) || undefined,
     date: str(rec.date),
@@ -2007,6 +2008,7 @@ export const portalDb = {
           studentName: att.studentName || '',
           studentCpf: att.studentCpf || '',
           courseId: att.courseId || '',
+          classId: att.classId || '',
           subject: att.subject,
           term: att.term || '',
           date: att.date,
@@ -2029,6 +2031,7 @@ export const portalDb = {
     safeWrite(
       async () => {
         const payload: Record<string, unknown> = {}
+        if (updates.classId !== undefined) payload.classId = updates.classId
         if (updates.subject !== undefined) payload.subject = updates.subject
         if (updates.term !== undefined) payload.term = updates.term
         if (updates.date !== undefined) payload.date = updates.date

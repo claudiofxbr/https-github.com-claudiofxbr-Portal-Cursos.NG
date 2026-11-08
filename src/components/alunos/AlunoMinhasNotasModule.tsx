@@ -3,6 +3,7 @@ import { usePortal } from '@/context/PortalContext'
 import {
   calculateAcademicSummary,
   calculateConsolidatedAttendance,
+  calculateClassAttendanceBreakdown,
   getAcademicStatusBadge,
   getAttendanceBadge,
 } from '@/lib/academicCalculations'
@@ -42,6 +43,7 @@ export function AlunoMinhasNotasModule() {
     eadCourses,
     eadLessons,
     lessonProgress,
+    classes,
   } = usePortal()
 
   // Localiza o aluno correspondente ao usuário logado
@@ -131,6 +133,17 @@ export function AlunoMinhasNotasModule() {
       currentStudent.cpf,
     )
   }, [currentStudent, myAttendance, eadCourses, eadLessons, lessonProgress])
+
+  // Frequência por turma em que o aluno está matriculado
+  const myClassBreakdown = useMemo(() => {
+    if (!currentStudent) return []
+    return calculateClassAttendanceBreakdown(
+      currentStudent.id,
+      classes,
+      myAttendance,
+      currentStudent.cpf,
+    )
+  }, [currentStudent, classes, myAttendance])
 
   // Média geral das notas lançadas
   const overallAverage = useMemo(() => {
@@ -698,6 +711,78 @@ export function AlunoMinhasNotasModule() {
 
           <p className="text-[10px] text-slate-400 italic">{consolidatedAtt.formulaExplanation}</p>
         </div>
+      )}
+
+      {/* Minha Frequência por Turma Letiva */}
+      {myClassBreakdown.length > 0 && (
+        <Card className="bg-slate-900/90 border-slate-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base text-white flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-400" />
+                Minhas Turmas e Frequência ({myClassBreakdown.length})
+              </span>
+              <Badge variant="outline" className="border-blue-500/40 text-blue-400 text-xs">
+                Por Turma Letiva
+              </Badge>
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-400">
+              Acompanhe seu índice de presença nas chamadas das turmas presenciais e síncronas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {myClassBreakdown.map((item) => (
+                <div
+                  key={item.classId}
+                  className="bg-slate-950/70 border border-slate-800 rounded-lg p-3 space-y-2 hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{item.className}</p>
+                      <p className="text-xs text-slate-400">
+                        {item.courseName} {item.term ? `• Período ${item.term}` : ''}
+                      </p>
+                      {item.professorName && (
+                        <p className="text-[11px] text-slate-500">
+                          Professor: {item.professorName}
+                        </p>
+                      )}
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`font-mono text-xs font-bold ${
+                        item.totalClasses === 0
+                          ? 'border-slate-700 text-slate-400'
+                          : item.percent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                            ? 'border-emerald-500/40 text-emerald-400 bg-emerald-950/20'
+                            : 'border-rose-500/40 text-rose-400 bg-rose-950/20'
+                      }`}
+                    >
+                      {item.totalClasses === 0 ? 'Sem chamada' : `${item.percent}%`}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80">
+                    <span className="text-slate-400">
+                      Chamadas registradas:{' '}
+                      <strong className="text-slate-200">{item.totalClasses}</strong>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-400 font-medium">
+                        {item.presents} presenças
+                      </span>
+                      <span className="text-rose-400 font-medium">{item.absents} faltas</span>
+                      {item.justified > 0 && (
+                        <span className="text-blue-400">({item.justified} just.)</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Cards de Métricas Acadêmicas Gerais */}

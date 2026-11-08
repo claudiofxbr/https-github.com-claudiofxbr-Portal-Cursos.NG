@@ -45,7 +45,9 @@ import {
   CalendarCheck,
   Percent,
   BookOpen,
+  ClipboardCheck,
 } from 'lucide-react'
+import { ClassAttendanceManager } from './ClassAttendanceManager'
 
 export function TurmasModule() {
   const {
@@ -54,6 +56,7 @@ export function TurmasModule() {
     courses,
     users,
     students,
+    attendance,
     currentUser,
     createClass,
     updateClass,
@@ -62,6 +65,7 @@ export function TurmasModule() {
     deleteClassSchedule,
     enrollStudentsInClass,
     removeStudentFromClass,
+    saveBatchAttendance,
   } = usePortal()
 
   const { toast } = useToast()
@@ -849,6 +853,13 @@ export function TurmasModule() {
                   <Users className="w-3.5 h-3.5 mr-1.5" />
                   Alunos Matriculados ({enrolledStudents.length}/{activeDetailClass.capacity})
                 </TabsTrigger>
+                <TabsTrigger
+                  value="attendance"
+                  className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white"
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" />
+                  Chamada da Turma
+                </TabsTrigger>
               </TabsList>
 
               {/* Aba: Grade de Horários */}
@@ -989,6 +1000,23 @@ export function TurmasModule() {
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              {/* Aba: Chamada da Turma */}
+              <TabsContent value="attendance" className="space-y-4 pt-3">
+                <ClassAttendanceManager
+                  classItem={activeDetailClass}
+                  enrolledStudents={enrolledStudents}
+                  attendanceRecords={attendance}
+                  canManage={
+                    isGestor ||
+                    (currentUser?.role === 'professor' &&
+                      activeDetailClass.professorUserId === currentUser.id)
+                  }
+                  teacherId={currentUser?.id}
+                  teacherName={currentUser?.name}
+                  onSaveAttendance={saveBatchAttendance}
+                />
               </TabsContent>
             </Tabs>
 

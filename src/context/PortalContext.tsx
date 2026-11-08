@@ -170,6 +170,9 @@ interface PortalContextType {
   addAttendance: (
     att: Omit<AttendanceRecord, 'id' | 'created' | 'updated'>,
   ) => Promise<AttendanceRecord>
+  saveBatchAttendance: (
+    records: Omit<AttendanceRecord, 'id' | 'created' | 'updated'>[],
+  ) => Promise<boolean>
   updateAttendance: (
     id: string,
     updates: Partial<AttendanceRecord>,
@@ -1460,6 +1463,45 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       console.warn('[PortalContext] Falha ao salvar frequência no banco:', err)
     }
     return newAtt
+  }
+
+  // Salva lote de chamada (insere novos ou atualiza registros existentes para mesma turma/aluno/data)
+  const saveBatchAttendance = async (
+    records: Omit<AttendanceRecord, 'id' | 'created' | 'updated'>[],
+  ): Promise<boolean> => {
+    if (records.length === 0) return true
+
+    let allOk = true
+    for (const rec of records) {
+      // Procura se já existe registro para esse aluno, data e turma (ou disciplina)
+      const existing = attendance.find(
+        (a) =>
+          a.date === rec.date &&
+          a.studentId === rec.studentId &&
+          ((rec.classId && a.classId === rec.classId) ||
+            (!rec.classId && a.subject === rec.subject)),
+      )
+
+      if (existing) {
+        // Atualiza
+        const updated = await updateAttendance(existing.id, {
+          status: rec.status,
+          hours: rec.hours,
+          teacherId: rec.teacherId,
+          teacherName: rec.teacherName,
+          justification: rec.justification,
+          classId: rec.classId || existing.classId,
+          subject: rec.subject,
+        })
+        if (!updated) allOk = false
+      } else {
+        // Cria
+        const created = await addAttendance(rec)
+        if (!created) allOk = false
+      }
+    }
+
+    return allOk
   }
 
   const updateAttendance = async (
@@ -2888,6 +2930,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         updateGrade,
         deleteGrade,
         addAttendance,
+        saveBatchAttendance,
         updateAttendance,
         deleteAttendance,
         diagnostic,

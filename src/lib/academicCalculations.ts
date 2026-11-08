@@ -2,10 +2,12 @@ import {
   Grade,
   AttendanceRecord,
   SubjectAcademicSummary,
+  ClassAttendanceSummary,
   ACADEMIC_RULES,
   EadCourse,
   EadLesson,
   LessonProgress,
+  ClassItem,
 } from '@/types/portal'
 
 export interface ConsolidatedAttendanceResult {
@@ -38,11 +40,24 @@ export function calculateConsolidatedAttendance(
   studentCpf?: string,
 ): ConsolidatedAttendanceResult {
   const cleanCpf = studentCpf ? studentCpf.replace(/\D/g, '') : ''
-  const studentAtt = attendance.filter(
+  // Deduplicação cuidadosa: se um registro for idêntico por data e subject/classId, não duplica
+  const rawAtt = attendance.filter(
     (a) =>
       a.studentId === studentId ||
       (cleanCpf && a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf),
   )
+
+  // Deduplica caso haja chamada por turma e legado com a mesma data e aluno
+  const seenKeys = new Set<string>()
+  const studentAtt = rawAtt.filter((a) => {
+    // chave única baseada em id ou combinação data + disciplina/turma
+    const key = a.classId
+      ? `cls:${a.classId}:${a.date}`
+      : `legacy:${a.date}:${a.subject?.trim().toLowerCase()}`
+    if (seenKeys.has(key)) return false
+    seenKeys.add(key)
+    return true
+  })
 
   const manualClasses = studentAtt.length
   const manualPresents = studentAtt.filter(
@@ -203,6 +218,64 @@ export function calculateAcademicSummary(
 
   // Ordena por disciplina
   return summaries.sort((a, b) => a.subject.localeCompare(b.subject))
+}
+
+/**
+ * Calcula o resumo de frequência por turma para um aluno
+ */
+export function calculateClassAttendanceSummaries(
+  studentId: string,
+  classes: ClassItem[],
+  attendance: AttendanceRecord[],
+  studentCpf?: string,
+): ClassAttendanceSummary[] {
+  const cleanCpf = studentCpf ? studentCpf.replace(/\D/g, '') : ''
+
+  // Turmas em que o aluno está matriculado ou possui presença vinculada por classId
+  const relevantClasses = classes.filter(
+    (c) =>
+      (Array.isArray(c.studentIds) && c.studentIds.includes(studentId)) ||
+      attendance.some(
+        (a) =>
+          a.classId === c.id &&
+          (a.studentId === studentId ||
+            (cleanCpf && a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf)),
+      ),
+  )
+
+  return relevantClasses.map((cls) => {
+    const classAtt = attendance.filter(
+      (a) =>
+        a.classId === cls.id &&
+        (a.studentId === studentId ||
+          (cleanCpf && a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf)),
+    )
+
+    const totalClasses = classAtt.length
+    const presentsCount = classAtt.filter((a) => a.status === 'presente').length
+    const justifiedAbsencesCount = classAtt.filter((a) => a.status === 'falta_justificada').length
+    const absencesCount = classAtt.filter((a) => a.status === 'falta').length
+
+    let attendancePercent = 100
+    if (totalClasses > 0) {
+      const effectivePresences = presentsCount + justifiedAbsencesCount
+      attendancePercent = Math.round((effectivePresences / totalClasses) * 1000) / 10
+    }
+
+    return {
+      classId: cls.id,
+      className: cls.name,
+      courseName: cls.courseName,
+      term: cls.term,
+      professorName: cls.professorName,
+      totalClasses,
+      presentsCount,
+      absencesCount,
+      justifiedAbsencesCount,
+      attendancePercent,
+      attendanceRecords: classAtt.sort((a, b) => b.date.localeCompare(a.date)),
+    }
+  })
 }
 
 /**

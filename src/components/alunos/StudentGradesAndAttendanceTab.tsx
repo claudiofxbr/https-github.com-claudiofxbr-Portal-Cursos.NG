@@ -41,7 +41,10 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { usePortal } from '@/context/PortalContext'
-import { calculateConsolidatedAttendance } from '@/lib/academicCalculations'
+import {
+  calculateConsolidatedAttendance,
+  calculateClassAttendanceBreakdown,
+} from '@/lib/academicCalculations'
 
 interface StudentGradesAndAttendanceTabProps {
   student: Student
@@ -76,7 +79,7 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
   readOnly = false,
 }) => {
   const { toast } = useToast()
-  const { eadCourses, eadLessons, lessonProgress } = usePortal()
+  const { eadCourses, eadLessons, lessonProgress, classes } = usePortal()
 
   // Permissões:
   // - Lançamento: professor, coordenador, root, admin, secretaria, matricula
@@ -118,6 +121,11 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
       student.cpf,
     )
   }, [student, studentAtt, eadCourses, eadLessons, lessonProgress])
+
+  // Resumo de frequência por turma em que o aluno está matriculado
+  const classBreakdown = useMemo(() => {
+    return calculateClassAttendanceBreakdown(student.id, classes, studentAtt, student.cpf)
+  }, [student, classes, studentAtt])
 
   // Média geral das notas lançadas (base do indicador MEC)
   const overallAverage = useMemo(() => {
@@ -554,6 +562,68 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
           <p className="text-[10px] text-slate-400 italic">{consolidatedAtt.formulaExplanation}</p>
         </div>
       </>
+
+      {/* Resumo de Frequência por Turma */}
+      {classBreakdown.length > 0 && (
+        <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h4 className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+              <Users className="w-4 h-4 text-blue-400" />
+              Frequência por Turma Letiva ({classBreakdown.length})
+            </h4>
+            <span className="text-[10px] text-slate-400">
+              Presenças e faltas registradas em chamadas de turmas
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {classBreakdown.map((item) => (
+              <div
+                key={item.classId}
+                className="bg-slate-900/80 border border-slate-800 rounded-lg p-3 space-y-2 hover:border-slate-700 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{item.className}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {item.courseName} {item.term ? `• ${item.term}` : ''}
+                    </p>
+                    {item.professorName && (
+                      <p className="text-[10px] text-slate-500">Prof: {item.professorName}</p>
+                    )}
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={`font-mono text-xs font-bold ${
+                      item.totalClasses === 0
+                        ? 'border-slate-700 text-slate-400'
+                        : item.percent >= ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                          ? 'border-emerald-500/40 text-emerald-400 bg-emerald-950/20'
+                          : 'border-rose-500/40 text-rose-400 bg-rose-950/20'
+                    }`}
+                  >
+                    {item.totalClasses === 0 ? 'Sem chamada' : `${item.percent}%`}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80">
+                  <span className="text-slate-400">
+                    Chamadas:{' '}
+                    <span className="text-slate-200 font-semibold">{item.totalClasses}</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400">{item.presents} pres.</span>
+                    <span className="text-rose-400">{item.absents} faltas</span>
+                    {item.justified > 0 && (
+                      <span className="text-blue-400">{item.justified} just.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Visão Consolidada por Disciplina */}
       {summaries.length === 0 ? (

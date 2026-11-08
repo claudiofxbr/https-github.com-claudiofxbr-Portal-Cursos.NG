@@ -35,6 +35,7 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
     addAttendance,
     createEadCourse,
     createEadLesson,
+    saveBatchAttendance,
   } = usePortal()
 
   const isManagement = !!currentUser && MANAGEMENT_ROLES.includes(currentUser.role)
@@ -169,6 +170,10 @@ export function ProfessorAreaModule({ onNavigateToStudent }: ProfessorAreaModule
           classes={myClasses}
           classSchedules={classSchedules}
           students={students}
+          attendanceRecords={attendance}
+          teacherId={professorId}
+          teacherName={professorName}
+          onSaveAttendance={saveBatchAttendance}
           onOpenStudent={(id) => onNavigateToStudent?.(id)}
         />
       )}

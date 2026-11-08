@@ -280,6 +280,7 @@ export interface AttendanceRecord {
   studentName?: string
   studentCpf?: string
   courseId?: string
+  classId?: string // vínculo opcional/explícito com a turma (classes.id)
   subject: string
   term?: string
   date: string // YYYY-MM-DD
@@ -290,6 +291,21 @@ export interface AttendanceRecord {
   justification?: string
   created?: string
   updated?: string
+}
+
+// Resumo de frequência de um aluno específico dentro de uma turma
+export interface ClassAttendanceSummary {
+  classId: string
+  className: string
+  courseName: string
+  term: string
+  professorName: string
+  totalClasses: number
+  presentsCount: number
+  absencesCount: number
+  justifiedAbsencesCount: number
+  attendancePercent: number
+  attendanceRecords: AttendanceRecord[]
 }
 
 // Parâmetros acadêmicos institucionais
