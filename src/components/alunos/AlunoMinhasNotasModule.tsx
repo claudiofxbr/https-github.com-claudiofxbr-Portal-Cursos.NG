@@ -20,6 +20,7 @@ import {
   Clock,
   BookOpen,
   UserCheck,
+  Users,
   TrendingUp,
   AlertCircle,
   FileCheck,

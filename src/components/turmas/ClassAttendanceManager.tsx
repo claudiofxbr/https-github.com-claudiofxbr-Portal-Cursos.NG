@@ -399,7 +399,7 @@ export function ClassAttendanceManager({
                       <div>
                         <p className="text-sm font-semibold text-white">{st.fullName}</p>
                         <p className="text-xs text-slate-400">
-                          CPF: {st.cpf} • Matrícula: {st.enrollmentCode || st.id.slice(0, 8)}
+                          CPF: {st.cpf} • ID: {st.id.slice(0, 8)}
                         </p>
                       </div>
                     </div>

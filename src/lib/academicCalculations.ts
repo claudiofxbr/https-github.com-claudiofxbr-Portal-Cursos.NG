@@ -47,15 +47,42 @@ export function calculateConsolidatedAttendance(
       (cleanCpf && a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf),
   )
 
-  // Deduplica caso haja chamada por turma e legado com a mesma data e aluno
-  const seenKeys = new Set<string>()
-  const studentAtt = rawAtt.filter((a) => {
-    // chave única baseada em id ou combinação data + disciplina/turma
-    const key = a.classId
-      ? `cls:${a.classId}:${a.date}`
-      : `legacy:${a.date}:${a.subject?.trim().toLowerCase()}`
-    if (seenKeys.has(key)) return false
-    seenKeys.add(key)
+  // Ordena para que registros de chamada por turma (com classId) tenham precedência
+  const sortedAtt = [...rawAtt].sort((a, b) => {
+    if (a.classId && !b.classId) return -1
+    if (!a.classId && b.classId) return 1
+    return 0
+  })
+
+  // Deduplicação: se houver chamada de turma e lançamento manual no mesmo dia,
+  // ou múltiplos lançamentos da mesma turma na mesma data, não contar duas vezes
+  const seenClassDates = new Set<string>()
+  const seenDateSubjects = new Set<string>()
+  const datesWithClassAttendance = new Set<string>()
+
+  const studentAtt = sortedAtt.filter((a) => {
+    const subjNorm = (a.subject || '').trim().toLowerCase()
+    const dateKey = a.date
+
+    // Chamada oficial vinculada à turma (classId)
+    if (a.classId) {
+      const classKey = `${a.classId}:${dateKey}`
+      if (seenClassDates.has(classKey)) return false
+      seenClassDates.add(classKey)
+      datesWithClassAttendance.add(dateKey)
+      if (subjNorm) seenDateSubjects.add(`${dateKey}:${subjNorm}`)
+      return true
+    }
+
+    // Lançamento manual (sem classId):
+    // Se já existe chamada de turma no mesmo dia, deduplica para não contar presença dupla no mesmo dia
+    if (datesWithClassAttendance.has(dateKey)) {
+      return false
+    }
+
+    const dateSubjKey = `${dateKey}:${subjNorm}`
+    if (seenDateSubjects.has(dateSubjKey)) return false
+    seenDateSubjects.add(dateSubjKey)
     return true
   })
 
@@ -223,6 +250,44 @@ export function calculateAcademicSummary(
 /**
  * Calcula o resumo de frequência por turma para um aluno
  */
+export interface ClassAttendanceBreakdownItem {
+  classId: string
+  className: string
+  courseName: string
+  term: string
+  professorName: string
+  totalClasses: number
+  presents: number
+  absents: number
+  justified: number
+  percent: number
+}
+
+/**
+ * Calcula o resumo detalhado de presenças/faltas e percentual por turma para exibição
+ * nos cards de ficha do aluno e Portal do Aluno.
+ */
+export function calculateClassAttendanceBreakdown(
+  studentId: string,
+  classes: ClassItem[],
+  attendance: AttendanceRecord[],
+  studentCpf?: string,
+): ClassAttendanceBreakdownItem[] {
+  const summaries = calculateClassAttendanceSummaries(studentId, classes, attendance, studentCpf)
+  return summaries.map((s) => ({
+    classId: s.classId,
+    className: s.className,
+    courseName: s.courseName,
+    term: s.term,
+    professorName: s.professorName,
+    totalClasses: s.totalClasses,
+    presents: s.presentsCount,
+    absents: s.absencesCount,
+    justified: s.justifiedAbsencesCount,
+    percent: s.attendancePercent,
+  }))
+}
+
 export function calculateClassAttendanceSummaries(
   studentId: string,
   classes: ClassItem[],

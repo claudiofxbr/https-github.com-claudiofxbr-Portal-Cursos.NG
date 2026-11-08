@@ -650,15 +650,32 @@ export function TurmasModule() {
 
                 {/* Ações da Turma */}
                 <div className="p-4 pt-0 border-t border-slate-800/80 flex items-center justify-between mt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedClassForDetails(cls)}
-                    className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 text-xs"
-                  >
-                    <Clock className="w-3.5 h-3.5 mr-1" />
-                    Horários & Alunos ({enrolledCount})
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedClassForDetails(cls)
+                        setDetailActiveTab('schedules')
+                      }}
+                      className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 text-xs"
+                    >
+                      <Clock className="w-3.5 h-3.5 mr-1" />
+                      Horários & Alunos ({enrolledCount})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedClassForDetails(cls)
+                        setDetailActiveTab('attendance')
+                      }}
+                      className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 text-xs"
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                      Chamada
+                    </Button>
+                  </div>
 
                   {isGestor && (
                     <div className="flex items-center gap-1">
@@ -837,7 +854,13 @@ export function TurmasModule() {
               </div>
             </DialogHeader>
 
-            <Tabs defaultValue="schedules" className="w-full mt-2">
+            <Tabs
+              value={detailActiveTab}
+              onValueChange={(v) =>
+                setDetailActiveTab(v as 'schedules' | 'students' | 'attendance')
+              }
+              className="w-full mt-2"
+            >
               <TabsList className="bg-slate-950 border border-slate-800">
                 <TabsTrigger
                   value="schedules"
