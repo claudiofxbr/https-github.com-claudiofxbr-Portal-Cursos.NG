@@ -132,6 +132,82 @@ export interface MatriculasReportExportPayload {
   }>
 }
 
+export type DebtAgingBracketKey = 'ate_30' | '31_60' | '61_90' | 'mais_90'
+
+export interface DebtAgingBracket {
+  key: DebtAgingBracketKey
+  label: string
+  shortLabel: string
+  minDays: number
+  maxDays: number | null
+  amount: number
+  count: number
+  percentage: number
+  color: string
+}
+
+export interface InadimplenciaEvolutionPoint {
+  dateKey: string
+  dateLabel: string
+  overdueAmount: number
+  overdueCount: number
+}
+
+export interface InadimplenteStudentRanking {
+  studentId: string
+  studentName: string
+  studentCpf: string
+  courseName?: string
+  totalDue: number
+  overdueCount: number
+  maxDaysOverdue: number
+  earliestDueDate: string
+}
+
+export interface DetailedOverdueCharge {
+  id: string
+  code: string
+  studentId: string
+  studentName: string
+  studentCpf: string
+  category: string
+  categoryLabel: string
+  description: string
+  amount: number
+  dueDate: string
+  daysOverdue: number
+  agingBracket: DebtAgingBracketKey
+  method?: string
+  status: string
+}
+
+export interface InadimplenciaKpis {
+  totalOverdueAmount: number
+  overdueCount: number
+  defaultingStudentsCount: number
+  averageDebtPerStudent: number
+  averageDebtPerCharge: number
+  totalPendingInPeriod: number
+  defaultRateInPeriod: number
+}
+
+export interface InadimplenciaReportExportPayload {
+  portalName: string
+  periodLabel: string
+  periodKey: string
+  generatedAt: Date
+  generatedBy: {
+    name: string
+    roleTitle: string
+    email: string
+  }
+  kpis: InadimplenciaKpis
+  agingBrackets: DebtAgingBracket[]
+  evolutionData: InadimplenciaEvolutionPoint[]
+  studentRanking: InadimplenteStudentRanking[]
+  charges: DetailedOverdueCharge[]
+}
+
 const ALLOWED_EXPORT_ROLES = new Set(['root', 'admin', 'financeiro'])
 
 /** Valida se o usuário tem permissão para exportar relatórios */
@@ -1631,6 +1707,701 @@ export function exportMatriculasReportToPdf(payload: MatriculasReportExportPaylo
 
       <div class="footer">
         <div>PortalCursos.NG • Relatórios Gerenciais • Documento Oficial para Tomada de Decisão</div>
+        <div>Página 1 de 1</div>
+      </div>
+
+      <script>
+        window.addEventListener('load', function() {
+          setTimeout(function() {
+            window.print();
+          }, 300);
+        });
+      </script>
+    </body>
+    </html>
+  `
+
+  printWindow.document.open()
+  printWindow.document.write(htmlContent)
+  printWindow.document.close()
+}
+
+/**
+ * Gera e dispara download de arquivo CSV formatado com BOM UTF-8 e separador ';'
+ * para o Relatório de Inadimplência (KPIs, faixas de atraso, ranking de inadimplentes e detalhamento de cobranças vencidas).
+ */
+export function exportInadimplenciaReportToCsv(payload: InadimplenciaReportExportPayload): void {
+  const {
+    portalName,
+    periodLabel,
+    generatedAt,
+    generatedBy,
+    kpis,
+    agingBrackets,
+    studentRanking,
+    charges = [],
+  } = payload
+
+  const lines: string[] = []
+
+  const escapeCell = (val: string | number | undefined | null): string => {
+    if (val === undefined || val === null) return '""'
+    const str = String(val).replace(/"/g, '""')
+    return `"${str}"`
+  }
+
+  // 1. Metadados
+  lines.push(`${escapeCell(portalName)};${escapeCell('Relatório Executivo de Inadimplência')}`)
+  lines.push(`${escapeCell('Período Analisado')};${escapeCell(periodLabel)}`)
+  lines.push(`${escapeCell('Data e Hora de Geração')};${escapeCell(formatDateTime(generatedAt))}`)
+  lines.push(
+    `${escapeCell('Gerado por')};${escapeCell(`${generatedBy.name} (${generatedBy.roleTitle}) - ${generatedBy.email}`)}`,
+  )
+  lines.push('')
+
+  // 2. KPIs
+  lines.push(`${escapeCell('--- INDICADORES CHAVE DE INADIMPLÊNCIA (KPIS) ---')};;;;`)
+  lines.push(
+    [
+      escapeCell('Indicador'),
+      escapeCell('Valor Formatado'),
+      escapeCell('Valor Numérico'),
+      escapeCell('Detalhes Complementares'),
+    ].join(';'),
+  )
+
+  const kpisList: Array<[string, string, number, string]> = [
+    [
+      'Total em Atraso (Dívida Acumulada)',
+      formatCurrency(kpis.totalOverdueAmount),
+      kpis.totalOverdueAmount,
+      'Soma de todas as cobranças pendentes com vencimento expirado',
+    ],
+    [
+      'Cobranças Vencidas',
+      `${kpis.overdueCount} títulos`,
+      kpis.overdueCount,
+      'Quantidade total de títulos em atraso',
+    ],
+    [
+      'Alunos Inadimplentes',
+      `${kpis.defaultingStudentsCount} alunos`,
+      kpis.defaultingStudentsCount,
+      'Alunos com ao menos um título vencido',
+    ],
+    [
+      'Ticket Médio da Dívida por Aluno',
+      formatCurrency(kpis.averageDebtPerStudent),
+      kpis.averageDebtPerStudent,
+      'Total em atraso dividido pelo número de alunos devedores',
+    ],
+    [
+      'Ticket Médio por Título Vencido',
+      formatCurrency(kpis.averageDebtPerCharge),
+      kpis.averageDebtPerCharge,
+      'Total em atraso dividido pela quantidade de títulos vencidos',
+    ],
+    [
+      'Taxa de Inadimplência no Período',
+      formatPercent(kpis.defaultRateInPeriod),
+      Number(kpis.defaultRateInPeriod.toFixed(2)),
+      'Percentual sobre o total faturado no período',
+    ],
+  ]
+
+  for (const [title, formatted, num, details] of kpisList) {
+    lines.push(
+      [
+        escapeCell(title),
+        escapeCell(formatted),
+        escapeCell(num.toFixed(2).replace('.', ',')),
+        escapeCell(details),
+      ].join(';'),
+    )
+  }
+
+  lines.push('')
+  lines.push('')
+
+  // 3. Antiguidade da Dívida (Aging Brackets)
+  lines.push(`${escapeCell('--- ANTIGUIDADE DA DÍVIDA (AGING) ---')};;;;`)
+  lines.push(
+    [
+      escapeCell('Faixa de Atraso'),
+      escapeCell('Valor em Atraso'),
+      escapeCell('Quantidade de Títulos'),
+      escapeCell('Participação (%)'),
+    ].join(';'),
+  )
+
+  for (const b of agingBrackets) {
+    lines.push(
+      [
+        escapeCell(b.label),
+        escapeCell(formatCurrency(b.amount)),
+        escapeCell(b.count),
+        escapeCell(formatPercent(b.percentage)),
+      ].join(';'),
+    )
+  }
+
+  lines.push('')
+  lines.push('')
+
+  // 4. Ranking de Alunos Inadimplentes
+  lines.push(`${escapeCell('--- RANKING DE ALUNOS INADIMPLENTES ---')};;;;;`)
+  lines.push(
+    [
+      escapeCell('Aluno'),
+      escapeCell('CPF'),
+      escapeCell('Curso'),
+      escapeCell('Total Devido'),
+      escapeCell('Títulos Vencidos'),
+      escapeCell('Maior Atraso (Dias)'),
+    ].join(';'),
+  )
+
+  for (const r of studentRanking) {
+    lines.push(
+      [
+        escapeCell(r.studentName),
+        escapeCell(r.studentCpf),
+        escapeCell(r.courseName || '—'),
+        escapeCell(formatCurrency(r.totalDue)),
+        escapeCell(r.overdueCount),
+        escapeCell(`${r.maxDaysOverdue} dias`),
+      ].join(';'),
+    )
+  }
+
+  lines.push('')
+  lines.push('')
+
+  // 5. Listagem Detalhada das Cobranças Vencidas
+  lines.push(`${escapeCell('--- LISTAGEM DETALHADA DE COBRANÇAS VENCIDAS ---')};;;;;;;;`)
+  lines.push(
+    [
+      escapeCell('Código'),
+      escapeCell('Aluno'),
+      escapeCell('CPF'),
+      escapeCell('Categoria'),
+      escapeCell('Descrição'),
+      escapeCell('Valor'),
+      escapeCell('Vencimento'),
+      escapeCell('Dias em Atraso'),
+      escapeCell('Faixa'),
+      escapeCell('Método'),
+    ].join(';'),
+  )
+
+  for (const c of charges) {
+    const bracketLabel =
+      c.agingBracket === 'ate_30'
+        ? 'Até 30 dias'
+        : c.agingBracket === '31_60'
+          ? '31 a 60 dias'
+          : c.agingBracket === '61_90'
+            ? '61 a 90 dias'
+            : 'Mais de 90 dias'
+
+    lines.push(
+      [
+        escapeCell(c.code),
+        escapeCell(c.studentName),
+        escapeCell(c.studentCpf),
+        escapeCell(c.categoryLabel),
+        escapeCell(c.description),
+        escapeCell(formatCurrency(c.amount)),
+        escapeCell(c.dueDate),
+        escapeCell(c.daysOverdue),
+        escapeCell(bracketLabel),
+        escapeCell(c.method?.toUpperCase() || 'PIX/BOLETO'),
+      ].join(';'),
+    )
+  }
+
+  const csvContent = '\uFEFF' + lines.join('\r\n')
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const dateStr = generatedAt.toISOString().slice(0, 10)
+  const periodStr = sanitizeFilenamePart(payload.periodKey || payload.periodLabel)
+  const filename = `Relatorio_Inadimplencia_${periodStr}_${dateStr}.csv`
+  triggerDownload(blob, filename)
+}
+
+/**
+ * Gera SVG embutido para o gráfico de Antiguidade da Dívida (Barra Horizontal)
+ */
+function generateDebtAgingSvg(brackets: DebtAgingBracket[]): string {
+  const maxAmount = Math.max(...brackets.map((b) => b.amount), 1)
+  const width = 480
+  const barHeight = 22
+  const gap = 16
+  const labelWidth = 110
+  const chartWidth = width - labelWidth - 90
+  const height = brackets.length * (barHeight + gap) + 20
+
+  const itemsSvg = brackets
+    .map((b, idx) => {
+      const y = idx * (barHeight + gap) + 10
+      const barW = Math.max(Math.round((b.amount / maxAmount) * chartWidth), 4)
+      const color = b.color || '#e11d48'
+      const formattedVal = `R$ ${b.amount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+
+      return `
+        <g>
+          <text x="0" y="${y + 15}" fill="#334155" font-size="11" font-weight="600" font-family="sans-serif">${escapeHtml(b.shortLabel)}</text>
+          <rect x="${labelWidth}" y="${y}" width="${chartWidth}" height="${barHeight}" fill="#f1f5f9" rx="4" />
+          <rect x="${labelWidth}" y="${y}" width="${barW}" height="${barHeight}" fill="${color}" rx="4" />
+          <text x="${labelWidth + barW + 8}" y="${y + 15}" fill="#0f172a" font-size="10.5" font-weight="700" font-family="sans-serif">${formattedVal} (${b.percentage.toFixed(0)}%)</text>
+        </g>
+      `
+    })
+    .join('')
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      ${itemsSvg}
+    </svg>
+  `
+}
+
+/**
+ * Gera SVG embutido para o gráfico de Evolução da Inadimplência
+ */
+function generateInadimplenciaEvolutionSvg(points: InadimplenciaEvolutionPoint[]): string {
+  if (points.length === 0) {
+    return `<div style="text-align: center; color: #94a3b8; padding: 30px;">Sem dados de evolução para o período</div>`
+  }
+
+  const width = 480
+  const height = 180
+  const padding = { top: 20, right: 20, bottom: 35, left: 60 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  const maxVal = Math.max(...points.map((p) => p.overdueAmount), 1000)
+
+  const stepX = points.length > 1 ? chartW / (points.length - 1) : chartW / 2
+
+  const coords = points.map((p, idx) => {
+    const x = padding.left + (points.length > 1 ? idx * stepX : chartW / 2)
+    const y = padding.top + chartH - (p.overdueAmount / maxVal) * chartH
+    return { x, y, point: p }
+  })
+
+  const pathD = coords.reduce((acc, c, idx) => {
+    return `${acc} ${idx === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`
+  }, '')
+
+  const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)} ${(padding.top + chartH).toFixed(1)} L ${coords[0].x.toFixed(1)} ${(padding.top + chartH).toFixed(1)} Z`
+
+  const dots = coords
+    .map(
+      (c) => `
+      <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="#e11d48" stroke="#ffffff" stroke-width="2" />
+      <text x="${c.x.toFixed(1)}" y="${padding.top + chartH + 18}" text-anchor="middle" font-size="10" fill="#64748b" font-family="sans-serif">${escapeHtml(c.point.dateLabel)}</text>
+    `,
+    )
+    .join('')
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${width - padding.right}" y2="${padding.top + chartH}" stroke="#cbd5e1" stroke-width="1" />
+      <line x1="${padding.left}" y1="${padding.top}" x2="${width - padding.right}" y2="${padding.top}" stroke="#f1f5f9" stroke-width="1" stroke-dasharray="3 3" />
+      <line x1="${padding.left}" y1="${padding.top + chartH / 2}" x2="${width - padding.right}" y2="${padding.top + chartH / 2}" stroke="#f1f5f9" stroke-width="1" stroke-dasharray="3 3" />
+      
+      <text x="${padding.left - 8}" y="${padding.top + 4}" text-anchor="end" font-size="9" fill="#94a3b8" font-family="sans-serif">R$ ${(maxVal / 1000).toFixed(0)}k</text>
+      <text x="${padding.left - 8}" y="${padding.top + chartH + 3}" text-anchor="end" font-size="9" fill="#94a3b8" font-family="sans-serif">R$ 0</text>
+
+      <path d="${areaD}" fill="#ffe4e6" opacity="0.6" />
+      <path d="${pathD}" fill="none" stroke="#e11d48" stroke-width="2.5" />
+      ${dots}
+    </svg>
+  `
+}
+
+/**
+ * Gera e dispara impressão / download em PDF institucional para o Relatório de Inadimplência.
+ */
+export function exportInadimplenciaReportToPdf(payload: InadimplenciaReportExportPayload): void {
+  const {
+    portalName,
+    periodLabel,
+    generatedAt,
+    generatedBy,
+    kpis,
+    agingBrackets,
+    evolutionData = [],
+    studentRanking = [],
+    charges = [],
+  } = payload
+
+  const formattedDate = formatDateTime(generatedAt)
+  const dateStr = generatedAt.toISOString().slice(0, 10)
+  const periodStr = sanitizeFilenamePart(payload.periodKey || payload.periodLabel)
+  const documentTitle = `Relatorio_Inadimplencia_${periodStr}_${dateStr}`
+
+  const agingSvg = generateDebtAgingSvg(agingBrackets)
+  const evolutionSvg = generateInadimplenciaEvolutionSvg(evolutionData)
+
+  // Linhas do ranking (top 10 para o PDF)
+  const rankingRowsHtml = studentRanking
+    .slice(0, 12)
+    .map((r, idx) => {
+      return `
+        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+          <td style="padding: 7px 10px; font-weight: 700; color: #0f172a; text-align: center;">
+            #${idx + 1}
+          </td>
+          <td style="padding: 7px 10px;">
+            <div style="font-weight: 600; color: #0f172a;">${escapeHtml(r.studentName)}</div>
+            <div style="font-size: 10px; color: #64748b; font-family: monospace;">CPF: ${escapeHtml(r.studentCpf)}</div>
+          </td>
+          <td style="padding: 7px 10px; color: #334155; font-size: 11px;">
+            ${escapeHtml(r.courseName || '—')}
+          </td>
+          <td style="padding: 7px 10px; text-align: right; font-weight: 700; color: #e11d48;">
+            ${formatCurrency(r.totalDue)}
+          </td>
+          <td style="padding: 7px 10px; text-align: center; color: #334155; font-weight: 600;">
+            ${r.overdueCount}
+          </td>
+          <td style="padding: 7px 10px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 10px; font-weight: 700; background: #fee2e2; color: #991b1b;">
+              ${r.maxDaysOverdue} dias
+            </span>
+          </td>
+        </tr>
+      `
+    })
+    .join('')
+
+  // Amostra das cobranças vencidas (até 15 para o PDF)
+  const chargesRowsHtml = charges
+    .slice(0, 18)
+    .map((c, idx) => {
+      return `
+        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+          <td style="padding: 6px 8px; font-family: monospace; font-size: 10px; color: #475569;">
+            ${escapeHtml(c.code)}
+          </td>
+          <td style="padding: 6px 8px;">
+            <div style="font-weight: 600; color: #0f172a; font-size: 11px;">${escapeHtml(c.studentName)}</div>
+            <div style="font-size: 9.5px; color: #64748b;">${escapeHtml(c.description)}</div>
+          </td>
+          <td style="padding: 6px 8px; font-size: 10.5px; color: #334155;">
+            ${escapeHtml(c.categoryLabel)}
+          </td>
+          <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #e11d48; font-size: 11px;">
+            ${formatCurrency(c.amount)}
+          </td>
+          <td style="padding: 6px 8px; text-align: center; font-size: 10.5px; color: #334155;">
+            ${escapeHtml(c.dueDate)}
+          </td>
+          <td style="padding: 6px 8px; text-align: center; font-size: 10px; font-weight: 700; color: #b91c1c;">
+            ${c.daysOverdue} d
+          </td>
+        </tr>
+      `
+    })
+    .join('')
+
+  const printWindow = window.open('', '_blank', 'width=1000,height=900')
+  if (!printWindow) {
+    alert(
+      'O navegador bloqueou a abertura da janela para geração do PDF. Por favor, permita pop-ups para este site.',
+    )
+    return
+  }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>${escapeHtml(documentTitle)}</title>
+      <style>
+        @page {
+          size: A4 portrait;
+          margin: 12mm 15mm 15mm 15mm;
+        }
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          color: #0f172a;
+          background: #ffffff;
+          margin: 0;
+          padding: 10px;
+          font-size: 11.5px;
+          line-height: 1.4;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #e11d48;
+          padding-bottom: 12px;
+          margin-bottom: 16px;
+        }
+        .brand-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #0f172a;
+          letter-spacing: -0.5px;
+        }
+        .report-subtitle {
+          font-size: 12px;
+          color: #e11d48;
+          font-weight: 700;
+          margin-top: 2px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .meta-box {
+          text-align: right;
+          font-size: 10px;
+          color: #64748b;
+        }
+        .badge-period {
+          display: inline-block;
+          background: #ffe4e6;
+          color: #9f1239;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 4px;
+          margin-bottom: 4px;
+          font-size: 10.5px;
+        }
+        .section-title {
+          font-size: 12px;
+          font-weight: 700;
+          color: #1e293b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin: 16px 0 8px 0;
+          padding-bottom: 4px;
+          border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+        .kpi-card {
+          background: #fafafa;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 8px 10px;
+        }
+        .kpi-label {
+          font-size: 9.5px;
+          text-transform: uppercase;
+          font-weight: 700;
+          color: #64748b;
+          margin-bottom: 2px;
+        }
+        .kpi-value {
+          font-size: 16px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+        .kpi-sub {
+          font-size: 9px;
+          color: #94a3b8;
+          margin-top: 2px;
+        }
+        .charts-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+        .chart-card {
+          background: #fafafa;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 10px;
+        }
+        .chart-header {
+          margin-bottom: 8px;
+        }
+        .chart-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: #1e293b;
+        }
+        .chart-desc {
+          font-size: 9.5px;
+          color: #64748b;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 6px;
+          margin-bottom: 12px;
+          font-size: 10.5px;
+        }
+        th {
+          background: #f1f5f9;
+          color: #475569;
+          font-weight: 700;
+          text-transform: uppercase;
+          font-size: 9.5px;
+          letter-spacing: 0.4px;
+          padding: 6px 8px;
+          border: 1px solid #e2e8f0;
+        }
+        td {
+          border: 1px solid #e2e8f0;
+        }
+        .footer {
+          margin-top: 18px;
+          padding-top: 8px;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          font-size: 9px;
+          color: #94a3b8;
+        }
+        @media print {
+          body { padding: 0; }
+          .no-print { display: none !important; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="background: #f1f5f9; padding: 10px 14px; margin-bottom: 14px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 12px; color: #1e293b; font-weight: 600;">
+          Visualização para Impressão e Salvamento em PDF - Relatório de Inadimplência
+        </span>
+        <div>
+          <button onclick="window.print()" style="background: #e11d48; color: #ffffff; border: none; padding: 5px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 11px; margin-right: 6px;">
+            Imprimir / Salvar PDF
+          </button>
+          <button onclick="window.close()" style="background: #e2e8f0; color: #475569; border: none; padding: 5px 10px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 11px;">
+            Fechar
+          </button>
+        </div>
+      </div>
+
+      <div class="header">
+        <div>
+          <div class="brand-title">${escapeHtml(portalName)}</div>
+          <div class="report-subtitle">Relatório Executivo de Inadimplência & Cobranças Vencidas</div>
+        </div>
+        <div class="meta-box">
+          <div class="badge-period">Período: ${escapeHtml(periodLabel)}</div>
+          <div>Gerado em: <strong>${formattedDate}</strong></div>
+          <div>Emissor: <strong>${escapeHtml(generatedBy.name)}</strong> (${escapeHtml(generatedBy.roleTitle)})</div>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <span>1. Indicadores Chave de Inadimplência</span>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total em Atraso</div>
+          <div class="kpi-value" style="color: #e11d48;">${formatCurrency(kpis.totalOverdueAmount)}</div>
+          <div class="kpi-sub">${kpis.overdueCount} títulos vencidos</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Alunos Inadimplentes</div>
+          <div class="kpi-value" style="color: #ea580c;">${kpis.defaultingStudentsCount}</div>
+          <div class="kpi-sub">Com débitos expirados</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Ticket Médio Dívida / Aluno</div>
+          <div class="kpi-value" style="color: #7c3aed;">${formatCurrency(kpis.averageDebtPerStudent)}</div>
+          <div class="kpi-sub">Média por aluno devedor</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Ticket Médio / Título</div>
+          <div class="kpi-value" style="color: #0284c7;">${formatCurrency(kpis.averageDebtPerCharge)}</div>
+          <div class="kpi-sub">Média por cobrança vencida</div>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <span>2. Antiguidade da Dívida (Aging) & Evolução Histórica</span>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Antiguidade da Dívida por Faixa de Atraso</div>
+            <div class="chart-desc">Distribuição do montante devido em faixas etárias de atraso</div>
+          </div>
+          <div>
+            ${agingSvg}
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Evolução Mensal da Inadimplência</div>
+            <div class="chart-desc">Montante acumulado em atraso nos últimos meses</div>
+          </div>
+          <div>
+            ${evolutionSvg}
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">
+        <span>3. Ranking dos Maiores Devedores (Top Inadimplência)</span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align: center; width: 40px;">Pos.</th>
+            <th style="text-align: left;">Aluno & CPF</th>
+            <th style="text-align: left;">Curso</th>
+            <th style="text-align: right;">Total Devido</th>
+            <th style="text-align: center;">Títulos</th>
+            <th style="text-align: center;">Maior Atraso</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rankingRowsHtml || '<tr><td colspan="6" style="padding: 12px; text-align: center; color: #64748b;">Nenhum aluno inadimplente no período</td></tr>'}
+        </tbody>
+      </table>
+
+      <div class="section-title">
+        <span>4. Amostra de Títulos e Cobranças Vencidas</span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align: left;">Código</th>
+            <th style="text-align: left;">Aluno & Descrição</th>
+            <th style="text-align: left;">Categoria</th>
+            <th style="text-align: right;">Valor</th>
+            <th style="text-align: center;">Vencimento</th>
+            <th style="text-align: center;">Atraso</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${chargesRowsHtml || '<tr><td colspan="6" style="padding: 12px; text-align: center; color: #64748b;">Nenhuma cobrança vencida</td></tr>'}
+        </tbody>
+      </table>
+
+      <div class="footer">
+        <div>PortalCursos.NG • Relatório de Inadimplência • Gestão Financeira & Cobrança Administrativa</div>
         <div>Página 1 de 1</div>
       </div>
 

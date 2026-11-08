@@ -102,7 +102,9 @@ export default function Index() {
               onNavigateToAluno={handleNavigateToAlunos}
             />
           )}
-          {safeActiveModule === 'relatorios' && <RelatoriosModule />}
+          {safeActiveModule === 'relatorios' && (
+            <RelatoriosModule onNavigateToStudent={handleNavigateToAlunos} />
+          )}
           {safeActiveModule === 'diplomas' && <DiplomasCertificadosModule />}
           {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
           {safeActiveModule === 'manutencao' && <ManutencaoModule />}

@@ -45,6 +45,19 @@ import {
   MatriculasReportKpis,
 } from '@/lib/reportExport'
 import { MatriculasAlunosSection } from './MatriculasAlunosSection'
+import { InadimplenciaSection } from './InadimplenciaSection'
+import {
+  exportInadimplenciaReportToCsv,
+  exportInadimplenciaReportToPdf,
+  InadimplenciaKpis,
+  DebtAgingBracket,
+  DebtAgingBracketKey,
+  InadimplenciaEvolutionPoint,
+  InadimplenteStudentRanking,
+  DetailedOverdueCharge,
+  InadimplenciaReportExportPayload,
+} from '@/lib/reportExport'
+import { getChargeCategoryLabel, INSTITUTIONAL_FEE_CATEGORIES } from '@/lib/feeCategories'
 
 export type PeriodFilter =
   | 'last_30_days'
@@ -69,11 +82,17 @@ const CATEGORY_LABEL_MAP: Record<string, string> = {
   outros: 'Outros',
 }
 
-export const RelatoriosModule: React.FC = () => {
+export interface RelatoriosModuleProps {
+  onNavigateToStudent?: (studentId: string, studentName?: string) => void
+}
+
+export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateToStudent }) => {
   const { charges, students, courses, expenses, addExpense, deleteExpense, currentUser } =
     usePortal()
 
-  const [activeTab, setActiveTab] = useState<'financeiro' | 'matriculas'>('financeiro')
+  const [activeTab, setActiveTab] = useState<'financeiro' | 'matriculas' | 'inadimplencia'>(
+    'financeiro',
+  )
   const [period, setPeriod] = useState<PeriodFilter>('current_month')
   const [isExportingCsv, setIsExportingCsv] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -738,6 +757,281 @@ export const RelatoriosModule: React.FC = () => {
     }
   }
 
+  // Processamento unificado de Inadimplência para tela e exportação
+  const inadimplenciaData = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayTime = today.getTime()
+
+    const parseChargeDue = (due: string) => {
+      const parts = due.split('-')
+      if (parts.length === 3) {
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime()
+      }
+      return new Date(due).getTime()
+    }
+
+    const isChargeOverdue = (c: Charge) => {
+      if (c.status === 'atrasado') return true
+      if (c.status === 'pendente') {
+        return parseChargeDue(c.dueDate) < todayTime
+      }
+      return false
+    }
+
+    const currentOverdueCharges = currentCharges.filter(isChargeOverdue)
+    const prevOverdueCharges = prevCharges.filter(isChargeOverdue)
+
+    const totalOverdueAmount = currentOverdueCharges.reduce((acc, c) => acc + c.amount, 0)
+    const overdueCount = currentOverdueCharges.length
+    const defaultingStudentIds = new Set(currentOverdueCharges.map((c) => c.studentId))
+    const defaultingStudentsCount = defaultingStudentIds.size
+    const averageDebtPerStudent =
+      defaultingStudentsCount > 0 ? totalOverdueAmount / defaultingStudentsCount : 0
+    const averageDebtPerCharge = overdueCount > 0 ? totalOverdueAmount / overdueCount : 0
+
+    const prevOverdueAmount = prevOverdueCharges.reduce((acc, c) => acc + c.amount, 0)
+    const totalPendingInPeriod = currentCharges
+      .filter((c) => c.status === 'pendente' || c.status === 'atrasado')
+      .reduce((acc, c) => acc + c.amount, 0)
+    const totalBilledInPeriod = currentCharges.reduce((acc, c) => acc + c.amount, 0)
+    const defaultRateInPeriod =
+      totalBilledInPeriod > 0 ? (totalOverdueAmount / totalBilledInPeriod) * 100 : 0
+
+    const kpis: InadimplenciaKpis = {
+      totalOverdueAmount,
+      overdueCount,
+      defaultingStudentsCount,
+      averageDebtPerStudent,
+      averageDebtPerCharge,
+      totalPendingInPeriod,
+      defaultRateInPeriod,
+    }
+
+    const agingMap: Record<DebtAgingBracketKey, DebtAgingBracket> = {
+      ate_30: {
+        key: 'ate_30',
+        label: 'Até 30 dias de atraso',
+        shortLabel: 'Até 30 dias',
+        minDays: 1,
+        maxDays: 30,
+        amount: 0,
+        count: 0,
+        percentage: 0,
+        color: '#0284c7', // Sky-600
+      },
+      '31_60': {
+        key: '31_60',
+        label: '31 a 60 dias de atraso',
+        shortLabel: '31 a 60 dias',
+        minDays: 31,
+        maxDays: 60,
+        amount: 0,
+        count: 0,
+        percentage: 0,
+        color: '#eab308', // Yellow-500
+      },
+      '61_90': {
+        key: '61_90',
+        label: '61 a 90 dias de atraso',
+        shortLabel: '61 a 90 dias',
+        minDays: 61,
+        maxDays: 90,
+        amount: 0,
+        count: 0,
+        percentage: 0,
+        color: '#f97316', // Orange-500
+      },
+      mais_90: {
+        key: 'mais_90',
+        label: 'Mais de 90 dias (Crítico)',
+        shortLabel: 'Mais de 90 dias',
+        minDays: 91,
+        maxDays: null,
+        amount: 0,
+        count: 0,
+        percentage: 0,
+        color: '#ef4444', // Red-500
+      },
+    }
+
+    currentOverdueCharges.forEach((c) => {
+      const dueTime = parseChargeDue(c.dueDate)
+      const diffDays = Math.max(1, Math.floor((todayTime - dueTime) / (1000 * 60 * 60 * 24)))
+      if (diffDays <= 30) {
+        agingMap.ate_30.amount += c.amount
+        agingMap.ate_30.count += 1
+      } else if (diffDays <= 60) {
+        agingMap['31_60'].amount += c.amount
+        agingMap['31_60'].count += 1
+      } else if (diffDays <= 90) {
+        agingMap['61_90'].amount += c.amount
+        agingMap['61_90'].count += 1
+      } else {
+        agingMap.mais_90.amount += c.amount
+        agingMap.mais_90.count += 1
+      }
+    })
+
+    const agingBrackets: DebtAgingBracket[] = Object.values(agingMap).map((bracket) => ({
+      ...bracket,
+      percentage: totalOverdueAmount > 0 ? (bracket.amount / totalOverdueAmount) * 100 : 0,
+    }))
+
+    // Evolução temporal de inadimplência (6 meses)
+    const evolutionData: InadimplenciaEvolutionPoint[] = []
+    const monthNames = [
+      'Jan',
+      'Fev',
+      'Mar',
+      'Abr',
+      'Mai',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Set',
+      'Out',
+      'Nov',
+      'Dez',
+    ]
+    const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1)
+
+    for (let i = 0; i < 6; i++) {
+      const mDate = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth() + i, 1)
+      const mYear = mDate.getFullYear()
+      const mMonth = mDate.getMonth()
+      const dateKey = `${mYear}-${String(mMonth + 1).padStart(2, '0')}`
+      const dateLabel = `${monthNames[mMonth]}/${String(mYear).slice(2)}`
+
+      const monthCharges = charges.filter((c) => {
+        const dueTime = parseChargeDue(c.dueDate)
+        const d = new Date(dueTime)
+        return d.getFullYear() === mYear && d.getMonth() === mMonth && isChargeOverdue(c)
+      })
+
+      const overdueAmount = monthCharges.reduce((acc, c) => acc + c.amount, 0)
+      const overdueCountMonth = monthCharges.length
+      evolutionData.push({
+        dateKey,
+        dateLabel,
+        overdueAmount,
+        overdueCount: overdueCountMonth,
+      })
+    }
+
+    // Ranking de alunos inadimplentes
+    const studentAggMap = new Map<
+      string,
+      {
+        totalDue: number
+        overdueCount: number
+        maxDaysOverdue: number
+        earliestDueDate: string
+      }
+    >()
+
+    currentOverdueCharges.forEach((c) => {
+      const dueTime = parseChargeDue(c.dueDate)
+      const diffDays = Math.max(1, Math.floor((todayTime - dueTime) / (1000 * 60 * 60 * 24)))
+      const existing = studentAggMap.get(c.studentId) || {
+        totalDue: 0,
+        overdueCount: 0,
+        maxDaysOverdue: 0,
+        earliestDueDate: c.dueDate,
+      }
+      existing.totalDue += c.amount
+      existing.overdueCount += 1
+      if (diffDays > existing.maxDaysOverdue) {
+        existing.maxDaysOverdue = diffDays
+        existing.earliestDueDate = c.dueDate
+      }
+      studentAggMap.set(c.studentId, existing)
+    })
+
+    const studentRanking: InadimplenteStudentRanking[] = Array.from(studentAggMap.entries())
+      .map(([studentId, agg]) => {
+        const student = students.find((s) => s.id === studentId)
+        return {
+          studentId,
+          studentName: student?.fullName || 'Aluno não identificado',
+          studentCpf: student?.cpf || '—',
+          courseName: student?.courseName,
+          totalDue: agg.totalDue,
+          overdueCount: agg.overdueCount,
+          maxDaysOverdue: agg.maxDaysOverdue,
+          earliestDueDate: agg.earliestDueDate,
+        }
+      })
+      .sort((a, b) => b.totalDue - a.totalDue)
+
+    // Cobranças detalhadas
+    const detailedCharges: DetailedOverdueCharge[] = currentOverdueCharges
+      .map((c) => {
+        const dueTime = parseChargeDue(c.dueDate)
+        const daysOverdue = Math.max(1, Math.floor((todayTime - dueTime) / (1000 * 60 * 60 * 24)))
+        let agingBracket: DebtAgingBracketKey = 'mais_90'
+        if (daysOverdue <= 30) agingBracket = 'ate_30'
+        else if (daysOverdue <= 60) agingBracket = '31_60'
+        else if (daysOverdue <= 90) agingBracket = '61_90'
+
+        const student = students.find((s) => s.id === c.studentId)
+        return {
+          id: c.id,
+          code: c.code || `COB-${c.id.slice(0, 6).toUpperCase()}`,
+          studentId: c.studentId,
+          studentName: student?.fullName || 'Aluno Desconhecido',
+          studentCpf: student?.cpf || '—',
+          category: c.category,
+          categoryLabel: getChargeCategoryLabel(c.category),
+          description: c.description || getChargeCategoryLabel(c.category),
+          amount: c.amount,
+          dueDate: c.dueDate,
+          daysOverdue,
+          agingBracket,
+          method: c.method,
+          status: c.status,
+        }
+      })
+      .sort((a, b) => b.daysOverdue - a.daysOverdue)
+
+    // Opções de categorias encontradas para o filtro
+    const distinctCategories = Array.from(new Set(currentOverdueCharges.map((c) => c.category)))
+    const categoryOptions = distinctCategories.map((cat) => ({
+      value: cat,
+      label: getChargeCategoryLabel(cat),
+    }))
+
+    return {
+      kpis,
+      agingBrackets,
+      evolutionData,
+      studentRanking,
+      detailedCharges,
+      categoryOptions,
+      prevOverdueAmount,
+    }
+  }, [currentCharges, prevCharges, charges, students])
+
+  // Prepara payload compartilhado de exportação Inadimplência
+  const getInadimplenciaExportPayload = (): InadimplenciaReportExportPayload => {
+    return {
+      portalName: 'PortalCursos.NG',
+      periodLabel,
+      periodKey: period,
+      generatedAt: new Date(),
+      generatedBy: {
+        name: currentUser?.name || 'Administrador',
+        roleTitle: currentUser?.roleTitle || 'Gestor',
+        email: currentUser?.email || 'admin@portalcursos.ng',
+      },
+      kpis: inadimplenciaData.kpis,
+      agingBrackets: inadimplenciaData.agingBrackets,
+      evolutionData: inadimplenciaData.evolutionData,
+      studentRanking: inadimplenciaData.studentRanking,
+      charges: inadimplenciaData.detailedCharges,
+    }
+  }
+
   // Prepara payload compartilhado de exportação Matrículas e Alunos
   const getMatriculasExportPayload = (): MatriculasReportExportPayload => {
     return {
@@ -785,7 +1079,14 @@ export const RelatoriosModule: React.FC = () => {
 
     try {
       setIsExportingCsv(true)
-      if (activeTab === 'matriculas') {
+      if (activeTab === 'inadimplencia') {
+        const payload = getInadimplenciaExportPayload()
+        exportInadimplenciaReportToCsv(payload)
+        toast({
+          title: 'Exportação CSV de Inadimplência concluída',
+          description: `Planilha de Inadimplência gerada com sucesso para "${periodLabel}". Compatível com Excel.`,
+        })
+      } else if (activeTab === 'matriculas') {
         const payload = getMatriculasExportPayload()
         exportMatriculasReportToCsv(payload)
         toast({
@@ -826,7 +1127,14 @@ export const RelatoriosModule: React.FC = () => {
 
     try {
       setIsExportingPdf(true)
-      if (activeTab === 'matriculas') {
+      if (activeTab === 'inadimplencia') {
+        const payload = getInadimplenciaExportPayload()
+        exportInadimplenciaReportToPdf(payload)
+        toast({
+          title: 'Relatório PDF de Inadimplência gerado',
+          description: `Janela de impressão e download de Inadimplência aberta para o período "${periodLabel}".`,
+        })
+      } else if (activeTab === 'matriculas') {
         const payload = getMatriculasExportPayload()
         exportMatriculasReportToPdf(payload)
         toast({
@@ -910,7 +1218,13 @@ export const RelatoriosModule: React.FC = () => {
                 onClick={handleExportCsv}
                 disabled={isExportingCsv}
                 className="h-9 gap-1.5 text-xs font-medium border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                title={`Exportar planilha CSV de ${activeTab === 'matriculas' ? 'Matrículas e Alunos' : 'Financeiro'} (BOM UTF-8)`}
+                title={`Exportar planilha CSV de ${
+                  activeTab === 'inadimplencia'
+                    ? 'Inadimplência'
+                    : activeTab === 'matriculas'
+                      ? 'Matrículas e Alunos'
+                      : 'Financeiro'
+                } (BOM UTF-8)`}
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{isExportingCsv ? 'Exportando...' : 'Exportar CSV'}</span>
@@ -922,7 +1236,13 @@ export const RelatoriosModule: React.FC = () => {
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
                 className="h-9 gap-1.5 text-xs font-medium bg-sky-700 hover:bg-sky-800 text-white shadow-xs"
-                title={`Exportar relatório PDF de ${activeTab === 'matriculas' ? 'Matrículas e Alunos' : 'Financeiro'}`}
+                title={`Exportar relatório PDF de ${
+                  activeTab === 'inadimplencia'
+                    ? 'Inadimplência'
+                    : activeTab === 'matriculas'
+                      ? 'Matrículas e Alunos'
+                      : 'Financeiro'
+                }`}
               >
                 <Download className="w-3.5 h-3.5 text-white" />
                 <span>{isExportingPdf ? 'Gerando...' : 'Exportar PDF'}</span>
@@ -932,13 +1252,13 @@ export const RelatoriosModule: React.FC = () => {
         </div>
       </div>
 
-      {/* ABAS DE RELATÓRIO: FINANCEIRO vs MATRÍCULAS E ALUNOS */}
+      {/* ABAS DE RELATÓRIO: FINANCEIRO vs MATRÍCULAS E ALUNOS vs INADIMPLÊNCIA */}
       <Tabs
         value={activeTab}
-        onValueChange={(val) => setActiveTab(val as 'financeiro' | 'matriculas')}
+        onValueChange={(val) => setActiveTab(val as 'financeiro' | 'matriculas' | 'inadimplencia')}
         className="w-full space-y-6"
       >
-        <TabsList className="bg-slate-100/90 p-1 border border-slate-200/80 rounded-lg">
+        <TabsList className="bg-slate-100/90 p-1 border border-slate-200/80 rounded-lg flex flex-wrap">
           <TabsTrigger
             value="financeiro"
             className="text-xs font-medium gap-1.5 data-[state=active]:bg-white data-[state=active]:text-sky-800 data-[state=active]:shadow-xs"
@@ -952,7 +1272,14 @@ export const RelatoriosModule: React.FC = () => {
           >
             <Users className="w-3.5 h-3.5" />
             <span>Matrículas e Alunos</span>
-            <span className="ml-1 bg-sky-100 text-sky-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+          </TabsTrigger>
+          <TabsTrigger
+            value="inadimplencia"
+            className="text-xs font-medium gap-1.5 data-[state=active]:bg-white data-[state=active]:text-rose-800 data-[state=active]:shadow-xs text-rose-700"
+          >
+            <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
+            <span>Inadimplência</span>
+            <span className="ml-1 bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
               Novo
             </span>
           </TabsTrigger>
@@ -1084,6 +1411,22 @@ export const RelatoriosModule: React.FC = () => {
             periodLabel={periodLabel}
             prevPeriodLabel={prevPeriodLabel}
             newEnrollmentsInPrevPeriod={newEnrollmentsInPrevPeriod}
+          />
+        </TabsContent>
+
+        {/* CONTEÚDO DA ABA 3: INADIMPLÊNCIA */}
+        <TabsContent value="inadimplencia" className="space-y-6 mt-0">
+          <InadimplenciaSection
+            kpis={inadimplenciaData.kpis}
+            agingBrackets={inadimplenciaData.agingBrackets}
+            evolutionData={inadimplenciaData.evolutionData}
+            studentRanking={inadimplenciaData.studentRanking}
+            charges={inadimplenciaData.detailedCharges}
+            periodLabel={periodLabel}
+            prevPeriodLabel={prevPeriodLabel}
+            prevPeriodOverdueAmount={inadimplenciaData.prevOverdueAmount}
+            categoryOptions={inadimplenciaData.categoryOptions}
+            onNavigateToStudent={onNavigateToStudent}
           />
         </TabsContent>
       </Tabs>
