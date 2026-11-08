@@ -69,6 +69,7 @@ import {
   Download,
   AlertTriangle,
   RotateCcw,
+  History,
 } from 'lucide-react'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 
@@ -101,6 +102,7 @@ export function AlunosModule({
     certificates,
     issueCertificate,
     revokeCertificate,
+    getStudentCertificates,
   } = usePortal()
   const { toast } = useToast()
 
@@ -109,11 +111,16 @@ export function AlunosModule({
   // coordenador, professor: apenas visualizar
   // root, admin, secretaria, coordenador: emitir certificado
   // root, admin, secretaria: revogar certificado
+  // root, admin, secretaria: histórico completo com auditoria (revokedBy, revokedAt)
+  // coordenador: visualiza lista de certificados mas sem dados de revogação/auditoria
+  // aluno/professor/financeiro/matrícula: não veem a seção de histórico de certificados
   const role = currentUser?.role || 'aluno'
   const canManage = ['root', 'admin', 'secretaria', 'matricula'].includes(role)
   const canDelete = ['root', 'admin'].includes(role)
   const canIssueCertificate = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
   const canRevokeCertificate = ['root', 'admin', 'secretaria'].includes(role)
+  const canViewCertificateAudit = ['root', 'admin', 'secretaria'].includes(role)
+  const canViewCertificatesHistory = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
 
   // Filtros e busca
   const [searchTerm, setSearchTerm] = useState('')
@@ -185,20 +192,16 @@ export function AlunosModule({
     )
   }, [viewStudent, charges])
 
-  // Certificado ativo do aluno selecionado
+  // Histórico de certificados do aluno selecionado (todos: ativos, revogados, substituídos)
+  const selectedStudentCertificatesHistory = useMemo(() => {
+    if (!viewStudent) return []
+    return getStudentCertificates(viewStudent.id)
+  }, [viewStudent, getStudentCertificates, certificates])
+
+  // Certificado ativo vigente do aluno selecionado
   const selectedStudentCertificate = useMemo(() => {
-    if (!viewStudent) return null
-    const cleanCpf = viewStudent.cpfRaw || viewStudent.cpf.replace(/\D/g, '')
-    return (
-      certificates.find((c) => {
-        if (c.status !== 'ativo') return false
-        if (c.studentId === viewStudent.id) return true
-        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
-        if (c.studentName.toLowerCase() === viewStudent.fullName.toLowerCase()) return true
-        return false
-      }) || null
-    )
-  }, [viewStudent, certificates])
+    return selectedStudentCertificatesHistory.find((c) => c.status === 'ativo') || null
+  }, [selectedStudentCertificatesHistory])
 
   // Manipulador de emissão de certificado
   const handleIssueCertificate = async () => {
@@ -1146,6 +1149,20 @@ export function AlunosModule({
                                 Revogar
                               </Button>
                             )}
+
+                            {canIssueCertificate && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isIssuingCert}
+                                className="border-amber-500/40 text-amber-300 hover:bg-amber-950/40 hover:text-amber-200 text-xs h-8 gap-1.5"
+                                title="Emite uma nova via do certificado, substituindo a anterior automaticamente no histórico"
+                                onClick={handleIssueCertificate}
+                              >
+                                <Award className="w-3.5 h-3.5 text-amber-300" />
+                                {isIssuingCert ? 'Emitindo...' : 'Emitir Nova Via'}
+                              </Button>
+                            )}
                           </>
                         ) : (
                           canIssueCertificate && (
@@ -1192,6 +1209,143 @@ export function AlunosModule({
                             {selectedStudentCertificate.workloadHours} horas
                           </span>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Histórico Completo de Certificados (root, admin, secretaria, coordenador) */}
+                    {canViewCertificatesHistory && (
+                      <div className="mt-4 pt-3 border-t border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <History className="w-3.5 h-3.5 text-amber-400" />
+                            <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                              Histórico de Emissão de Certificados
+                            </h5>
+                            <span className="text-[10px] text-slate-500">
+                              ({selectedStudentCertificatesHistory.length})
+                            </span>
+                          </div>
+                          {!canViewCertificateAudit && (
+                            <span className="text-[10px] text-slate-500 italic">
+                              Visão pedagógica (sem dados de auditoria)
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedStudentCertificatesHistory.length === 0 ? (
+                          <p className="text-[11px] text-slate-500 italic">
+                            Nenhum histórico de certificado registrado para este aluno.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {selectedStudentCertificatesHistory.map((item, idx) => {
+                              const isCurrent = item.status === 'ativo'
+                              const isSuperseded = item.status === 'substituido'
+                              const isRevoked = item.status === 'revogado'
+
+                              return (
+                                <div
+                                  key={item.id || item.verificationCode}
+                                  className={`p-3 rounded-lg border text-xs transition-colors ${
+                                    isCurrent
+                                      ? 'bg-emerald-950/20 border-emerald-500/30'
+                                      : isSuperseded
+                                        ? 'bg-amber-950/15 border-amber-900/40 opacity-90'
+                                        : 'bg-rose-950/15 border-rose-900/40 opacity-80'
+                                  }`}
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[10px] text-slate-500 font-mono">
+                                        #{selectedStudentCertificatesHistory.length - idx}
+                                      </span>
+                                      <span className="font-mono font-bold text-white text-xs">
+                                        {item.verificationCode}
+                                      </span>
+
+                                      {isCurrent && (
+                                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] py-0">
+                                          Ativo (Vigente)
+                                        </Badge>
+                                      )}
+                                      {isSuperseded && (
+                                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] py-0">
+                                          Substituído
+                                        </Badge>
+                                      )}
+                                      {isRevoked && (
+                                        <Badge className="bg-rose-500/20 text-rose-300 border-rose-500/40 text-[10px] py-0">
+                                          Revogado
+                                        </Badge>
+                                      )}
+
+                                      <span className="text-[11px] text-slate-400">
+                                        Emitido em {item.issueDate} por{' '}
+                                        <strong className="text-slate-300">{item.issuedBy}</strong>
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {isCurrent ? (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 text-[11px] text-blue-400 hover:text-blue-300 hover:bg-blue-950/40 px-2 py-0 gap-1"
+                                          onClick={() => generateCertificatePdf(item)}
+                                        >
+                                          <Download className="w-3 h-3" /> Ver / PDF
+                                        </Button>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-500 italic">
+                                          Inválido para download
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Dados de auditoria de revogação/substituição (root, admin, secretaria) */}
+                                  {canViewCertificateAudit && (isRevoked || isSuperseded) && (
+                                    <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] grid grid-cols-1 sm:grid-cols-2 gap-1 text-slate-400">
+                                      <div>
+                                        <span className="text-slate-500">
+                                          {isSuperseded ? 'Substituído em:' : 'Revogado em:'}{' '}
+                                        </span>
+                                        <span className="text-slate-300 font-medium">
+                                          {item.revokedAt
+                                            ? new Date(item.revokedAt).toLocaleString('pt-BR')
+                                            : item.updated
+                                              ? new Date(item.updated).toLocaleString('pt-BR')
+                                              : 'Registrado no sistema'}
+                                        </span>
+                                        {item.revokedBy && (
+                                          <>
+                                            <span className="text-slate-500"> por </span>
+                                            <span className="text-slate-300 font-medium">
+                                              {item.revokedBy}
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500">Motivo: </span>
+                                        <span
+                                          className={
+                                            isSuperseded ? 'text-amber-300' : 'text-rose-300'
+                                          }
+                                        >
+                                          {item.revocationReason ||
+                                            (isSuperseded
+                                              ? 'Substituído por nova emissão'
+                                              : 'Revogado pela Secretaria')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

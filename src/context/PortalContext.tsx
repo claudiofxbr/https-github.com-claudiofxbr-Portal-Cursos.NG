@@ -175,8 +175,9 @@ interface PortalContextType {
   }) => Promise<
     { certificate: Certificate; error?: string } | { certificate?: null; error: string }
   >
-  revokeCertificate: (certificateId: string) => Promise<boolean>
+  revokeCertificate: (certificateId: string, options?: { reason?: string }) => Promise<boolean>
   getStudentCertificate: (studentId: string) => Certificate | undefined
+  getStudentCertificates: (studentId: string) => Certificate[]
 
   // Diagnostic
   diagnostic: SystemDiagnostic
@@ -1377,19 +1378,32 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }
 
   // --- Gestão de Certificados ---
-  const getStudentCertificate = useCallback(
-    (studentId: string): Certificate | undefined => {
+  const getStudentCertificates = useCallback(
+    (studentId: string): Certificate[] => {
       const student = students.find((s) => s.id === studentId)
       const cleanCpf = student?.cpfRaw || student?.cpf.replace(/\D/g, '')
-      return certificates.find((c) => {
-        if (c.status !== 'ativo') return false
-        if (c.studentId === studentId) return true
-        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
-        if (student && c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
-        return false
-      })
+      return certificates
+        .filter((c) => {
+          if (c.studentId === studentId) return true
+          if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+          if (student && c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
+          return false
+        })
+        .sort((a, b) => {
+          const dateA = a.created || a.issueDate
+          const dateB = b.created || b.issueDate
+          return dateB.localeCompare(dateA)
+        })
     },
     [certificates, students],
+  )
+
+  const getStudentCertificate = useCallback(
+    (studentId: string): Certificate | undefined => {
+      const list = getStudentCertificates(studentId)
+      return list.find((c) => c.status === 'ativo')
+    },
+    [getStudentCertificates],
   )
 
   const issueCertificate = async (params: {
@@ -1415,18 +1429,15 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       return { certificate: null, error: 'Aluno não encontrado no cadastro.' }
     }
 
-    // 3. Verifica se já existe certificado ativo
+    // 3. Localiza certificados ativos anteriores para substituir automaticamente
     const cleanStudentCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
-    const existing = certificates.find((c) => {
+    const activeExistingCertificates = certificates.filter((c) => {
       if (c.status !== 'ativo') return false
       if (c.studentId === student.id) return true
       if (c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf) return true
       if (c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
       return false
     })
-    if (existing) {
-      return { certificate: existing }
-    }
 
     // 4. Busca o curso correspondente
     const targetCourseId = params.courseId || student.courseId
@@ -1525,8 +1536,31 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       updated: new Date().toISOString(),
     }
 
-    // Atualização otimista
-    setCertificates((prev) => [newCert, ...prev])
+    // Se havia certificados ativos anteriores, substitui-os automaticamente
+    const nowIso = new Date().toISOString()
+    const autoRevokeReason = 'Substituído por nova emissão'
+    const supersededAudit = {
+      revokedAt: nowIso,
+      revokedBy: currentUser.name || params.issuedBy || 'Sistema',
+      revokedByUserId: currentUser.id,
+      revocationReason: autoRevokeReason,
+    }
+
+    const previousIds = activeExistingCertificates.map((c) => c.id)
+
+    // Atualização otimista: insere o novo e marca anteriores como 'substituido'
+    setCertificates((prev) => {
+      const updatedPrev = prev.map((c) =>
+        previousIds.includes(c.id)
+          ? {
+              ...c,
+              status: 'substituido' as const,
+              ...supersededAudit,
+            }
+          : c,
+      )
+      return [newCert, ...updatedPrev]
+    })
 
     // Notifica o aluno se existir
     const notification: StudentNotification = {
@@ -1541,7 +1575,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
     setStudentNotifications((prev) => [notification, ...prev])
 
-    // Persiste no PocketBase
+    // Persiste no PocketBase: marca anteriores como 'substituido' no banco
+    for (const oldCert of activeExistingCertificates) {
+      try {
+        await portalDb.updateCertificateStatus(oldCert.id, 'substituido', supersededAudit)
+      } catch (err) {
+        console.warn(`[PortalContext] Falha ao substituir certificado anterior ${oldCert.id}:`, err)
+      }
+    }
+
+    // Persiste o novo certificado no PocketBase
     try {
       const persisted = await portalDb.createCertificate(newCert)
       if (persisted) {
@@ -1557,18 +1600,37 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     return { certificate: newCert }
   }
 
-  const revokeCertificate = async (certificateId: string): Promise<boolean> => {
+  const revokeCertificate = async (
+    certificateId: string,
+    options?: { reason?: string },
+  ): Promise<boolean> => {
     const allowedRoles: UserRole[] = ['root', 'admin', 'secretaria']
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       return false
     }
 
+    const nowIso = new Date().toISOString()
+    const auditData = {
+      revokedAt: nowIso,
+      revokedBy: currentUser.name || 'Secretaria Acadêmica',
+      revokedByUserId: currentUser.id,
+      revocationReason: options?.reason || 'Revogado manualmente pela Secretaria Acadêmica',
+    }
+
     setCertificates((prev) =>
-      prev.map((c) => (c.id === certificateId ? { ...c, status: 'revogado' } : c)),
+      prev.map((c) =>
+        c.id === certificateId
+          ? {
+              ...c,
+              status: 'revogado',
+              ...auditData,
+            }
+          : c,
+      ),
     )
 
     try {
-      await portalDb.updateCertificateStatus(certificateId, 'revogado')
+      await portalDb.updateCertificateStatus(certificateId, 'revogado', auditData)
       return true
     } catch (err) {
       console.warn('[PortalContext] Falha ao revogar certificado:', err)
@@ -1881,6 +1943,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         issueCertificate,
         revokeCertificate,
         getStudentCertificate,
+        getStudentCertificates,
         isBackendReady,
         isSyncing,
       }}

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T19:18:18.455Z",
+  "generatedAt": "2026-11-08T11:06:15.974Z",
   "collections": [
     {
       "name": "users",
@@ -1959,7 +1959,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["ativo", "revogado"]
+          "selectValues": ["ativo", "revogado", "substituido"]
         },
         {
           "name": "created",
@@ -1974,6 +1974,30 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "revokedAt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "revokedBy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "revokedByUserId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "revocationReason",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

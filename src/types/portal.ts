@@ -397,7 +397,11 @@ export interface Certificate {
   issuedByUserId?: string
   averageGrade?: number
   attendancePercent?: number
-  status: 'ativo' | 'revogado'
+  status: 'ativo' | 'revogado' | 'substituido'
+  revokedAt?: string
+  revokedBy?: string
+  revokedByUserId?: string
+  revocationReason?: string
   created?: string
   updated?: string
 }

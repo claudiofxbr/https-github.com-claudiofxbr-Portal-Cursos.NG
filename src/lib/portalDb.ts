@@ -688,6 +688,10 @@ export function mapStudentSupportTicket(rec: AnyRec): StudentSupportTicket {
 }
 
 export function mapCertificate(rec: AnyRec): Certificate {
+  const statusStr = str(rec.status, 'ativo')
+  const validStatus: 'ativo' | 'revogado' | 'substituido' =
+    statusStr === 'revogado' || statusStr === 'substituido' ? statusStr : 'ativo'
+
   return {
     id: str(rec.id),
     studentId: str(rec.studentId),
@@ -704,7 +708,11 @@ export function mapCertificate(rec: AnyRec): Certificate {
     averageGrade: typeof rec.averageGrade === 'number' ? rec.averageGrade : undefined,
     attendancePercent:
       typeof rec.attendancePercent === 'number' ? rec.attendancePercent : undefined,
-    status: str(rec.status, 'ativo') as 'ativo' | 'revogado',
+    status: validStatus,
+    revokedAt: str(rec.revokedAt) || undefined,
+    revokedBy: str(rec.revokedBy) || undefined,
+    revokedByUserId: str(rec.revokedByUserId) || undefined,
+    revocationReason: str(rec.revocationReason) || undefined,
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -1833,10 +1841,27 @@ export const portalDb = {
       null as Certificate | null,
     ),
 
-  updateCertificateStatus: (certId: string, status: 'ativo' | 'revogado') =>
+  updateCertificateStatus: (
+    certId: string,
+    status: 'ativo' | 'revogado' | 'substituido',
+    audit?: {
+      revokedAt?: string
+      revokedBy?: string
+      revokedByUserId?: string
+      revocationReason?: string
+    },
+  ) =>
     safeWrite(
       async () => {
-        const rec = await pb.collection(COLLECTIONS.certificates).update(certId, { status })
+        const payload: Record<string, unknown> = { status }
+        if (audit) {
+          if (audit.revokedAt !== undefined) payload.revokedAt = audit.revokedAt
+          if (audit.revokedBy !== undefined) payload.revokedBy = audit.revokedBy
+          if (audit.revokedByUserId !== undefined) payload.revokedByUserId = audit.revokedByUserId
+          if (audit.revocationReason !== undefined)
+            payload.revocationReason = audit.revocationReason
+        }
+        const rec = await pb.collection(COLLECTIONS.certificates).update(certId, payload)
         return mapCertificate(rec as unknown as AnyRec)
       },
       null as Certificate | null,
