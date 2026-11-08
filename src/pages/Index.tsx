@@ -16,6 +16,7 @@ import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
 import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
+import { InstitutionalErrorBoundary } from '@/components/common/InstitutionalErrorBoundary'
 import { EADModule } from '@/components/ead/EADModule'
 import { ProfessorAreaModule } from '@/components/professor/ProfessorAreaModule'
 import { BibliotecaModule } from '@/components/biblioteca/BibliotecaModule'
@@ -46,10 +47,16 @@ export default function Index() {
   }
 
   // Se o usuário logado for do papel ALUNO, renderiza o PORTAL DO ALUNO completo e dedicado
+  // Protegido por ErrorBoundary institucional para evitar que exceções no player ou módulos desmontem a árvore e resetem o portão
   if (currentUser && currentUser.role === 'aluno') {
     return (
       <PortalGateGuard>
-        <AlunoPortalMaster />
+        <InstitutionalErrorBoundary
+          fallbackTitle="Instabilidade no Portal do Aluno"
+          fallbackDescription="Ocorreu uma falha inesperada na interface do Portal do Aluno. Sua sessão permanece ativa e você continua conectado."
+        >
+          <AlunoPortalMaster />
+        </InstitutionalErrorBoundary>
       </PortalGateGuard>
     )
   }

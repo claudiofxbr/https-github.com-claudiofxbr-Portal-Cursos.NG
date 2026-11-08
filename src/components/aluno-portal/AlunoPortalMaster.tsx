@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { StudentPortalTab } from '@/types/portal'
 import { AlunoPortalShell } from './AlunoPortalShell'
+import { InstitutionalErrorBoundary } from '@/components/common/InstitutionalErrorBoundary'
 import { AlunoInicioOverview } from './AlunoInicioOverview'
 import { AlunoCursosModule } from './AlunoCursosModule'
 import { AlunoMateriaisModule } from './AlunoMateriaisModule'
@@ -23,7 +24,15 @@ export function AlunoPortalMaster() {
       case 'perfil':
         return <AlunoPerfilModule />
       case 'cursos':
-        return <AlunoCursosModule />
+        return (
+          <InstitutionalErrorBoundary
+            fallbackTitle="Ambiente Virtual de Aprendizagem (EAD)"
+            fallbackDescription="Não foi possível renderizar a trilha de aulas no momento. Suas notas e progresso continuam gravados com segurança."
+            onNavigateHome={() => setActiveTab('inicio')}
+          >
+            <AlunoCursosModule />
+          </InstitutionalErrorBoundary>
+        )
       case 'materiais':
         return <AlunoMateriaisModule />
       case 'calendario':
