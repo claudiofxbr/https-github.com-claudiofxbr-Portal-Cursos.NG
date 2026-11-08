@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -42,6 +44,8 @@ import {
   Eye,
   ShieldAlert,
   FileText,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import { EadMaterialManagerModal } from '@/components/ead/EadMaterialManagerModal'
 
@@ -660,12 +664,32 @@ export function EADModule() {
               <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <CardTitle className="text-base font-semibold text-slate-900">
                         {selectedCourse.title}
                       </CardTitle>
                       <Badge variant="outline" className="text-xs">
                         {courseLessons.length} aula{courseLessons.length !== 1 ? 's' : ''}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          selectedCourse.requireSequentialLessons
+                            ? 'bg-amber-50 text-amber-700 border-amber-300 font-medium text-xs'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-300 font-medium text-xs'
+                        }
+                      >
+                        {selectedCourse.requireSequentialLessons ? (
+                          <span className="flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-amber-600" />
+                            Pré-requisito Ativo
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <Unlock className="w-3 h-3 text-emerald-600" />
+                            Aulas Livres
+                          </span>
+                        )}
                       </Badge>
                     </div>
                     <CardDescription className="text-xs text-slate-500 mt-0.5">
@@ -674,7 +698,17 @@ export function EADModule() {
                     </CardDescription>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenEditCourseModal(selectedCourse)}
+                      className="text-xs h-8 border-slate-300 hover:bg-slate-50"
+                      title="Editar configurações do curso e pré-requisitos"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 mr-1 text-slate-600" />
+                      Editar Curso
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -692,6 +726,80 @@ export function EADModule() {
                       <PlusCircle className="w-3.5 h-3.5 mr-1" />
                       Adicionar Aula
                     </Button>
+                  </div>
+                </div>
+
+                {/* Banner com Interruptor Direto de Pré-requisito Sequencial */}
+                <div className="mt-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className={`p-1.5 rounded-md mt-0.5 shrink-0 ${
+                        selectedCourse.requireSequentialLessons
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {selectedCourse.requireSequentialLessons ? (
+                        <Lock className="w-3.5 h-3.5" />
+                      ) : (
+                        <Unlock className="w-3.5 h-3.5" />
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">
+                          Pré-requisito sequencial de aulas
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
+                            selectedCourse.requireSequentialLessons
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          {selectedCourse.requireSequentialLessons ? 'ATIVADO' : 'DESATIVADO'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        {selectedCourse.requireSequentialLessons
+                          ? 'Alunos precisam concluir cada aula para liberar a seguinte. Aula #1 sempre liberada.'
+                          : 'Todas as aulas livres para os alunos assistirem em qualquer ordem.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <Switch
+                      id={`ead-module-req-seq-${selectedCourse.id}`}
+                      checked={Boolean(selectedCourse.requireSequentialLessons)}
+                      onCheckedChange={async (checked) => {
+                        try {
+                          await updateEadCourse(selectedCourse.id, {
+                            requireSequentialLessons: checked,
+                          })
+                          toast({
+                            title: checked
+                              ? '🔒 Pré-requisito ativado'
+                              : '🔓 Pré-requisito desativado',
+                            description: checked
+                              ? 'Aulas configuradas para conclusão sequencial obrigatória.'
+                              : 'Todas as aulas do curso voltam a ficar livres para os alunos.',
+                          })
+                        } catch {
+                          toast({
+                            title: 'Erro ao atualizar pré-requisitos',
+                            description: 'Não foi possível alterar a configuração.',
+                            variant: 'destructive',
+                          })
+                        }
+                      }}
+                    />
+                    <Label
+                      htmlFor={`ead-module-req-seq-${selectedCourse.id}`}
+                      className="text-xs font-semibold cursor-pointer select-none text-slate-700"
+                    >
+                      {selectedCourse.requireSequentialLessons ? 'Ativado' : 'Desativado'}
+                    </Label>
                   </div>
                 </div>
               </CardHeader>
