@@ -707,6 +707,11 @@ export function mapCertificate(rec: AnyRec): Certificate {
   const validStatus: 'ativo' | 'revogado' | 'substituido' =
     statusStr === 'revogado' || statusStr === 'substituido' ? statusStr : 'ativo'
 
+  const code = str(rec.verificationCode)
+  const rawType = str(rec.docType)
+  const inferredDocType: 'certificado' | 'diploma' =
+    rawType === 'diploma' || code.startsWith('DIPL-') ? 'diploma' : 'certificado'
+
   return {
     id: str(rec.id),
     studentId: str(rec.studentId),
@@ -717,13 +722,15 @@ export function mapCertificate(rec: AnyRec): Certificate {
     courseLevel: str(rec.courseLevel) || undefined,
     workloadHours: num(rec.workloadHours, 0),
     issueDate: str(rec.issueDate) || new Date().toISOString().slice(0, 10),
-    verificationCode: str(rec.verificationCode),
+    verificationCode: code,
     issuedBy: str(rec.issuedBy),
     issuedByUserId: str(rec.issuedByUserId) || undefined,
     averageGrade: typeof rec.averageGrade === 'number' ? rec.averageGrade : undefined,
     attendancePercent:
       typeof rec.attendancePercent === 'number' ? rec.attendancePercent : undefined,
     status: validStatus,
+    docType: inferredDocType,
+    graduationDate: str(rec.graduationDate) || undefined,
     revokedAt: str(rec.revokedAt) || undefined,
     revokedBy: str(rec.revokedBy) || undefined,
     revokedByUserId: str(rec.revokedByUserId) || undefined,
@@ -2090,6 +2097,8 @@ export const portalDb = {
   createCertificate: (cert: Omit<Certificate, 'id' | 'created' | 'updated'> & { id?: string }) =>
     safeWrite(
       async () => {
+        const docType =
+          cert.docType || (cert.verificationCode.startsWith('DIPL-') ? 'diploma' : 'certificado')
         const payload: Record<string, unknown> = {
           studentId: cert.studentId,
           studentName: cert.studentName,
@@ -2105,6 +2114,8 @@ export const portalDb = {
           averageGrade: cert.averageGrade !== undefined ? cert.averageGrade : 0,
           attendancePercent: cert.attendancePercent !== undefined ? cert.attendancePercent : 0,
           status: cert.status || 'ativo',
+          docType,
+          graduationDate: cert.graduationDate || '',
           ...(cert.id && cert.id.length >= 15 ? { id: cert.id } : {}),
         }
         const rec = await pb.collection(COLLECTIONS.certificates).create(payload)

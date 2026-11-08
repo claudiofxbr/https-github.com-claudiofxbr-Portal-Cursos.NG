@@ -19,6 +19,7 @@ import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
 import { EADModule } from '@/components/ead/EADModule'
 import { ProfessorAreaModule } from '@/components/professor/ProfessorAreaModule'
 import { BibliotecaModule } from '@/components/biblioteca/BibliotecaModule'
+import { DiplomasCertificadosModule } from '@/components/diplomas/DiplomasCertificadosModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -102,6 +103,7 @@ export default function Index() {
             />
           )}
           {safeActiveModule === 'relatorios' && <RelatoriosModule />}
+          {safeActiveModule === 'diplomas' && <DiplomasCertificadosModule />}
           {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
           {safeActiveModule === 'manutencao' && <ManutencaoModule />}
           {safeActiveModule === 'lgpd' && <LgpdModule />}

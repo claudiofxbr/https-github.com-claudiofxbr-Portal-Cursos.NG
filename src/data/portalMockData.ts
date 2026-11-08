@@ -49,6 +49,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin', 'secretaria', 'matricula', 'coordenador'],
   },
   {
+    key: 'diplomas',
+    label: 'Diplomas & Certificados',
+    description:
+      'Gestão centralizada de diplomas e certificados digitais emitidos e controle de autenticidade',
+    icon: 'Award',
+    requiredRoles: ['root', 'admin', 'secretaria', 'coordenador'],
+  },
+  {
     key: 'cursos',
     label: 'Catálogo de Cursos (e-MEC)',
     description: 'Portarias e-MEC, notas de conceito e trancamento contra alterações indevidas',

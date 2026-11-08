@@ -29,6 +29,7 @@ export type ModuleKey =
   | 'dashboard'
   | 'alunos'
   | 'matriculas'
+  | 'diplomas'
   | 'cursos'
   | 'ead'
   | 'biblioteca'
@@ -392,6 +393,8 @@ export type StudentPortalTab =
   | 'cobrancas'
   | 'suporte'
 
+export type AcademicDocType = 'certificado' | 'diploma'
+
 export interface Certificate {
   id: string
   studentId: string
@@ -402,12 +405,14 @@ export interface Certificate {
   courseLevel?: string
   workloadHours: number
   issueDate: string // YYYY-MM-DD
-  verificationCode: string // ex: CERT-XXXX-XXXX
+  verificationCode: string // ex: CERT-XXXX-XXXX ou DIPL-XXXX-XXXX
   issuedBy: string
   issuedByUserId?: string
   averageGrade?: number
   attendancePercent?: number
   status: 'ativo' | 'revogado' | 'substituido'
+  docType?: AcademicDocType // 'certificado' ou 'diploma'
+  graduationDate?: string // Data de colação de grau (específico de diploma)
   revokedAt?: string
   revokedBy?: string
   revokedByUserId?: string

@@ -27,6 +27,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
+import { generateDiplomaPdf } from '@/lib/diplomaPdfExport'
 
 export function AlunoMinhasNotasModule() {
   const {
@@ -147,13 +148,31 @@ export function AlunoMinhasNotasModule() {
     return { label: 'Reprovado (MEC)', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
   }, [overallAverage, consolidatedAtt])
 
-  // Certificado emitido para o aluno autenticado
+  // Certificado e Diploma emitidos para o aluno autenticado
   const myCertificate = useMemo(() => {
     if (!currentStudent) return null
     const cleanCpf = currentStudent.cpfRaw || currentStudent.cpf.replace(/\D/g, '')
     return (
       certificates.find((c) => {
         if (c.status !== 'ativo') return false
+        const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
+        if (isDiploma) return false
+        if (c.studentId === currentStudent.id) return true
+        if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+        if (c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()) return true
+        return false
+      }) || null
+    )
+  }, [currentStudent, certificates])
+
+  const myDiploma = useMemo(() => {
+    if (!currentStudent) return null
+    const cleanCpf = currentStudent.cpfRaw || currentStudent.cpf.replace(/\D/g, '')
+    return (
+      certificates.find((c) => {
+        if (c.status !== 'ativo') return false
+        const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
+        if (!isDiploma) return false
         if (c.studentId === currentStudent.id) return true
         if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
         if (c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()) return true
@@ -249,6 +268,105 @@ export function AlunoMinhasNotasModule() {
           </div>
         </div>
       </div>
+
+      {/* Card Especial de DIPLOMA DIGITAL (Outorga de Grau Oficial) */}
+      {myDiploma ? (
+        <div className="bg-gradient-to-r from-amber-950/40 via-slate-900 to-yellow-950/40 border-2 border-amber-500/50 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-inner">
+                <GraduationCap className="w-7 h-7 text-amber-400" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                    🎓 Diploma Digital de Conclusão de Grau
+                  </h2>
+                  <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 font-mono text-xs px-2.5 py-0.5">
+                    {myDiploma.verificationCode}
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Parabéns! Sua colação de grau foi registrada solenemente no e-MEC com o grau de{' '}
+                  <strong className="text-amber-300">{myDiploma.courseName}</strong>.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => generateDiplomaPdf(myDiploma)}
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm h-10 px-5 gap-2 shadow-md hover:shadow-amber-500/20 transition-all shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              Visualizar / Baixar Diploma (PDF)
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800 text-xs">
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">
+                Autenticidade Digital
+              </span>
+              <span className="text-amber-400 font-mono font-bold">
+                {myDiploma.verificationCode}
+              </span>
+            </div>
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">Data de Emissão</span>
+              <span className="text-slate-200 font-medium">{myDiploma.issueDate}</span>
+            </div>
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">Colação de Grau</span>
+              <span className="text-slate-200 font-medium">
+                {myDiploma.graduationDate || myDiploma.issueDate}
+              </span>
+            </div>
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block uppercase">Registro e-MEC</span>
+              <span className="text-slate-200 font-medium flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                Válido Nacionalmente
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-950/40 text-amber-400 border border-amber-900/50">
+              <GraduationCap className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <p className="text-slate-200 font-semibold flex items-center gap-1.5">
+                Diploma Digital de Graduação
+                <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-700">
+                  {currentStudent.status === 'concluido'
+                    ? 'Aguardando Expedição'
+                    : 'Requisitos Pendentes'}
+                </Badge>
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {currentStudent.status === 'concluido'
+                  ? 'Você concluiu o curso! O diploma digital solene está em fase de expedição e registro pela Secretaria Acadêmica.'
+                  : 'Requisitos para expedição: conclusão integral de todas as disciplinas, aprovação em TCC/estágios e status cadastral Concluído.'}
+              </p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <span className="text-[10px] text-slate-500 block">Status Acadêmico</span>
+            <Badge
+              variant="outline"
+              className={
+                currentStudent.status === 'concluido'
+                  ? 'border-emerald-500/40 text-emerald-400 text-xs'
+                  : 'border-slate-700 text-slate-400 text-xs'
+              }
+            >
+              {currentStudent.status.toUpperCase()}
+            </Badge>
+          </div>
+        </div>
+      )}
 
       {/* Card Especial de Certificado de Conclusão */}
       {myCertificate ? (

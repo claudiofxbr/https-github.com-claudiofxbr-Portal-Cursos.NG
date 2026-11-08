@@ -174,7 +174,7 @@ interface PortalContextType {
   ) => Promise<AttendanceRecord | null>
   deleteAttendance: (id: string) => Promise<boolean>
 
-  // Certificates
+  // Certificates & Diplomas
   certificates: Certificate[]
   issueCertificate: (params: {
     studentId: string
@@ -183,8 +183,15 @@ interface PortalContextType {
   }) => Promise<
     { certificate: Certificate; error?: string } | { certificate?: null; error: string }
   >
+  issueDiploma: (params: {
+    studentId: string
+    courseId?: string
+    issuedBy?: string
+    graduationDate?: string
+  }) => Promise<{ diploma: Certificate; error?: string } | { diploma?: null; error: string }>
   revokeCertificate: (certificateId: string, options?: { reason?: string }) => Promise<boolean>
   getStudentCertificate: (studentId: string) => Certificate | undefined
+  getStudentDiploma: (studentId: string) => Certificate | undefined
   getStudentCertificates: (studentId: string) => Certificate[]
 
   // EAD (Cursos e Videoaulas)
@@ -1484,7 +1491,23 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const getStudentCertificate = useCallback(
     (studentId: string): Certificate | undefined => {
       const list = getStudentCertificates(studentId)
-      return list.find((c) => c.status === 'ativo')
+      return list.find(
+        (c) =>
+          c.status === 'ativo' &&
+          (c.docType === 'certificado' || !c.docType || c.verificationCode.startsWith('CERT-')),
+      )
+    },
+    [getStudentCertificates],
+  )
+
+  const getStudentDiploma = useCallback(
+    (studentId: string): Certificate | undefined => {
+      const list = getStudentCertificates(studentId)
+      return list.find(
+        (c) =>
+          c.status === 'ativo' &&
+          (c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')),
+      )
     },
     [getStudentCertificates],
   )
@@ -1512,10 +1535,13 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       return { certificate: null, error: 'Aluno não encontrado no cadastro.' }
     }
 
-    // 3. Localiza certificados ativos anteriores para substituir automaticamente
+    // 3. Localiza certificados ativos anteriores (apenas tipo certificado, não toca em diplomas)
     const cleanStudentCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
     const activeExistingCertificates = certificates.filter((c) => {
       if (c.status !== 'ativo') return false
+      const isCert =
+        c.docType === 'certificado' || (!c.docType && c.verificationCode.startsWith('CERT-'))
+      if (!isCert) return false
       if (c.studentId === student.id) return true
       if (c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf) return true
       if (c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
@@ -1615,6 +1641,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       averageGrade,
       attendancePercent,
       status: 'ativo',
+      docType: 'certificado',
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
     }
@@ -1681,6 +1708,187 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
 
     return { certificate: newCert }
+  }
+
+  const issueDiploma = async (params: {
+    studentId: string
+    courseId?: string
+    issuedBy?: string
+    graduationDate?: string
+  }): Promise<{ diploma: Certificate; error?: string } | { diploma?: null; error: string }> => {
+    // 1. Validação de permissões: root, admin, secretaria
+    const allowedRoles: UserRole[] = ['root', 'admin', 'secretaria']
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      return {
+        diploma: null,
+        error:
+          'Apenas a Secretaria Geral e Administradores têm permissão para expedir diplomas digitais.',
+      }
+    }
+
+    // 2. Busca o aluno
+    const student = students.find((s) => s.id === params.studentId)
+    if (!student) {
+      return { diploma: null, error: 'Aluno não encontrado no cadastro institucional.' }
+    }
+
+    // 3. Regra de conclusão: Aluno DEVE ter status "concluido"
+    if (student.status !== 'concluido') {
+      return {
+        diploma: null,
+        error: `O diploma digital só pode ser emitido para alunos com status 'Concluído' (status atual: '${student.status}').`,
+      }
+    }
+
+    // 4. Localiza diplomas ativos anteriores para substituir automaticamente (sem tocar em certificados)
+    const cleanStudentCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
+    const activeExistingDiplomas = certificates.filter((c) => {
+      if (c.status !== 'ativo') return false
+      const isDipl = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
+      if (!isDipl) return false
+      if (c.studentId === student.id) return true
+      if (c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf) return true
+      if (c.studentName.toLowerCase() === student.fullName.toLowerCase()) return true
+      return false
+    })
+
+    // 5. Busca o curso correspondente
+    const targetCourseId = params.courseId || student.courseId
+    const course = courses.find(
+      (c) =>
+        c.id === targetCourseId ||
+        c.code === targetCourseId ||
+        c.name.toLowerCase() === student.courseName.toLowerCase(),
+    )
+
+    // 6. Calcula resumo acadêmico com as notas e presenças do aluno
+    const cleanCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
+    const studentGrades = grades.filter(
+      (g) =>
+        g.studentId === student.id ||
+        (g.studentCpf && g.studentCpf.replace(/\D/g, '') === cleanCpf) ||
+        (g.studentName && g.studentName.toLowerCase() === student.fullName.toLowerCase()),
+    )
+    const studentAttendance = attendance.filter(
+      (a) =>
+        a.studentId === student.id ||
+        (a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf) ||
+        (a.studentName && a.studentName.toLowerCase() === student.fullName.toLowerCase()),
+    )
+
+    let totalGrade = 0
+    let gradeCount = 0
+    studentGrades.forEach((g) => {
+      if (typeof g.value === 'number') {
+        totalGrade += g.value
+        gradeCount += 1
+      }
+    })
+    const averageGrade = gradeCount > 0 ? Number((totalGrade / gradeCount).toFixed(1)) : 8.5
+
+    const consolidatedAtt = calculateConsolidatedAttendance(
+      student.id,
+      studentAttendance,
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      student.cpf,
+    )
+    const attendancePercent = consolidatedAtt.overallAttendancePercent || 100
+
+    // 7. Gera código de verificação próprio para diploma: DIPL-XXXX-XXXX
+    const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const randomHex2 = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const verificationCode = `DIPL-${randomHex}-${randomHex2}`
+
+    const workloadHours = course?.workloadHours || (student.type === 'pos_graduacao' ? 420 : 3600)
+    const courseLevel = course?.level || student.type || 'graduacao'
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const graduationDate = params.graduationDate || todayStr
+
+    const newDiploma: Certificate = {
+      id: `dipl-${Date.now()}`,
+      studentId: student.id,
+      studentName: student.fullName,
+      studentCpf: student.cpf,
+      courseId: course?.id || student.courseId,
+      courseName: course?.name || student.courseName,
+      courseLevel,
+      workloadHours,
+      issueDate: todayStr,
+      verificationCode,
+      issuedBy: params.issuedBy || currentUser.name || 'Secretaria Acadêmica e Reitoria',
+      issuedByUserId: currentUser.id,
+      averageGrade,
+      attendancePercent,
+      status: 'ativo',
+      docType: 'diploma',
+      graduationDate,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+
+    // Se havia diplomas ativos anteriores, substitui-os com auditoria
+    const nowIso = new Date().toISOString()
+    const autoRevokeReason = 'Substituído por nova via/reemissão de diploma'
+    const supersededAudit = {
+      revokedAt: nowIso,
+      revokedBy: currentUser.name || params.issuedBy || 'Sistema',
+      revokedByUserId: currentUser.id,
+      revocationReason: autoRevokeReason,
+    }
+
+    const previousIds = activeExistingDiplomas.map((c) => c.id)
+
+    // Atualização otimista
+    setCertificates((prev) => {
+      const updatedPrev = prev.map((c) =>
+        previousIds.includes(c.id)
+          ? {
+              ...c,
+              status: 'substituido' as const,
+              ...supersededAudit,
+            }
+          : c,
+      )
+      return [newDiploma, ...updatedPrev]
+    })
+
+    // Notifica o aluno
+    const notification: StudentNotification = {
+      id: `notif-${Date.now()}`,
+      studentId: student.id,
+      title: '🎓 Diploma Digital Oficial Expedido',
+      message: `Seu Diploma Digital de ${newDiploma.courseName} foi expedido e registrado sob o código ${verificationCode}.`,
+      type: 'academico',
+      read: false,
+      actionUrl: '/portal-aluno',
+      created: new Date().toISOString(),
+    }
+    setStudentNotifications((prev) => [notification, ...prev])
+
+    // Persiste no PocketBase
+    for (const oldDipl of activeExistingDiplomas) {
+      try {
+        await portalDb.updateCertificateStatus(oldDipl.id, 'substituido', supersededAudit)
+      } catch (err) {
+        console.warn(`[PortalContext] Falha ao substituir diploma anterior ${oldDipl.id}:`, err)
+      }
+    }
+
+    try {
+      const persisted = await portalDb.createCertificate(newDiploma)
+      if (persisted) {
+        setCertificates((prev) =>
+          prev.map((c) => (c.verificationCode === verificationCode ? persisted : c)),
+        )
+        return { diploma: persisted }
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Falha ao persistir diploma no banco:', err)
+    }
+
+    return { diploma: newDiploma }
   }
 
   const revokeCertificate = async (
@@ -2535,8 +2743,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         updateStudentProfile,
         certificates,
         issueCertificate,
+        issueDiploma,
         revokeCertificate,
         getStudentCertificate,
+        getStudentDiploma,
         getStudentCertificates,
         eadCourses,
         eadLessons,

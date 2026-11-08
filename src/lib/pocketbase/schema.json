@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T15:22:29.839Z",
+  "generatedAt": "2026-11-08T15:35:03.655Z",
   "collections": [
     {
       "name": "users",
@@ -2001,6 +2001,19 @@
         },
         {
           "name": "revocationReason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "docType",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["certificado", "diploma"]
+        },
+        {
+          "name": "graduationDate",
           "type": "text",
           "required": false,
           "system": false

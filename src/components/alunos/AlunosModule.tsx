@@ -73,6 +73,7 @@ import {
   History,
 } from 'lucide-react'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
+import { generateDiplomaPdf } from '@/lib/diplomaPdfExport'
 
 interface AlunosModuleProps {
   initialStudentId?: string | null
@@ -102,6 +103,7 @@ export function AlunosModule({
     deleteAttendance,
     certificates,
     issueCertificate,
+    issueDiploma,
     revokeCertificate,
     getStudentCertificates,
     eadCourses,
@@ -122,6 +124,7 @@ export function AlunosModule({
   const canManage = ['root', 'admin', 'secretaria', 'matricula'].includes(role)
   const canDelete = ['root', 'admin'].includes(role)
   const canIssueCertificate = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
+  const canIssueDiploma = ['root', 'admin', 'secretaria'].includes(role)
   const canRevokeCertificate = ['root', 'admin', 'secretaria'].includes(role)
   const canViewCertificateAudit = ['root', 'admin', 'secretaria'].includes(role)
   const canViewCertificatesHistory = ['root', 'admin', 'secretaria', 'coordenador'].includes(role)
@@ -149,6 +152,7 @@ export function AlunosModule({
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isIssuingCert, setIsIssuingCert] = useState(false)
+  const [isIssuingDiploma, setIsIssuingDiploma] = useState(false)
   const [isRevokingCert, setIsRevokingCert] = useState(false)
   const [certToRevoke, setCertToRevoke] = useState<string | null>(null)
 
@@ -202,10 +206,58 @@ export function AlunosModule({
     return getStudentCertificates(viewStudent.id)
   }, [viewStudent, getStudentCertificates, certificates])
 
-  // Certificado ativo vigente do aluno selecionado
+  // Certificado ativo vigente do aluno selecionado (tipo certificado)
   const selectedStudentCertificate = useMemo(() => {
-    return selectedStudentCertificatesHistory.find((c) => c.status === 'ativo') || null
+    return (
+      selectedStudentCertificatesHistory.find(
+        (c) =>
+          c.status === 'ativo' &&
+          (c.docType === 'certificado' || (!c.docType && !c.verificationCode.startsWith('DIPL-'))),
+      ) || null
+    )
   }, [selectedStudentCertificatesHistory])
+
+  // Diploma ativo vigente do aluno selecionado (tipo diploma)
+  const selectedStudentDiploma = useMemo(() => {
+    return (
+      selectedStudentCertificatesHistory.find(
+        (c) =>
+          c.status === 'ativo' &&
+          (c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')),
+      ) || null
+    )
+  }, [selectedStudentCertificatesHistory])
+
+  // Manipulador de emissão de diploma
+  const handleIssueDiploma = async () => {
+    if (!viewStudent) return
+    setIsIssuingDiploma(true)
+    try {
+      const res = await issueDiploma({ studentId: viewStudent.id })
+      if (res.diploma) {
+        toast({
+          title: 'Diploma Digital Emitido com Sucesso!',
+          description: `Código ${res.diploma.verificationCode}. Abrindo visualização solene para impressão/download...`,
+        })
+        generateDiplomaPdf(res.diploma)
+      } else if (res.error) {
+        toast({
+          variant: 'destructive',
+          title: 'Não foi possível emitir o diploma',
+          description: res.error,
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao emitir diploma',
+        description:
+          err instanceof Error ? err.message : 'Falha inesperada ao processar emissão do diploma.',
+      })
+    } finally {
+      setIsIssuingDiploma(false)
+    }
+  }
 
   // Manipulador de emissão de certificado
   const handleIssueCertificate = async () => {
@@ -1145,6 +1197,121 @@ export function AlunosModule({
                         Critério: Nota ≥ 6,0 e Presença ≥ 75%
                       </span>
                     </div>
+                  </div>
+
+                  {/* Seção de Diploma Digital (Exclusivo para alunos Concluídos) */}
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-yellow-950/30 border border-amber-500/40 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          <GraduationCap className="w-5 h-5 text-amber-400" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                            Diploma Digital Oficial (Outorga de Grau)
+                            {selectedStudentDiploma ? (
+                              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] px-2 py-0.2">
+                                Emitido: {selectedStudentDiploma.verificationCode}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-slate-400 border-slate-700"
+                              >
+                                Não emitido
+                              </Badge>
+                            )}
+                          </h4>
+                          <p className="text-[11px] text-slate-400">
+                            Requisito: Aluno com status{' '}
+                            <strong className="text-amber-300">Concluído</strong> e registro em
+                            livro acadêmico.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Botões de Ação de Diploma */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {selectedStudentDiploma ? (
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-500 text-white text-xs h-8 gap-1.5 shadow-sm font-semibold"
+                              onClick={() => generateDiplomaPdf(selectedStudentDiploma)}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Ver / Baixar Diploma
+                            </Button>
+
+                            {canRevokeCertificate && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-rose-900/50 text-rose-300 hover:bg-rose-950/50 hover:text-rose-200 text-xs h-8 gap-1"
+                                onClick={() => setCertToRevoke(selectedStudentDiploma.id)}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                                Revogar
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          canIssueDiploma && (
+                            <Button
+                              size="sm"
+                              disabled={isIssuingDiploma || viewStudent.status !== 'concluido'}
+                              className={`${
+                                viewStudent.status === 'concluido'
+                                  ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                              } text-xs h-8 gap-1.5 shadow-sm font-semibold`}
+                              title={
+                                viewStudent.status === 'concluido'
+                                  ? 'Emitir Diploma Digital oficial para este aluno concluído'
+                                  : 'O aluno deve estar com status "Concluído" para receber o Diploma Digital'
+                              }
+                              onClick={handleIssueDiploma}
+                            >
+                              <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
+                              {isIssuingDiploma ? 'Emitindo...' : 'Emitir Diploma'}
+                            </Button>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Detalhes do diploma emitido */}
+                    {selectedStudentDiploma && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">
+                            Código de Verificação
+                          </span>
+                          <span className="text-amber-300 font-mono font-bold">
+                            {selectedStudentDiploma.verificationCode}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Data de Emissão</span>
+                          <span className="text-slate-200 font-medium">
+                            {selectedStudentDiploma.issueDate}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Colação de Grau</span>
+                          <span className="text-slate-200 font-medium">
+                            {selectedStudentDiploma.graduationDate ||
+                              selectedStudentDiploma.issueDate}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Emitido por</span>
+                          <span className="text-slate-200 font-medium">
+                            {selectedStudentDiploma.issuedBy}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Seção de Certificado de Conclusão de Curso */}
