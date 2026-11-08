@@ -1,15 +1,21 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BibliotecaAcervoTab } from './BibliotecaAcervoTab'
 import { BibliotecaEmprestimosTab } from './BibliotecaEmprestimosTab'
-import { BookOpen, BookmarkCheck, Library, ShieldAlert } from 'lucide-react'
+import { BibliotecaHistoricoDevolucoesTab } from './BibliotecaHistoricoDevolucoesTab'
+import { BookOpen, BookmarkCheck, Library, ShieldAlert, History } from 'lucide-react'
 
 export function BibliotecaModule() {
-  const { canAccessModule } = usePortal()
-  const [activeTab, setActiveTab] = useState<'acervo' | 'emprestimos'>('acervo')
+  const { canAccessModule, libraryLoans } = usePortal()
+  const [activeTab, setActiveTab] = useState<'acervo' | 'emprestimos' | 'historico'>('acervo')
   const [preSelectedBookId, setPreSelectedBookId] = useState<string | null>(null)
+
+  const returnedCount = useMemo(() => {
+    return libraryLoans.filter((l) => Boolean(l.returnedAt && l.returnedAt.trim().length > 0))
+      .length
+  }, [libraryLoans])
 
   // Dupla checagem de permissão RBAC (apenas root, admin, secretaria)
   if (!canAccessModule('biblioteca')) {
@@ -53,13 +59,13 @@ export function BibliotecaModule() {
         </div>
       </div>
 
-      {/* Abas: Acervo vs Empréstimos */}
+      {/* Abas: Acervo vs Empréstimos vs Histórico de Devoluções */}
       <Tabs
         value={activeTab}
-        onValueChange={(val) => setActiveTab(val as 'acervo' | 'emprestimos')}
+        onValueChange={(val) => setActiveTab(val as 'acervo' | 'emprestimos' | 'historico')}
         className="space-y-4"
       >
-        <TabsList className="bg-slate-900 border border-slate-800 p-1">
+        <TabsList className="bg-slate-900 border border-slate-800 p-1 flex-wrap h-auto gap-1">
           <TabsTrigger
             value="acervo"
             className="text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2"
@@ -72,7 +78,19 @@ export function BibliotecaModule() {
             className="text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2"
           >
             <BookmarkCheck className="w-3.5 h-3.5" />
-            Empréstimos e Devoluções
+            Empréstimos Ativos
+          </TabsTrigger>
+          <TabsTrigger
+            value="historico"
+            className="text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2"
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Histórico de Devoluções</span>
+            {returnedCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-emerald-300 border border-slate-700">
+                {returnedCount}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -84,7 +102,12 @@ export function BibliotecaModule() {
           <BibliotecaEmprestimosTab
             preSelectedBookId={preSelectedBookId}
             onClearPreSelectedBook={() => setPreSelectedBookId(null)}
+            onNavigateToHistory={() => setActiveTab('historico')}
           />
+        </TabsContent>
+
+        <TabsContent value="historico" className="m-0 focus-visible:outline-none">
+          <BibliotecaHistoricoDevolucoesTab />
         </TabsContent>
       </Tabs>
     </div>

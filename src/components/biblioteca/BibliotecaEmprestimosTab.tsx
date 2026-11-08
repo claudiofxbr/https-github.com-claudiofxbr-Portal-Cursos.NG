@@ -48,11 +48,13 @@ import { portalDb } from '@/lib/portalDb'
 interface BibliotecaEmprestimosTabProps {
   preSelectedBookId?: string | null
   onClearPreSelectedBook?: () => void
+  onNavigateToHistory?: () => void
 }
 
 export function BibliotecaEmprestimosTab({
   preSelectedBookId,
   onClearPreSelectedBook,
+  onNavigateToHistory,
 }: BibliotecaEmprestimosTabProps) {
   const {
     libraryBooks,
@@ -353,10 +355,27 @@ export function BibliotecaEmprestimosTab({
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-900/60 border-slate-800">
+        <Card
+          onClick={onNavigateToHistory}
+          className={`bg-slate-900/60 border-slate-800 transition-all ${
+            onNavigateToHistory
+              ? 'cursor-pointer hover:border-emerald-500/40 hover:bg-slate-900/90'
+              : ''
+          }`}
+          title={
+            onNavigateToHistory ? 'Clique para ver o histórico detalhado de devoluções' : undefined
+          }
+        >
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs text-slate-400 font-medium">Histórico de Devoluções</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-slate-400 font-medium">Histórico de Devoluções</p>
+                {onNavigateToHistory && (
+                  <span className="text-[10px] text-emerald-400 font-medium underline">
+                    ver aba
+                  </span>
+                )}
+              </div>
               <p className="text-2xl font-bold text-emerald-400 mt-1">{returnedLoansCount}</p>
               <p className="text-[11px] text-slate-500 mt-0.5">Obras devolvidas com sucesso</p>
             </div>
