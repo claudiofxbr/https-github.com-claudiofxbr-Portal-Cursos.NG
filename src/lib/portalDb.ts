@@ -720,8 +720,12 @@ export function mapCertificate(rec: AnyRec): Certificate {
 
   const code = str(rec.verificationCode)
   const rawType = str(rec.docType)
-  const inferredDocType: 'certificado' | 'diploma' =
-    rawType === 'diploma' || code.startsWith('DIPL-') ? 'diploma' : 'certificado'
+  let inferredDocType: 'certificado' | 'diploma' | 'certificado_ead' = 'certificado'
+  if (rawType === 'certificado_ead' || code.startsWith('CEAD-')) {
+    inferredDocType = 'certificado_ead'
+  } else if (rawType === 'diploma' || code.startsWith('DIPL-')) {
+    inferredDocType = 'diploma'
+  }
 
   return {
     id: str(rec.id),
@@ -2219,8 +2223,16 @@ export const portalDb = {
   createCertificate: (cert: Omit<Certificate, 'id' | 'created' | 'updated'> & { id?: string }) =>
     safeWrite(
       async () => {
-        const docType =
-          cert.docType || (cert.verificationCode.startsWith('DIPL-') ? 'diploma' : 'certificado')
+        let docType = cert.docType
+        if (!docType) {
+          if (cert.verificationCode.startsWith('CEAD-')) {
+            docType = 'certificado_ead'
+          } else if (cert.verificationCode.startsWith('DIPL-')) {
+            docType = 'diploma'
+          } else {
+            docType = 'certificado'
+          }
+        }
         const payload: Record<string, unknown> = {
           studentId: cert.studentId,
           studentName: cert.studentName,

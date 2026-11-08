@@ -37,8 +37,10 @@ import {
   RefreshCw,
   Info,
   HelpCircle,
+  Download,
 } from 'lucide-react'
 import { AlunoEadCourseView } from '@/components/aluno-portal/AlunoEadCourseView'
+import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
 import {
   checkEadEligibility,
   checkEadCourseAccess,
@@ -66,7 +68,11 @@ export function AlunoCursosModule({
     isSyncing,
     isBackendReady,
     refreshDiagnostic,
+    certificates,
+    issueEadCertificate,
   } = usePortal()
+
+  const [generatingEadCertCourseId, setGeneratingEadCertCourseId] = useState<string | null>(null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCourseId, setSelectedCourseId] = useState<string>('')
@@ -634,12 +640,79 @@ export function AlunoCursosModule({
                       />
                     </div>
 
+                    {/* Certificado EAD para cursos 100% concluídos */}
+                    {isCourseCompleted &&
+                      (() => {
+                        const eadCert = certificates.find(
+                          (c) =>
+                            c.studentId === currentStudent?.id &&
+                            (c.docType === 'certificado_ead' ||
+                              c.verificationCode.startsWith('CEAD-')) &&
+                            (c.eadCourseId === eadCourse.id ||
+                              c.courseId === eadCourse.id ||
+                              c.courseName.toLowerCase().trim() ===
+                                eadCourse.title.toLowerCase().trim()) &&
+                            c.status === 'ativo',
+                        )
+
+                        const handleObtainCertificate = async () => {
+                          if (!currentStudent) return
+                          if (eadCert) {
+                            generateEadCertificatePdf(eadCert)
+                            return
+                          }
+                          setGeneratingEadCertCourseId(eadCourse.id)
+                          try {
+                            const res = await issueEadCertificate({
+                              studentId: currentStudent.id,
+                              eadCourseId: eadCourse.id,
+                            })
+                            if (res.certificate) {
+                              generateEadCertificatePdf(res.certificate)
+                            }
+                          } finally {
+                            setGeneratingEadCertCourseId(null)
+                          }
+                        }
+
+                        return (
+                          <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1">
+                                <Award className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                Certificado Concluído
+                              </span>
+                              <p className="text-[10px] text-slate-400 font-mono truncate">
+                                {eadCert
+                                  ? eadCert.verificationCode
+                                  : 'Disponível para emissão imediata'}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleObtainCertificate}
+                              disabled={generatingEadCertCourseId === eadCourse.id}
+                              className="h-7 px-2.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white border-0 gap-1 shrink-0 font-semibold"
+                              title="Baixar Certificado EAD em PDF"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>
+                                {generatingEadCertCourseId === eadCourse.id
+                                  ? 'Gerando...'
+                                  : 'Baixar PDF'}
+                              </span>
+                            </Button>
+                          </div>
+                        )
+                      })()}
+
                     <Button
                       size="sm"
                       onClick={() => handleSelectEadCourse(eadCourse.id)}
                       className={`w-full text-xs font-semibold gap-1.5 shadow-sm text-white ${
                         isCourseCompleted
-                          ? 'bg-emerald-700 hover:bg-emerald-600'
+                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
                           : 'bg-indigo-600 hover:bg-indigo-500'
                       }`}
                     >

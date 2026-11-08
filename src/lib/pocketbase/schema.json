@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T20:28:59.917Z",
+  "generatedAt": "2026-11-08T20:42:03.370Z",
   "collections": [
     {
       "name": "users",
@@ -2027,7 +2027,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["certificado", "diploma"]
+          "selectValues": ["certificado", "diploma", "certificado_ead"]
         },
         {
           "name": "graduationDate",

@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 import { generateDiplomaPdf } from '@/lib/diplomaPdfExport'
+import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
 import { generateTranscriptPdf } from '@/lib/transcriptPdfExport'
 
 export function AlunoMinhasNotasModule() {
@@ -182,7 +183,21 @@ export function AlunoMinhasNotasModule() {
     return certificates.filter((c) => {
       if (c.status !== 'ativo') return false
       const isDiploma = c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-')
-      if (isDiploma) return false
+      const isEad = c.docType === 'certificado_ead' || c.verificationCode.startsWith('CEAD-')
+      if (isDiploma || isEad) return false
+      if (c.studentId === currentStudent.id) return true
+      if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
+      return c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()
+    })
+  }, [currentStudent, certificates])
+
+  const myEadCertificatesList = useMemo(() => {
+    if (!currentStudent) return []
+    const cleanCpf = currentStudent.cpfRaw || currentStudent.cpf.replace(/\D/g, '')
+    return certificates.filter((c) => {
+      if (c.status !== 'ativo') return false
+      const isEad = c.docType === 'certificado_ead' || c.verificationCode.startsWith('CEAD-')
+      if (!isEad) return false
       if (c.studentId === currentStudent.id) return true
       if (cleanCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanCpf) return true
       return c.studentName.toLowerCase() === currentStudent.fullName.toLowerCase()
@@ -517,6 +532,60 @@ export function AlunoMinhasNotasModule() {
             >
               {currentStudent.status.toUpperCase()}
             </Badge>
+          </div>
+        </div>
+      )}
+
+      {/* Certificados de Cursos EAD Concluídos */}
+      {myEadCertificatesList.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Award className="w-4 h-4 text-indigo-400" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+              Certificados de Cursos EAD ({myEadCertificatesList.length})
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {myEadCertificatesList.map((eadCert) => (
+              <div
+                key={eadCert.id}
+                className="bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 p-4 rounded-xl border border-indigo-500/30 flex flex-col justify-between gap-3 shadow-md"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40 text-[10px] gap-1 px-2 py-0.5 font-mono">
+                      <Award className="w-3 h-3 text-indigo-400" />
+                      Certificado EAD
+                    </Badge>
+                    <span className="text-[11px] font-mono text-emerald-400 font-bold">
+                      {eadCert.verificationCode}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-white line-clamp-1">
+                    {eadCert.courseName}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Concluído com 100% de aproveitamento em {eadCert.issueDate} • Carga:{' '}
+                    {eadCert.workloadHours}h
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                    Válido institucionalmente
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => generateEadCertificatePdf(eadCert)}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs h-8 px-3 gap-1.5 shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Baixar PDF
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

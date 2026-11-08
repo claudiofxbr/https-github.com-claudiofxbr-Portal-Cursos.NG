@@ -3,6 +3,7 @@ import { usePortal } from '@/context/PortalContext'
 import { Certificate } from '@/types/portal'
 import { generateCertificatePdf } from '@/lib/certificatePdfExport'
 import { generateDiplomaPdf } from '@/lib/diplomaPdfExport'
+import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +47,7 @@ import {
   GraduationCap,
   Sparkles,
   RotateCcw,
+  CheckCircle,
 } from 'lucide-react'
 
 export function DiplomasCertificadosModule() {
@@ -54,7 +56,9 @@ export function DiplomasCertificadosModule() {
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'certificado' | 'diploma'>('todos')
+  const [typeFilter, setTypeFilter] = useState<
+    'todos' | 'certificado' | 'diploma' | 'certificado_ead'
+  >('todos')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'revogado' | 'substituido'>(
     'todos',
   )
@@ -78,9 +82,14 @@ export function DiplomasCertificadosModule() {
   const filteredDocuments = useMemo(() => {
     return certificates.filter((doc) => {
       // 1. Tipo
+      const isEad = doc.docType === 'certificado_ead' || doc.verificationCode.startsWith('CEAD-')
       const isDiploma = doc.docType === 'diploma' || doc.verificationCode.startsWith('DIPL-')
-      const docType: 'certificado' | 'diploma' = isDiploma ? 'diploma' : 'certificado'
-      if (typeFilter !== 'todos' && docType !== typeFilter) {
+      const resolvedDocType: 'certificado' | 'diploma' | 'certificado_ead' = isEad
+        ? 'certificado_ead'
+        : isDiploma
+          ? 'diploma'
+          : 'certificado'
+      if (typeFilter !== 'todos' && resolvedDocType !== typeFilter) {
         return false
       }
 
@@ -133,13 +142,19 @@ export function DiplomasCertificadosModule() {
     const diplomasTotal = certificates.filter(
       (c) => c.docType === 'diploma' || c.verificationCode.startsWith('DIPL-'),
     ).length
-    return { total, vigentes, revogados, diplomasTotal }
+    const eadTotal = certificates.filter(
+      (c) => c.docType === 'certificado_ead' || c.verificationCode.startsWith('CEAD-'),
+    ).length
+    return { total, vigentes, revogados, diplomasTotal, eadTotal }
   }, [certificates])
 
   // Ações de download
   const handleDownloadDoc = (doc: Certificate) => {
+    const isEad = doc.docType === 'certificado_ead' || doc.verificationCode.startsWith('CEAD-')
     const isDiploma = doc.docType === 'diploma' || doc.verificationCode.startsWith('DIPL-')
-    if (isDiploma) {
+    if (isEad) {
+      generateEadCertificatePdf(doc)
+    } else if (isDiploma) {
       generateDiplomaPdf(doc)
     } else {
       generateCertificatePdf(doc)
@@ -151,10 +166,13 @@ export function DiplomasCertificadosModule() {
     if (!selectedDocToRevoke) return
     setIsRevoking(true)
     try {
+      const isEad =
+        selectedDocToRevoke.docType === 'certificado_ead' ||
+        selectedDocToRevoke.verificationCode.startsWith('CEAD-')
       const isDiploma =
         selectedDocToRevoke.docType === 'diploma' ||
         selectedDocToRevoke.verificationCode.startsWith('DIPL-')
-      const docLabel = isDiploma ? 'Diploma' : 'Certificado'
+      const docLabel = isEad ? 'Certificado EAD' : isDiploma ? 'Diploma' : 'Certificado'
 
       const ok = await revokeCertificate(selectedDocToRevoke.id, {
         reason: revocationReason.trim() || `Revogado por ${currentUser?.name || 'Administrador'}`,
@@ -217,30 +235,30 @@ export function DiplomasCertificadosModule() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <Card className="bg-slate-900/60 border-slate-800">
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-xs uppercase tracking-wider text-slate-400 flex items-center justify-between">
               Total Emitidos
-              <FileCheck2 className="w-4 h-4 text-blue-400" />
+              <FileCheck2 className="w-4 h-4 text-slate-400" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold text-white">{kpis.total}</div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Certificados e diplomas expedidos</p>
+            <div className="text-2xl font-bold text-slate-100">{kpis.total}</div>
+            <p className="text-[11px] text-slate-400 mt-0.5">Todos os documentos</p>
           </CardContent>
         </Card>
 
         <Card className="bg-slate-900/60 border-slate-800">
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-xs uppercase tracking-wider text-slate-400 flex items-center justify-between">
-              Documentos Vigentes
-              <Sparkles className="w-4 h-4 text-emerald-400" />
+              Vigentes
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-bold text-emerald-400">{kpis.vigentes}</div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Válidos e com código ativo</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Autenticidade ativa</p>
           </CardContent>
         </Card>
 
@@ -253,24 +271,36 @@ export function DiplomasCertificadosModule() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-bold text-amber-400">{kpis.diplomasTotal}</div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Graus acadêmicos outorgados</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Graduação/Pós</p>
           </CardContent>
         </Card>
 
         <Card className="bg-slate-900/60 border-slate-800">
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-xs uppercase tracking-wider text-slate-400 flex items-center justify-between">
-              Revogados / Inválidos
+              Cursos EAD
+              <Award className="w-4 h-4 text-indigo-400" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-bold text-indigo-400">{kpis.eadTotal}</div>
+            <p className="text-[11px] text-slate-400 mt-0.5">Conclusão 100% AVA</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/60 border-slate-800">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-xs uppercase tracking-wider text-slate-400 flex items-center justify-between">
+              Revogados
               <FileX className="w-4 h-4 text-rose-400" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-bold text-rose-400">{kpis.revogados}</div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Cancelados com registro de motivo</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Cancelados c/ motivo</p>
           </CardContent>
         </Card>
       </div>
-
       {/* Barra de Filtros */}
       <Card className="bg-slate-900/60 border-slate-800">
         <CardContent className="p-4 space-y-3">
@@ -290,14 +320,17 @@ export function DiplomasCertificadosModule() {
             <div className="lg:col-span-2">
               <Select
                 value={typeFilter}
-                onValueChange={(val: 'todos' | 'certificado' | 'diploma') => setTypeFilter(val)}
+                onValueChange={(val: 'todos' | 'certificado' | 'diploma' | 'certificado_ead') =>
+                  setTypeFilter(val)
+                }
               >
                 <SelectTrigger className="bg-slate-950/60 border-slate-800 h-10 text-xs">
                   <SelectValue placeholder="Tipo de Documento" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-xs">
                   <SelectItem value="todos">Todos os Tipos</SelectItem>
-                  <SelectItem value="certificado">Certificados</SelectItem>
+                  <SelectItem value="certificado">Certificados Acadêmicos</SelectItem>
+                  <SelectItem value="certificado_ead">Certificados EAD (AVA)</SelectItem>
                   <SelectItem value="diploma">Diplomas Digitais</SelectItem>
                 </SelectContent>
               </Select>
@@ -404,6 +437,8 @@ export function DiplomasCertificadosModule() {
                 </TableHeader>
                 <TableBody>
                   {filteredDocuments.map((doc) => {
+                    const isEad =
+                      doc.docType === 'certificado_ead' || doc.verificationCode.startsWith('CEAD-')
                     const isDiploma =
                       doc.docType === 'diploma' || doc.verificationCode.startsWith('DIPL-')
 
@@ -412,7 +447,12 @@ export function DiplomasCertificadosModule() {
                         {/* Tipo / Código */}
                         <TableCell className="font-mono text-xs">
                           <div className="flex items-center gap-2">
-                            {isDiploma ? (
+                            {isEad ? (
+                              <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40 text-[10px] gap-1 px-1.5 py-0.5">
+                                <Award className="w-3 h-3" />
+                                Certificado EAD
+                              </Badge>
+                            ) : isDiploma ? (
                               <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] gap-1 px-1.5 py-0.5">
                                 <GraduationCap className="w-3 h-3" />
                                 Diploma

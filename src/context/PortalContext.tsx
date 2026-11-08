@@ -195,10 +195,19 @@ interface PortalContextType {
     issuedBy?: string
     graduationDate?: string
   }) => Promise<{ diploma: Certificate; error?: string } | { diploma?: null; error: string }>
+  issueEadCertificate: (params: {
+    studentId: string
+    eadCourseId: string
+    issuedBy?: string
+  }) => Promise<
+    | { certificate: Certificate; error?: string; alreadyIssued?: boolean }
+    | { certificate?: null; error: string }
+  >
   revokeCertificate: (certificateId: string, options?: { reason?: string }) => Promise<boolean>
   getStudentCertificate: (studentId: string) => Certificate | undefined
   getStudentDiploma: (studentId: string) => Certificate | undefined
   getStudentCertificates: (studentId: string) => Certificate[]
+  getStudentEadCertificates: (studentId: string, eadCourseId?: string) => Certificate[]
 
   // EAD (Cursos, Videoaulas e Materiais Complementares)
   eadCourses: EadCourse[]
@@ -1591,6 +1600,20 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     [getStudentCertificates],
   )
 
+  const getStudentEadCertificates = useCallback(
+    (studentId: string, eadCourseId?: string): Certificate[] => {
+      const list = getStudentCertificates(studentId)
+      return list.filter((c) => {
+        if (c.status !== 'ativo') return false
+        const isEad = c.docType === 'certificado_ead' || c.verificationCode.startsWith('CEAD-')
+        if (!isEad) return false
+        if (eadCourseId && c.courseId !== eadCourseId) return false
+        return true
+      })
+    },
+    [getStudentCertificates],
+  )
+
   const issueCertificate = async (params: {
     studentId: string
     courseId?: string
@@ -1970,6 +1993,149 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     return { diploma: newDiploma }
   }
 
+  const issueEadCertificate = async (params: {
+    studentId: string
+    eadCourseId: string
+    issuedBy?: string
+  }): Promise<
+    | { certificate: Certificate; error?: string; alreadyIssued?: boolean }
+    | { certificate?: null; error: string }
+  > => {
+    // 1. Busca aluno
+    const student = students.find((s) => s.id === params.studentId)
+    if (!student) {
+      return { certificate: null, error: 'Aluno não encontrado no sistema.' }
+    }
+
+    // 2. Busca curso EAD
+    const eadCourse = eadCourses.find((c) => c.id === params.eadCourseId)
+    if (!eadCourse) {
+      return { certificate: null, error: 'Curso EAD não encontrado no sistema.' }
+    }
+
+    // 3. Validação de permissões de emissão
+    // Permissões: professor (do próprio curso, vínculo por ID), coordenador, admin, root, ou aluno completando suas próprias aulas
+    const allowedStaffRoles: UserRole[] = ['root', 'admin', 'coordenador', 'secretaria']
+    const isStaff = currentUser && allowedStaffRoles.includes(currentUser.role)
+    const isCourseInstructor =
+      currentUser && currentUser.role === 'professor' && eadCourse.instructorId === currentUser.id
+    const isSelfStudent =
+      currentUser &&
+      currentUser.role === 'aluno' &&
+      (currentUser.studentId === student.id ||
+        (currentUser.email && currentUser.email.toLowerCase() === student.email.toLowerCase()))
+
+    if (!isStaff && !isCourseInstructor && !isSelfStudent) {
+      return {
+        certificate: null,
+        error:
+          'Permissão negada. Apenas o professor do curso, coordenadores, administradores ou a conclusão automática do aluno podem emitir este certificado.',
+      }
+    }
+
+    // 4. Verificação de deduplicação: se já existe certificado EAD ativo para este aluno e curso
+    const cleanStudentCpf = student.cpfRaw || student.cpf.replace(/\D/g, '')
+    const existingActive = certificates.find((c) => {
+      if (c.status !== 'ativo') return false
+      const isEad = c.docType === 'certificado_ead' || c.verificationCode.startsWith('CEAD-')
+      if (!isEad) return false
+      const courseMatch =
+        c.courseId === eadCourse.id || c.courseName.toLowerCase() === eadCourse.title.toLowerCase()
+      if (!courseMatch) return false
+      const studentMatch =
+        c.studentId === student.id ||
+        (cleanStudentCpf && c.studentCpf && c.studentCpf.replace(/\D/g, '') === cleanStudentCpf) ||
+        c.studentName.toLowerCase() === student.fullName.toLowerCase()
+      return studentMatch
+    })
+
+    if (existingActive) {
+      return {
+        certificate: existingActive,
+        alreadyIssued: true,
+        error: undefined,
+      }
+    }
+
+    // 5. Verificação estrita de 100% das aulas concluídas
+    const courseLessons = eadLessons.filter((l) => l.eadCourseId === eadCourse.id)
+    if (courseLessons.length === 0) {
+      return {
+        certificate: null,
+        error: 'Este curso EAD não possui aulas cadastradas para validar conclusão.',
+      }
+    }
+
+    const courseLessonIds = new Set(courseLessons.map((l) => l.id))
+    const completedCount = lessonProgress.filter(
+      (p) =>
+        p.studentId === student.id && courseLessonIds.has(p.lessonId) && p.status === 'concluido',
+    ).length
+
+    if (completedCount < courseLessons.length) {
+      return {
+        certificate: null,
+        error: `O aluno concluiu apenas ${completedCount} de ${courseLessons.length} aulas (${Math.round((completedCount / courseLessons.length) * 100)}%). A emissão do Certificado EAD exige 100% de conclusão.`,
+      }
+    }
+
+    // 6. Geração do código único CEAD-XXXX-XXXX
+    const randomHex = () =>
+      Math.floor((1 + Math.random()) * 0x10000)
+        .toString(16)
+        .substring(1)
+        .toUpperCase()
+    const verificationCode = `CEAD-${randomHex()}-${randomHex()}`
+    const today = new Date().toISOString().slice(0, 10)
+
+    const issuedByName =
+      params.issuedBy ||
+      (currentUser?.name
+        ? `${currentUser.name} (${currentUser.role})`
+        : eadCourse.instructorName || 'Coordenação EAD')
+
+    const newCertData: Omit<Certificate, 'id' | 'created' | 'updated'> = {
+      studentId: student.id,
+      studentName: student.fullName,
+      studentCpf: student.cpf,
+      courseId: eadCourse.id,
+      courseName: eadCourse.title,
+      courseLevel: 'Educação a Distância (EAD)',
+      workloadHours: eadCourse.workloadHours || 20,
+      issueDate: today,
+      verificationCode,
+      issuedBy: issuedByName,
+      issuedByUserId: currentUser?.id,
+      averageGrade: 10,
+      attendancePercent: 100,
+      status: 'ativo',
+      docType: 'certificado_ead',
+    }
+
+    // Atualização otimista
+    const tempId = `cead-${Date.now()}`
+    const optimisticCert: Certificate = {
+      ...newCertData,
+      id: tempId,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+
+    setCertificates((prev) => [optimisticCert, ...prev])
+
+    try {
+      const saved = await portalDb.createCertificate(newCertData)
+      if (saved) {
+        setCertificates((prev) => prev.map((c) => (c.id === tempId ? saved : c)))
+        return { certificate: saved }
+      }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao persistir Certificado EAD:', err)
+    }
+
+    return { certificate: optimisticCert }
+  }
+
   const revokeCertificate = async (
     certificateId: string,
     options?: { reason?: string },
@@ -2080,7 +2246,39 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           const filtered = prev.filter(
             (p) => !(p.lessonId === lessonId && p.studentId === effectiveStudentId),
           )
-          return [...filtered, saved]
+          const nextList = [...filtered, saved]
+
+          // Se a aula foi marcada como concluída, verifica se todas as aulas deste curso EAD estão concluídas
+          if (saved.status === 'concluido' && effectiveCourseId) {
+            const courseLessons = eadLessons.filter((l) => l.eadCourseId === effectiveCourseId)
+            if (courseLessons.length > 0) {
+              const courseLessonIds = new Set(courseLessons.map((l) => l.id))
+              const completedCount = nextList.filter(
+                (p) =>
+                  p.studentId === effectiveStudentId &&
+                  courseLessonIds.has(p.lessonId) &&
+                  p.status === 'concluido',
+              ).length
+
+              if (completedCount === courseLessons.length) {
+                // Dispara emissão automática assíncrona se ainda não existir
+                setTimeout(() => {
+                  issueEadCertificate({
+                    studentId: effectiveStudentId,
+                    eadCourseId: effectiveCourseId,
+                    issuedBy: 'Conclusão Automática AVA / EAD',
+                  }).catch((err) => {
+                    console.warn(
+                      '[PortalContext] Emissão automática de Certificado EAD falhou:',
+                      err,
+                    )
+                  })
+                }, 50)
+              }
+            }
+          }
+
+          return nextList
         })
         return saved
       }
@@ -3027,10 +3225,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         certificates,
         issueCertificate,
         issueDiploma,
+        issueEadCertificate,
         revokeCertificate,
         getStudentCertificate,
         getStudentDiploma,
         getStudentCertificates,
+        getStudentEadCertificates,
         eadCourses,
         eadLessons,
         createEadCourse,

@@ -419,7 +419,7 @@ export type StudentPortalTab =
   | 'cobrancas'
   | 'suporte'
 
-export type AcademicDocType = 'certificado' | 'diploma'
+export type AcademicDocType = 'certificado' | 'diploma' | 'certificado_ead'
 
 export interface Certificate {
   id: string
@@ -431,13 +431,14 @@ export interface Certificate {
   courseLevel?: string
   workloadHours: number
   issueDate: string // YYYY-MM-DD
-  verificationCode: string // ex: CERT-XXXX-XXXX ou DIPL-XXXX-XXXX
+  verificationCode: string // ex: CERT-XXXX-XXXX, DIPL-XXXX-XXXX ou CEAD-XXXX-XXXX
   issuedBy: string
   issuedByUserId?: string
   averageGrade?: number
   attendancePercent?: number
   status: 'ativo' | 'revogado' | 'substituido'
-  docType?: AcademicDocType // 'certificado' ou 'diploma'
+  docType?: AcademicDocType // 'certificado', 'diploma' ou 'certificado_ead'
+  eadCourseId?: string // Vinculo especifico com curso EAD se aplicavel
   graduationDate?: string // Data de colação de grau (específico de diploma)
   revokedAt?: string
   revokedBy?: string

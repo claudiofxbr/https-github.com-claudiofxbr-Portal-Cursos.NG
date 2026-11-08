@@ -18,8 +18,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
-import { ChevronRight, PlusCircle, Tv, Users, Video, FileText } from 'lucide-react'
+import {
+  ChevronRight,
+  PlusCircle,
+  Tv,
+  Users,
+  Video,
+  FileText,
+  Award,
+  Download,
+  CheckCircle2,
+} from 'lucide-react'
 import { EadMaterialManagerModal } from '@/components/ead/EadMaterialManagerModal'
+import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
 
 interface ProfessorEadProps {
   eadCourses: EadCourse[]
@@ -43,7 +54,8 @@ export function ProfessorEad({
   const { toast } = useToast()
   const { currentUser } = usePortal()
 
-  const { eadMaterials } = usePortal()
+  const { eadMaterials, certificates, issueEadCertificate } = usePortal()
+  const [issuingCertStudentId, setIssuingCertStudentId] = useState<string | null>(null)
 
   const [selectedCourseId, setSelectedCourseId] = useState<string>(eadCourses[0]?.id || 'none')
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false)
@@ -308,20 +320,125 @@ export function ProfessorEad({
                         total: courseLessons.length,
                       }
                       const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0
+                      const isComplete = p.total > 0 && p.done >= p.total
+
+                      // Verificar se já possui certificado EAD para este curso
+                      const existingCert = certificates.find(
+                        (c) =>
+                          c.studentId === s.id &&
+                          (c.docType === 'certificado_ead' ||
+                            c.verificationCode.startsWith('CEAD-')) &&
+                          (c.eadCourseId === selectedCourse?.id ||
+                            c.courseId === selectedCourse?.id ||
+                            c.courseName.toLowerCase().trim() ===
+                              selectedCourse?.title.toLowerCase().trim()) &&
+                          c.status === 'ativo',
+                      )
+
+                      const handleEmitCertificate = async () => {
+                        if (!selectedCourse) return
+                        if (!isComplete) {
+                          toast({
+                            title: 'Emissão bloqueada',
+                            description: `O aluno ${s.fullName} possui apenas ${pct}% das aulas concluídas (${p.done}/${p.total}). O certificado exige 100% de conclusão.`,
+                            variant: 'destructive',
+                          })
+                          return
+                        }
+                        setIssuingCertStudentId(s.id)
+                        try {
+                          const res = await issueEadCertificate({
+                            studentId: s.id,
+                            eadCourseId: selectedCourse.id,
+                          })
+                          if (res.certificate) {
+                            toast({
+                              title: res.isDuplicate
+                                ? 'Certificado já existente'
+                                : 'Certificado emitido com sucesso',
+                              description: `Código: ${res.certificate.verificationCode}. Documento registrado no sistema.`,
+                            })
+                          } else {
+                            toast({
+                              title: 'Não foi possível emitir',
+                              description: res.error || 'Erro ao gerar certificado EAD.',
+                              variant: 'destructive',
+                            })
+                          }
+                        } catch (err: any) {
+                          toast({
+                            title: 'Erro na emissão',
+                            description: err?.message || 'Falha ao processar certificado.',
+                            variant: 'destructive',
+                          })
+                        } finally {
+                          setIssuingCertStudentId(null)
+                        }
+                      }
+
                       return (
                         <li key={s.id} className="py-3">
                           <div className="mb-1 flex items-center justify-between gap-3">
-                            <span className="min-w-0 truncate text-sm font-medium">
+                            <span className="min-w-0 truncate text-sm font-medium text-slate-800">
                               {s.fullName}
                             </span>
-                            <Badge
-                              variant={pct === 100 ? 'default' : 'secondary'}
-                              className="shrink-0"
-                            >
-                              {p.done}/{p.total} aulas
-                            </Badge>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Badge
+                                variant={pct === 100 ? 'default' : 'secondary'}
+                                className={
+                                  pct === 100
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                    : 'text-slate-600'
+                                }
+                              >
+                                {p.done}/{p.total} aulas ({pct}%)
+                              </Badge>
+
+                              {existingCert ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => generateEadCertificatePdf(existingCert)}
+                                  className="h-7 px-2 text-xs bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 gap-1"
+                                  title={`Certificado emitido (${existingCert.verificationCode}). Clique para baixar PDF.`}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+                                  <Download className="w-3 h-3" />
+                                  <span className="font-mono text-[11px]">
+                                    {existingCert.verificationCode}
+                                  </span>
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant={isComplete ? 'default' : 'outline'}
+                                  onClick={handleEmitCertificate}
+                                  disabled={issuingCertStudentId === s.id}
+                                  className={`h-7 px-2.5 text-xs gap-1.5 transition-all ${
+                                    isComplete
+                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                      : 'text-slate-400 border-slate-200 hover:bg-slate-50 cursor-not-allowed opacity-80'
+                                  }`}
+                                  title={
+                                    isComplete
+                                      ? 'Emitir Certificado de Conclusão EAD'
+                                      : `Bloqueado: aluno com ${pct}% concluído (necessário 100%)`
+                                  }
+                                >
+                                  <Award className="w-3.5 h-3.5" />
+                                  <span>
+                                    {issuingCertStudentId === s.id
+                                      ? 'Emitindo...'
+                                      : 'Emitir Certificado'}
+                                  </span>
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                          <Progress value={pct} className="h-2" />
+                          <Progress
+                            value={pct}
+                            className={`h-2 ${pct === 100 ? '[&>div]:bg-emerald-500' : ''}`}
+                          />
                         </li>
                       )
                     })}
