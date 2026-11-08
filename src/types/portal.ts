@@ -31,6 +31,7 @@ export type ModuleKey =
   | 'matriculas'
   | 'cursos'
   | 'ead'
+  | 'biblioteca'
   | 'financeiro'
   | 'relatorios'
   | 'usuarios'
@@ -384,6 +385,7 @@ export type StudentPortalTab =
   | 'notificacoes'
   | 'minhas_notas'
   | 'certificados'
+  | 'biblioteca'
   | 'suporte'
 
 export interface Certificate {
@@ -512,6 +514,41 @@ export interface EadCourse {
   instructorId?: string
   instructorName?: string
   enrolledStudentIds: string[]
+  created?: string
+  updated?: string
+}
+
+export interface LibraryBook {
+  id: string
+  title: string
+  author: string
+  isbn?: string
+  publisher?: string
+  year?: number
+  category?: string
+  description?: string
+  totalCopies: number
+  availableCopies: number
+  created?: string
+  updated?: string
+}
+
+export type LibraryLoanStatus = 'ativo' | 'devolvido' | 'atrasado'
+
+export interface LibraryLoan {
+  id: string
+  bookId: string
+  bookTitle?: string
+  bookAuthor?: string
+  studentId: string
+  studentName?: string
+  studentCpf?: string
+  loanDate: string // YYYY-MM-DD
+  dueDate: string // YYYY-MM-DD
+  returnedAt?: string // YYYY-MM-DD
+  renewals: number
+  notes?: string
+  status: LibraryLoanStatus
   created?: string
   updated?: string
 }

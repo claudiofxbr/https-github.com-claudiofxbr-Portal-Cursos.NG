@@ -23,6 +23,9 @@ import {
   Certificate,
   EadCourse,
   EadLesson,
+  LibraryBook,
+  LibraryLoan,
+  LibraryLoanStatus,
 } from '@/types/portal'
 import {
   DEMO_ACCOUNTS,
@@ -58,6 +61,8 @@ export const COLLECTIONS = {
   certificates: 'certificates',
   eadCourses: 'ead_courses',
   eadLessons: 'ead_lessons',
+  libraryBooks: 'library_books',
+  libraryLoans: 'library_loans',
   appUsers: 'app_users',
   users: 'users',
 } as const
@@ -829,6 +834,57 @@ export function mapEadLesson(rec: AnyRec): EadLesson {
   }
 }
 
+export function computeLoanStatus(dueDateStr: string, returnedAtStr?: string): LibraryLoanStatus {
+  if (returnedAtStr && returnedAtStr.trim().length > 0) {
+    return 'devolvido'
+  }
+  const todayIso = new Date().toISOString().slice(0, 10)
+  if (dueDateStr && dueDateStr < todayIso) {
+    return 'atrasado'
+  }
+  return 'ativo'
+}
+
+export function mapLibraryBook(rec: AnyRec): LibraryBook {
+  const total = num(rec.totalCopies, 1)
+  return {
+    id: str(rec.id),
+    title: str(rec.title),
+    author: str(rec.author),
+    isbn: str(rec.isbn) || undefined,
+    publisher: str(rec.publisher) || undefined,
+    year: rec.year !== undefined && rec.year !== null ? num(rec.year) : undefined,
+    category: str(rec.category) || undefined,
+    description: str(rec.description) || undefined,
+    totalCopies: total,
+    availableCopies: total, // recalculado dinamicamente com base nos empréstimos ativos
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
+export function mapLibraryLoan(rec: AnyRec): LibraryLoan {
+  const due = str(rec.dueDate)
+  const ret = str(rec.returnedAt) || undefined
+  return {
+    id: str(rec.id),
+    bookId: str(rec.bookId),
+    bookTitle: str(rec.bookTitle) || undefined,
+    bookAuthor: str(rec.bookAuthor) || undefined,
+    studentId: str(rec.studentId),
+    studentName: str(rec.studentName) || undefined,
+    studentCpf: str(rec.studentCpf) || undefined,
+    loanDate: str(rec.loanDate),
+    dueDate: due,
+    returnedAt: ret,
+    renewals: num(rec.renewals, 0),
+    notes: str(rec.notes) || undefined,
+    status: computeLoanStatus(due, ret),
+    created: str(rec.created),
+    updated: str(rec.updated),
+  }
+}
+
 // ---------- loaders ----------
 
 // Carrega todos os dados do banco (com seed inicial em coleções vazias).
@@ -854,6 +910,8 @@ export async function loadAllData(): Promise<{
   certificates: Certificate[]
   eadCourses: EadCourse[]
   eadLessons: EadLesson[]
+  libraryBooks: LibraryBook[]
+  libraryLoans: LibraryLoan[]
 }> {
   await ensureAuth()
   await seedIfEmpty()
@@ -879,6 +937,8 @@ export async function loadAllData(): Promise<{
     certificates,
     eadCourses,
     eadLessons,
+    rawLibraryBooks,
+    libraryLoans,
   ] = await Promise.all([
     safeList(async () => {
       // Tenta carregar usuários da coleção `users` (auth real)
@@ -1030,7 +1090,36 @@ export async function loadAllData(): Promise<{
         ),
       [],
     ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.libraryBooks).getFullList({ sort: 'title' })).map(
+          mapLibraryBook,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
+        (await pb.collection(COLLECTIONS.libraryLoans).getFullList({ sort: '-created' })).map(
+          mapLibraryLoan,
+        ),
+      [],
+    ),
   ])
+
+  // Deriva cópias disponíveis em cada livro: totalCopies - empréstimos ativos daquele bookId
+  const activeLoansByBook: Record<string, number> = {}
+  libraryLoans.forEach((l) => {
+    if (!l.returnedAt) {
+      activeLoansByBook[l.bookId] = (activeLoansByBook[l.bookId] || 0) + 1
+    }
+  })
+  const libraryBooks = rawLibraryBooks.map((b) => {
+    const activeCount = activeLoansByBook[b.id] || 0
+    return {
+      ...b,
+      availableCopies: Math.max(0, b.totalCopies - activeCount),
+    }
+  })
 
   return {
     users,
@@ -1053,6 +1142,8 @@ export async function loadAllData(): Promise<{
     certificates,
     eadCourses,
     eadLessons,
+    libraryBooks,
+    libraryLoans,
   }
 }
 
@@ -2181,6 +2272,108 @@ export const portalDb = {
           .update(id, { orderIndex: i + 1 })
           .catch(() => null)
       }
+      return true
+    }, false),
+
+  createLibraryBook: (data: Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          title: data.title,
+          author: data.author,
+          isbn: data.isbn || '',
+          publisher: data.publisher || '',
+          year: data.year ?? null,
+          category: data.category || '',
+          description: data.description || '',
+          totalCopies: data.totalCopies ?? 1,
+        }
+        const rec = await pb.collection(COLLECTIONS.libraryBooks).create(payload)
+        return mapLibraryBook(rec as unknown as AnyRec)
+      },
+      null as LibraryBook | null,
+    ),
+
+  updateLibraryBook: (
+    bookId: string,
+    updates: Partial<Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>>,
+  ) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {}
+        if (updates.title !== undefined) payload.title = updates.title
+        if (updates.author !== undefined) payload.author = updates.author
+        if (updates.isbn !== undefined) payload.isbn = updates.isbn
+        if (updates.publisher !== undefined) payload.publisher = updates.publisher
+        if (updates.year !== undefined) payload.year = updates.year
+        if (updates.category !== undefined) payload.category = updates.category
+        if (updates.description !== undefined) payload.description = updates.description
+        if (updates.totalCopies !== undefined) payload.totalCopies = updates.totalCopies
+
+        const rec = await pb.collection(COLLECTIONS.libraryBooks).update(bookId, payload)
+        return mapLibraryBook(rec as unknown as AnyRec)
+      },
+      null as LibraryBook | null,
+    ),
+
+  deleteLibraryBook: (bookId: string) =>
+    safeWrite(async () => {
+      await pb.collection(COLLECTIONS.libraryBooks).delete(bookId)
+      return true
+    }, false),
+
+  createLibraryLoan: (
+    data: Omit<LibraryLoan, 'id' | 'status' | 'renewals' | 'created' | 'updated'> & {
+      renewals?: number
+    },
+  ) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          bookId: data.bookId,
+          bookTitle: data.bookTitle || '',
+          studentId: data.studentId,
+          studentName: data.studentName || '',
+          studentCpf: data.studentCpf || '',
+          loanDate: data.loanDate,
+          dueDate: data.dueDate,
+          returnedAt: data.returnedAt || '',
+          renewals: data.renewals ?? 0,
+          notes: data.notes || '',
+        }
+        const rec = await pb.collection(COLLECTIONS.libraryLoans).create(payload)
+        return mapLibraryLoan(rec as unknown as AnyRec)
+      },
+      null as LibraryLoan | null,
+    ),
+
+  returnLibraryLoan: (loanId: string, returnDate?: string) =>
+    safeWrite(
+      async () => {
+        const isoDate = returnDate || new Date().toISOString().slice(0, 10)
+        const rec = await pb.collection(COLLECTIONS.libraryLoans).update(loanId, {
+          returnedAt: isoDate,
+        })
+        return mapLibraryLoan(rec as unknown as AnyRec)
+      },
+      null as LibraryLoan | null,
+    ),
+
+  renewLibraryLoan: (loanId: string, newDueDate: string, currentRenewals: number) =>
+    safeWrite(
+      async () => {
+        const rec = await pb.collection(COLLECTIONS.libraryLoans).update(loanId, {
+          dueDate: newDueDate,
+          renewals: currentRenewals + 1,
+        })
+        return mapLibraryLoan(rec as unknown as AnyRec)
+      },
+      null as LibraryLoan | null,
+    ),
+
+  deleteLibraryLoan: (loanId: string) =>
+    safeWrite(async () => {
+      await pb.collection(COLLECTIONS.libraryLoans).delete(loanId)
       return true
     }, false),
 }

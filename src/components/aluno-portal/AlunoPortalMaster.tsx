@@ -10,6 +10,7 @@ import { AlunoNotificacoesModule } from './AlunoNotificacoesModule'
 import { AlunoSuporteModule } from './AlunoSuporteModule'
 import { AlunoPerfilModule } from './AlunoPerfilModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
+import { AlunoBibliotecaModule } from './AlunoBibliotecaModule'
 
 export function AlunoPortalMaster() {
   const [activeTab, setActiveTab] = useState<StudentPortalTab>('inicio')
@@ -30,6 +31,8 @@ export function AlunoPortalMaster() {
         return <AlunoNotificacoesModule />
       case 'minhas_notas':
         return <AlunoMinhasNotasModule />
+      case 'biblioteca':
+        return <AlunoBibliotecaModule />
       case 'suporte':
         return <AlunoSuporteModule />
       default:

@@ -91,6 +91,7 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
       badge: unreadCount > 0 ? unreadCount : undefined,
     },
     { id: 'minhas_notas', label: 'Minhas Notas e Frequência', icon: Award },
+    { id: 'biblioteca', label: 'Minha Biblioteca', icon: BookOpen },
     { id: 'perfil', label: 'Meu Perfil', icon: User },
     {
       id: 'suporte',

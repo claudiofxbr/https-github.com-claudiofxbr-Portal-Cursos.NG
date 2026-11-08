@@ -18,6 +18,7 @@ import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModu
 import { AlunoPortalMaster } from '@/components/aluno-portal/AlunoPortalMaster'
 import { EADModule } from '@/components/ead/EADModule'
 import { ProfessorAreaModule } from '@/components/professor/ProfessorAreaModule'
+import { BibliotecaModule } from '@/components/biblioteca/BibliotecaModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -108,6 +109,7 @@ export default function Index() {
           {safeActiveModule === 'professor_area' && (
             <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
           )}
+          {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
         </PortalShell>
       )}
     </PortalGateGuard>

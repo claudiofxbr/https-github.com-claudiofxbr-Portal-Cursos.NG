@@ -22,6 +22,8 @@ import {
   Certificate,
   EadCourse,
   EadLesson,
+  LibraryBook,
+  LibraryLoan,
   SystemDiagnostic,
 } from '@/types/portal'
 import {
@@ -204,6 +206,34 @@ interface PortalContextType {
   ) => Promise<EadLesson | null>
   deleteEadLesson: (id: string) => Promise<boolean>
   reorderEadLessons: (orderedLessonIds: string[]) => Promise<boolean>
+
+  // Biblioteca (Acervo & Empréstimos)
+  libraryBooks: LibraryBook[]
+  libraryLoans: LibraryLoan[]
+  createLibraryBook: (
+    data: Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>,
+  ) => Promise<LibraryBook | null>
+  updateLibraryBook: (
+    id: string,
+    updates: Partial<Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>>,
+  ) => Promise<LibraryBook | null>
+  deleteLibraryBook: (id: string) => Promise<boolean>
+  createLibraryLoan: (data: {
+    bookId: string
+    studentId: string
+    dueDate: string
+    loanDate?: string
+    notes?: string
+  }) => Promise<{ success: boolean; loan?: LibraryLoan; error?: string }>
+  returnLibraryLoan: (
+    loanId: string,
+    returnDate?: string,
+  ) => Promise<{ success: boolean; loan?: LibraryLoan; error?: string }>
+  renewLibraryLoan: (
+    loanId: string,
+    additionalDays?: number,
+  ) => Promise<{ success: boolean; loan?: LibraryLoan; error?: string }>
+  deleteLibraryLoan: (id: string) => Promise<boolean>
 
   // Diagnostic
   diagnostic: SystemDiagnostic
@@ -410,6 +440,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [eadCourses, setEadCourses] = useState<EadCourse[]>([])
   const [eadLessons, setEadLessons] = useState<EadLesson[]>([])
+  const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([])
+  const [libraryLoans, setLibraryLoans] = useState<LibraryLoan[]>([])
   const [diagnostic, setDiagnostic] = useState<SystemDiagnostic>(INITIAL_DIAGNOSTIC)
 
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false)
@@ -446,6 +478,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.certificates) setCertificates(data.certificates)
       if (data.eadCourses) setEadCourses(data.eadCourses)
       if (data.eadLessons) setEadLessons(data.eadLessons)
+      if (data.libraryBooks) setLibraryBooks(data.libraryBooks)
+      if (data.libraryLoans) setLibraryLoans(data.libraryLoans)
 
       // Re-valida sessão contra os dados do PocketBase
       try {
@@ -2057,6 +2091,250 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }))
   }
 
+  // ---------- Biblioteca (Acervo & Empréstimos) ----------
+
+  const createLibraryBook = async (
+    data: Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>,
+  ): Promise<LibraryBook | null> => {
+    const tempId = generateId()
+    const optimistic: LibraryBook = {
+      ...data,
+      id: tempId,
+      availableCopies: data.totalCopies,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+    setLibraryBooks((prev) => [optimistic, ...prev])
+    try {
+      const saved = await portalDb.createLibraryBook(data)
+      if (saved) {
+        setLibraryBooks((prev) => prev.map((b) => (b.id === tempId ? saved : b)))
+        return saved
+      }
+      return optimistic
+    } catch {
+      return optimistic
+    }
+  }
+
+  const updateLibraryBook = async (
+    id: string,
+    updates: Partial<Omit<LibraryBook, 'id' | 'availableCopies' | 'created' | 'updated'>>,
+  ): Promise<LibraryBook | null> => {
+    setLibraryBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b
+        const newTotal = updates.totalCopies !== undefined ? updates.totalCopies : b.totalCopies
+        const activeLoans = libraryLoans.filter((l) => l.bookId === id && !l.returnedAt).length
+        return {
+          ...b,
+          ...updates,
+          totalCopies: newTotal,
+          availableCopies: Math.max(0, newTotal - activeLoans),
+          updated: new Date().toISOString(),
+        }
+      }),
+    )
+    try {
+      const saved = await portalDb.updateLibraryBook(id, updates)
+      if (saved) {
+        setLibraryBooks((prev) =>
+          prev.map((b) => {
+            if (b.id !== id) return b
+            const activeLoans = libraryLoans.filter((l) => l.bookId === id && !l.returnedAt).length
+            return {
+              ...saved,
+              availableCopies: Math.max(0, saved.totalCopies - activeLoans),
+            }
+          }),
+        )
+        return saved
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  const deleteLibraryBook = async (id: string): Promise<boolean> => {
+    const hasActiveLoan = libraryLoans.some((l) => l.bookId === id && !l.returnedAt)
+    if (hasActiveLoan) {
+      return false
+    }
+    setLibraryBooks((prev) => prev.filter((b) => b.id !== id))
+    try {
+      return await portalDb.deleteLibraryBook(id)
+    } catch {
+      return true
+    }
+  }
+
+  const createLibraryLoan = async (data: {
+    bookId: string
+    studentId: string
+    dueDate: string
+    loanDate?: string
+    notes?: string
+  }): Promise<{ success: boolean; loan?: LibraryLoan; error?: string }> => {
+    const book = libraryBooks.find((b) => b.id === data.bookId)
+    if (!book) {
+      return { success: false, error: 'Obra não encontrada no acervo.' }
+    }
+    if (book.availableCopies <= 0) {
+      return {
+        success: false,
+        error: `Não há exemplares disponíveis de "${book.title}" no momento (${book.totalCopies} de ${book.totalCopies} emprestados).`,
+      }
+    }
+
+    const student = students.find((s) => s.id === data.studentId)
+    const effectiveLoanDate = data.loanDate || new Date().toISOString().slice(0, 10)
+    const tempId = generateId()
+    const optimistic: LibraryLoan = {
+      id: tempId,
+      bookId: book.id,
+      bookTitle: book.title,
+      bookAuthor: book.author,
+      studentId: data.studentId,
+      studentName: student?.fullName || 'Aluno',
+      studentCpf: student?.cpf,
+      loanDate: effectiveLoanDate,
+      dueDate: data.dueDate,
+      renewals: 0,
+      notes: data.notes,
+      status: 'ativo',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+
+    setLibraryLoans((prev) => [optimistic, ...prev])
+    setLibraryBooks((prev) =>
+      prev.map((b) =>
+        b.id === book.id ? { ...b, availableCopies: Math.max(0, b.availableCopies - 1) } : b,
+      ),
+    )
+
+    try {
+      const saved = await portalDb.createLibraryLoan({
+        bookId: book.id,
+        bookTitle: book.title,
+        studentId: data.studentId,
+        studentName: student?.fullName,
+        studentCpf: student?.cpf,
+        loanDate: effectiveLoanDate,
+        dueDate: data.dueDate,
+        notes: data.notes,
+      })
+      if (saved) {
+        setLibraryLoans((prev) => prev.map((l) => (l.id === tempId ? saved : l)))
+        return { success: true, loan: saved }
+      }
+      return { success: true, loan: optimistic }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar empréstimo:', err)
+      return { success: true, loan: optimistic }
+    }
+  }
+
+  const returnLibraryLoan = async (
+    loanId: string,
+    returnDate?: string,
+  ): Promise<{ success: boolean; loan?: LibraryLoan; error?: string }> => {
+    const loan = libraryLoans.find((l) => l.id === loanId)
+    if (!loan) {
+      return { success: false, error: 'Empréstimo não encontrado.' }
+    }
+    if (loan.returnedAt) {
+      return { success: false, error: 'Este empréstimo já foi devolvido anteriormente.' }
+    }
+
+    const isoDate = returnDate || new Date().toISOString().slice(0, 10)
+    const updatedLoan: LibraryLoan = {
+      ...loan,
+      returnedAt: isoDate,
+      status: 'devolvido',
+      updated: new Date().toISOString(),
+    }
+
+    setLibraryLoans((prev) => prev.map((l) => (l.id === loanId ? updatedLoan : l)))
+    setLibraryBooks((prev) =>
+      prev.map((b) =>
+        b.id === loan.bookId
+          ? { ...b, availableCopies: Math.min(b.totalCopies, b.availableCopies + 1) }
+          : b,
+      ),
+    )
+
+    try {
+      const saved = await portalDb.returnLibraryLoan(loanId, isoDate)
+      if (saved) {
+        setLibraryLoans((prev) => prev.map((l) => (l.id === loanId ? saved : l)))
+        return { success: true, loan: saved }
+      }
+      return { success: true, loan: updatedLoan }
+    } catch {
+      return { success: true, loan: updatedLoan }
+    }
+  }
+
+  const renewLibraryLoan = async (
+    loanId: string,
+    additionalDays = 7,
+  ): Promise<{ success: boolean; loan?: LibraryLoan; error?: string }> => {
+    const loan = libraryLoans.find((l) => l.id === loanId)
+    if (!loan) {
+      return { success: false, error: 'Empréstimo não encontrado.' }
+    }
+    if (loan.returnedAt) {
+      return { success: false, error: 'Não é possível renovar um empréstimo já devolvido.' }
+    }
+
+    const baseDate = new Date(loan.dueDate + 'T12:00:00')
+    baseDate.setDate(baseDate.getDate() + additionalDays)
+    const newDueDate = baseDate.toISOString().slice(0, 10)
+    const todayIso = new Date().toISOString().slice(0, 10)
+
+    const updatedLoan: LibraryLoan = {
+      ...loan,
+      dueDate: newDueDate,
+      renewals: loan.renewals + 1,
+      status: newDueDate < todayIso ? 'atrasado' : 'ativo',
+      updated: new Date().toISOString(),
+    }
+
+    setLibraryLoans((prev) => prev.map((l) => (l.id === loanId ? updatedLoan : l)))
+
+    try {
+      const saved = await portalDb.renewLibraryLoan(loanId, newDueDate, loan.renewals)
+      if (saved) {
+        setLibraryLoans((prev) => prev.map((l) => (l.id === loanId ? saved : l)))
+        return { success: true, loan: saved }
+      }
+      return { success: true, loan: updatedLoan }
+    } catch {
+      return { success: true, loan: updatedLoan }
+    }
+  }
+
+  const deleteLibraryLoan = async (id: string): Promise<boolean> => {
+    const loan = libraryLoans.find((l) => l.id === id)
+    setLibraryLoans((prev) => prev.filter((l) => l.id !== id))
+    if (loan && !loan.returnedAt) {
+      setLibraryBooks((prev) =>
+        prev.map((b) =>
+          b.id === loan.bookId
+            ? { ...b, availableCopies: Math.min(b.totalCopies, b.availableCopies + 1) }
+            : b,
+        ),
+      )
+    }
+    try {
+      return await portalDb.deleteLibraryLoan(id)
+    } catch {
+      return true
+    }
+  }
+
   return (
     <PortalContext.Provider
       value={{
@@ -2139,6 +2417,15 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         updateEadLesson,
         deleteEadLesson,
         reorderEadLessons,
+        libraryBooks,
+        libraryLoans,
+        createLibraryBook,
+        updateLibraryBook,
+        deleteLibraryBook,
+        createLibraryLoan,
+        returnLibraryLoan,
+        renewLibraryLoan,
+        deleteLibraryLoan,
         isBackendReady,
         isSyncing,
       }}

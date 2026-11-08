@@ -71,6 +71,13 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin', 'coordenador', 'professor'],
   },
   {
+    key: 'biblioteca',
+    label: 'Biblioteca & Acervo',
+    description: 'Gestão do acervo de obras, controle de exemplares e empréstimos a alunos',
+    icon: 'Library',
+    requiredRoles: ['root', 'admin', 'secretaria'],
+  },
+  {
     key: 'financeiro',
     label: 'Financeiro & Pagamentos',
     description: 'Cobranças, checkout Pix/Cartão demonstrativo, tabela de preços e isenções',

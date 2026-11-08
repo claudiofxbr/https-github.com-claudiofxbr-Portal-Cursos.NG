@@ -1,0 +1,622 @@
+import React, { useState, useMemo } from 'react'
+import { usePortal } from '@/context/PortalContext'
+import { LibraryLoan, LibraryLoanStatus } from '@/types/portal'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Plus,
+  Search,
+  RotateCcw,
+  CheckCircle2,
+  Calendar,
+  User,
+  BookOpen,
+  Clock,
+  AlertTriangle,
+  History,
+  AlertCircle,
+  FileText,
+} from 'lucide-react'
+
+interface BibliotecaEmprestimosTabProps {
+  preSelectedBookId?: string | null
+  onClearPreSelectedBook?: () => void
+}
+
+export function BibliotecaEmprestimosTab({
+  preSelectedBookId,
+  onClearPreSelectedBook,
+}: BibliotecaEmprestimosTabProps) {
+  const {
+    libraryBooks,
+    libraryLoans,
+    students,
+    createLibraryLoan,
+    returnLibraryLoan,
+    renewLibraryLoan,
+  } = usePortal()
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'todos' | LibraryLoanStatus>('todos')
+
+  // Modal Novo Empréstimo
+  const [isNewLoanOpen, setIsNewLoanOpen] = useState(!!preSelectedBookId)
+  const [selectedBookId, setSelectedBookId] = useState(preSelectedBookId || '')
+  const [selectedStudentId, setSelectedStudentId] = useState('')
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 14) // Prazo padrão: 14 dias
+    return d.toISOString().slice(0, 10)
+  })
+  const [notes, setNotes] = useState('')
+  const [loanError, setLoanError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Diálogo de confirmação de Devolução
+  const [loanToReturn, setLoanToReturn] = useState<LibraryLoan | null>(null)
+  const [returnSubmitting, setReturnSubmitting] = useState(false)
+
+  // Diálogo de confirmação de Renovação
+  const [loanToRenew, setLoanToRenew] = useState<LibraryLoan | null>(null)
+  const [renewSubmitting, setRenewSubmitting] = useState(false)
+
+  // Sincroniza preSelectedBookId quando chega via prop
+  React.useEffect(() => {
+    if (preSelectedBookId) {
+      setSelectedBookId(preSelectedBookId)
+      setIsNewLoanOpen(true)
+    }
+  }, [preSelectedBookId])
+
+  const filteredLoans = useMemo(() => {
+    return libraryLoans.filter((loan) => {
+      const q = searchTerm.toLowerCase().trim()
+      const matchesSearch =
+        !q ||
+        (loan.bookTitle && loan.bookTitle.toLowerCase().includes(q)) ||
+        (loan.studentName && loan.studentName.toLowerCase().includes(q)) ||
+        (loan.studentCpf && loan.studentCpf.toLowerCase().includes(q))
+
+      const matchesStatus = statusFilter === 'todos' || loan.status === statusFilter
+
+      return matchesSearch && matchesStatus
+    })
+  }, [libraryLoans, searchTerm, statusFilter])
+
+  const activeLoansCount = libraryLoans.filter((l) => l.status === 'ativo').length
+  const overdueLoansCount = libraryLoans.filter((l) => l.status === 'atrasado').length
+  const returnedLoansCount = libraryLoans.filter((l) => l.status === 'devolvido').length
+
+  const handleOpenNewLoan = () => {
+    setSelectedBookId(preSelectedBookId || '')
+    setSelectedStudentId('')
+    const d = new Date()
+    d.setDate(d.getDate() + 14)
+    setDueDate(d.toISOString().slice(0, 10))
+    setNotes('')
+    setLoanError(null)
+    setIsNewLoanOpen(true)
+  }
+
+  const handleCloseNewLoan = () => {
+    setIsNewLoanOpen(false)
+    if (onClearPreSelectedBook) onClearPreSelectedBook()
+  }
+
+  const handleCreateLoanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoanError(null)
+
+    if (!selectedBookId) {
+      setLoanError('Selecione a obra para empréstimo.')
+      return
+    }
+    if (!selectedStudentId) {
+      setLoanError('Selecione o aluno destinatário.')
+      return
+    }
+    if (!dueDate) {
+      setLoanError('Informe a data de devolução prevista.')
+      return
+    }
+
+    const book = libraryBooks.find((b) => b.id === selectedBookId)
+    if (book && book.availableCopies <= 0) {
+      setLoanError(
+        `A obra "${book.title}" não possui exemplares disponíveis no momento. Aguarde uma devolução.`,
+      )
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const res = await createLibraryLoan({
+        bookId: selectedBookId,
+        studentId: selectedStudentId,
+        dueDate,
+        notes: notes.trim() || undefined,
+      })
+
+      if (!res.success) {
+        setLoanError(res.error || 'Erro ao registrar empréstimo.')
+        return
+      }
+
+      handleCloseNewLoan()
+    } catch {
+      setLoanError('Erro ao gravar empréstimo no banco.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleConfirmReturn = async () => {
+    if (!loanToReturn) return
+    setReturnSubmitting(true)
+    try {
+      await returnLibraryLoan(loanToReturn.id)
+      setLoanToReturn(null)
+    } finally {
+      setReturnSubmitting(false)
+    }
+  }
+
+  const handleConfirmRenew = async () => {
+    if (!loanToRenew) return
+    setRenewSubmitting(true)
+    try {
+      await renewLibraryLoan(loanToRenew.id, 7) // +7 dias de renovação
+      setLoanToRenew(null)
+    } finally {
+      setRenewSubmitting(false)
+    }
+  }
+
+  const renderStatusBadge = (status: LibraryLoanStatus) => {
+    switch (status) {
+      case 'ativo':
+        return (
+          <Badge
+            variant="outline"
+            className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px] gap-1"
+          >
+            <Clock className="w-3 h-3" />
+            Em Andamento
+          </Badge>
+        )
+      case 'atrasado':
+        return (
+          <Badge
+            variant="outline"
+            className="bg-rose-500/10 text-rose-400 border-rose-500/30 text-[10px] gap-1 font-semibold"
+          >
+            <AlertTriangle className="w-3 h-3" />
+            Atrasado
+          </Badge>
+        )
+      case 'devolvido':
+        return (
+          <Badge
+            variant="outline"
+            className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] gap-1"
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            Devolvido
+          </Badge>
+        )
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Cards dos Empréstimos */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="bg-slate-900/60 border-slate-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-400 font-medium">Empréstimos Ativos</p>
+              <p className="text-2xl font-bold text-blue-400 mt-1">{activeLoansCount}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Dentro do prazo regular</p>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+              <Clock className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/60 border-slate-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-400 font-medium">Empréstimos Atrasados</p>
+              <p className="text-2xl font-bold text-rose-400 mt-1">{overdueLoansCount}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Prazo expirado pendente</p>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/60 border-slate-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-400 font-medium">Histórico de Devoluções</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-1">{returnedLoansCount}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Obras devolvidas com sucesso</p>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <History className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Barra de Filtro e Ações */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+        <div className="flex flex-1 items-center gap-2 max-w-md">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por obra, aluno ou CPF..."
+              className="pl-9 bg-slate-950/80 border-slate-800 text-xs text-slate-200"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-lg border border-slate-800">
+            {(['todos', 'ativo', 'atrasado', 'devolvido'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-2.5 py-1 text-[11px] rounded capitalize transition-all ${
+                  statusFilter === s
+                    ? 'bg-blue-600 text-white font-medium shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {s === 'todos' ? 'Todos' : s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Button
+          onClick={handleOpenNewLoan}
+          className="bg-blue-600 hover:bg-blue-500 text-white text-xs h-9 gap-1.5 shadow-sm shadow-blue-500/20"
+        >
+          <Plus className="w-4 h-4" />
+          Novo Empréstimo
+        </Button>
+      </div>
+
+      {/* Tabela / Lista de Empréstimos */}
+      {filteredLoans.length === 0 ? (
+        <Card className="bg-slate-900/30 border-slate-800/80">
+          <CardContent className="p-8 text-center space-y-2">
+            <BookOpen className="w-10 h-10 text-slate-600 mx-auto" />
+            <p className="text-sm font-semibold text-slate-300">Nenhum empréstimo encontrado</p>
+            <p className="text-xs text-slate-500">
+              {searchTerm || statusFilter !== 'todos'
+                ? 'Tente ajustar os filtros de busca para encontrar o registro.'
+                : 'Nenhum empréstimo registrado até o momento. Clique em "Novo Empréstimo" para começar.'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950/70 border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th className="py-3 px-4 font-semibold">Obra</th>
+                  <th className="py-3 px-4 font-semibold">Aluno</th>
+                  <th className="py-3 px-4 font-semibold">Data Empréstimo</th>
+                  <th className="py-3 px-4 font-semibold">Prazo Devolução</th>
+                  <th className="py-3 px-4 font-semibold text-center">Renovações</th>
+                  <th className="py-3 px-4 font-semibold">Status</th>
+                  <th className="py-3 px-4 font-semibold text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/70 text-slate-300">
+                {filteredLoans.map((loan) => {
+                  const isReturned = !!loan.returnedAt
+                  return (
+                    <tr key={loan.id} className="hover:bg-slate-800/40 transition-colors group">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-white max-w-[240px] truncate">
+                          {loan.bookTitle || 'Obra desconhecida'}
+                        </div>
+                        {loan.notes && (
+                          <div className="text-[11px] text-slate-400 truncate max-w-[240px] italic flex items-center gap-1 mt-0.5">
+                            <FileText className="w-3 h-3 text-slate-500 shrink-0" />
+                            {loan.notes}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4">
+                        <div className="font-medium text-slate-200 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{loan.studentName || 'Aluno'}</span>
+                        </div>
+                        {loan.studentCpf && (
+                          <div className="text-[11px] font-mono text-slate-500 ml-5">
+                            CPF: {loan.studentCpf}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 font-mono text-slate-400">{loan.loanDate || '-'}</td>
+
+                      <td className="py-3 px-4">
+                        <div
+                          className={`font-mono font-medium flex items-center gap-1.5 ${
+                            loan.status === 'atrasado'
+                              ? 'text-rose-400 font-bold'
+                              : loan.status === 'devolvido'
+                                ? 'text-slate-500 line-through'
+                                : 'text-slate-300'
+                          }`}
+                        >
+                          <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                          <span>{loan.dueDate}</span>
+                        </div>
+                        {isReturned && (
+                          <div className="text-[10px] text-emerald-400/90 font-mono mt-0.5">
+                            Devolvido em: {loan.returnedAt}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 text-center font-mono">
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px]">
+                          {loan.renewals}x
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4">{renderStatusBadge(loan.status)}</td>
+
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {!isReturned ? (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setLoanToRenew(loan)}
+                                className="h-7 px-2.5 text-xs border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-blue-300 hover:text-white gap-1"
+                                title="Renovar por mais 7 dias"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                Renovar (+7d)
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                onClick={() => setLoanToReturn(loan)}
+                                className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1 shadow-sm"
+                                title="Registrar devolução"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                Devolver
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-slate-500 font-medium italic">
+                              Finalizado
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Novo Empréstimo */}
+      <Dialog open={isNewLoanOpen} onOpenChange={setIsNewLoanOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base text-white">Registrar Novo Empréstimo</DialogTitle>
+            <DialogDescription className="text-xs text-slate-400">
+              Selecione o livro disponível no acervo e o aluno que receberá a obra.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateLoanSubmit} className="space-y-4 py-2">
+            {loanError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{loanError}</span>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-300">
+                Obra / Livro <span className="text-rose-400">*</span>
+              </Label>
+              <select
+                value={selectedBookId}
+                onChange={(e) => setSelectedBookId(e.target.value)}
+                className="w-full h-9 px-3 rounded-md bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                required
+              >
+                <option value="">Selecione uma obra do acervo...</option>
+                {libraryBooks.map((b) => (
+                  <option
+                    key={b.id}
+                    value={b.id}
+                    disabled={b.availableCopies <= 0}
+                    className={
+                      b.availableCopies <= 0 ? 'text-slate-500 bg-slate-900' : 'text-white'
+                    }
+                  >
+                    {b.title} — {b.author} ({b.availableCopies}/{b.totalCopies} disponíveis)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-300">
+                Aluno Destinatário <span className="text-rose-400">*</span>
+              </Label>
+              <select
+                value={selectedStudentId}
+                onChange={(e) => setSelectedStudentId(e.target.value)}
+                className="w-full h-9 px-3 rounded-md bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                required
+              >
+                <option value="">Selecione o aluno cadastrado...</option>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.fullName} — CPF: {s.cpf} ({s.courseName})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-300">
+                Data Prevista de Devolução <span className="text-rose-400">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="bg-slate-950 border-slate-800 text-xs text-white max-w-[180px]"
+                required
+              />
+              <p className="text-[11px] text-slate-500">
+                O prazo padrão é de 14 dias a contar de hoje.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-300">Observações (opcional)</Label>
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Ex: Exemplar com anotações na capa, retirada no balcão"
+                className="bg-slate-950 border-slate-800 text-xs text-white"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseNewLoan}
+                className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+              >
+                {isSubmitting ? 'Registrando...' : 'Confirmar Empréstimo'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Devolução */}
+      <AlertDialog open={!!loanToReturn} onOpenChange={(open) => !open && setLoanToReturn(null)}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base text-white">
+              Confirmar Devolução da Obra
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-400 space-y-2">
+              <p>
+                Deseja confirmar a devolução do livro{' '}
+                <strong className="text-slate-200">"{loanToReturn?.bookTitle}"</strong> pelo aluno{' '}
+                <strong className="text-slate-200">{loanToReturn?.studentName}</strong>?
+              </p>
+              <p className="text-[11px] text-emerald-400">
+                O exemplar físico retornará imediatamente à disponibilidade do acervo.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={returnSubmitting}
+              onClick={handleConfirmReturn}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs"
+            >
+              {returnSubmitting ? 'Gravando...' : 'Confirmar Devolução'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Diálogo de Renovação */}
+      <AlertDialog open={!!loanToRenew} onOpenChange={(open) => !open && setLoanToRenew(null)}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base text-white">
+              Renovar Prazo de Empréstimo
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-400 space-y-2">
+              <p>
+                Deseja estender o prazo de devolução de{' '}
+                <strong className="text-slate-200">"{loanToRenew?.bookTitle}"</strong> por mais{' '}
+                <strong>7 dias</strong>?
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Prazo atual:{' '}
+                <span className="font-mono text-slate-200">{loanToRenew?.dueDate}</span> •
+                Renovações anteriores:{' '}
+                <span className="font-mono text-slate-200">{loanToRenew?.renewals}</span>
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={renewSubmitting}
+              onClick={handleConfirmRenew}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            >
+              {renewSubmitting ? 'Renovando...' : 'Confirmar Renovação (+7d)'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
