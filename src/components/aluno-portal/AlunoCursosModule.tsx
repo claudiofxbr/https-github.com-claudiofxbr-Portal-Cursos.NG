@@ -40,7 +40,6 @@ export function AlunoCursosModule() {
     updateLessonProgress,
     eadCourses,
     eadLessons,
-    toggleEadLessonProgress,
   } = usePortal()
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -60,14 +59,14 @@ export function AlunoCursosModule() {
 
   // Cursos EAD em que o aluno está matriculado/vinculado (ou todos se não houver filtro restrito)
   const myEadCourses = eadCourses.filter((c) => {
-    if (!c.studentIds || c.studentIds.length === 0) return true
-    return c.studentIds.includes(effectiveStudentId)
+    if (!c.enrolledStudentIds || c.enrolledStudentIds.length === 0) return true
+    return c.enrolledStudentIds.includes(effectiveStudentId)
   })
 
   // Se o aluno clicou para assistir um curso EAD específico
   const selectedEadCourse = myEadCourses.find((c) => c.id === activeEadCourseId)
   const selectedEadLessons = selectedEadCourse
-    ? eadLessons.filter((l) => l.courseId === selectedEadCourse.id)
+    ? eadLessons.filter((l) => l.eadCourseId === selectedEadCourse.id)
     : []
 
   // Cursos do aluno: o matriculado explicitamente + cursos do catálogo para navegação rica
@@ -221,7 +220,16 @@ export function AlunoCursosModule() {
         lessonProgress={lessonProgress}
         studentId={effectiveStudentId}
         onToggleLessonProgress={async (lessonId, completed, courseId, moduleName, lessonTitle) => {
-          await toggleEadLessonProgress(lessonId, completed, courseId, moduleName, lessonTitle)
+          await updateLessonProgress(
+            lessonId,
+            {
+              status: completed ? 'concluido' : 'em_andamento',
+              completedAt: completed ? new Date().toISOString() : undefined,
+            },
+            courseId,
+            moduleName,
+            lessonTitle,
+          )
         }}
         onBackToList={() => setActiveEadCourseId(null)}
       />
@@ -273,7 +281,7 @@ export function AlunoCursosModule() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {myEadCourses.map((eadCourse) => {
-              const courseLessons = eadLessons.filter((l) => l.courseId === eadCourse.id)
+              const courseLessons = eadLessons.filter((l) => l.eadCourseId === eadCourse.id)
               const completedLessonsCount = courseLessons.filter((l) => {
                 const prog = lessonProgress.find(
                   (p) =>
@@ -281,7 +289,7 @@ export function AlunoCursosModule() {
                     p.courseId === eadCourse.id &&
                     p.lessonId === l.id,
                 )
-                return prog?.status === 'concluida'
+                return prog?.status === 'concluido'
               }).length
 
               const pct =

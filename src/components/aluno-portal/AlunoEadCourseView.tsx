@@ -69,7 +69,7 @@ export function AlunoEadCourseView({
     let count = 0
     for (const l of sortedLessons) {
       const prog = progressMap.get(l.id)
-      if (prog && prog.status === 'concluida') {
+      if (prog && prog.status === 'concluido') {
         count++
       }
     }
@@ -82,7 +82,7 @@ export function AlunoEadCourseView({
   const isActiveCompleted = useMemo(() => {
     if (!activeLesson) return false
     const prog = progressMap.get(activeLesson.id)
-    return prog?.status === 'concluida'
+    return prog?.status === 'concluido'
   }, [activeLesson, progressMap])
 
   const handleToggleCurrent = async () => {
@@ -315,7 +315,7 @@ export function AlunoEadCourseView({
                 sortedLessons.map((lesson, idx) => {
                   const isCurrent = lesson.id === activeLesson?.id
                   const prog = progressMap.get(lesson.id)
-                  const isCompleted = prog?.status === 'concluida'
+                  const isCompleted = prog?.status === 'concluido'
 
                   return (
                     <div

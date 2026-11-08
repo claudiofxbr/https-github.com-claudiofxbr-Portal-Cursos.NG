@@ -119,7 +119,7 @@ export function EADModule() {
   const studentsWithProgressCount = useMemo(() => {
     const studentSet = new Set<string>()
     for (const p of lessonProgress) {
-      if (p.status === 'concluida' || (p.lastWatchedSeconds && p.lastWatchedSeconds > 0)) {
+      if (p.status === 'concluido' || (p.lastWatchedSeconds && p.lastWatchedSeconds > 0)) {
         studentSet.add(p.studentId)
       }
     }
