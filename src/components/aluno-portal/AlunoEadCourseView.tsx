@@ -22,7 +22,9 @@ import {
   Link as LinkIcon,
   HelpCircle,
   Info,
+  Lock,
 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 
 interface AlunoEadCourseViewProps {
   course: EadCourse
@@ -58,21 +60,9 @@ export function AlunoEadCourseView({
     return [...lessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
   }, [lessons])
 
+  const { toast } = useToast()
   const [activeLessonId, setActiveLessonId] = useState<string>(sortedLessons[0]?.id || '')
   const [isUpdating, setIsUpdating] = useState(false)
-
-  // Aula selecionada
-  const activeLesson = useMemo(() => {
-    return sortedLessons.find((l) => l.id === activeLessonId) || sortedLessons[0]
-  }, [sortedLessons, activeLessonId])
-
-  // Materiais complementares da aula selecionada
-  const activeLessonMaterials = useMemo(() => {
-    if (!activeLesson) return []
-    return materials
-      .filter((m) => m.lessonId === activeLesson.id)
-      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-  }, [materials, activeLesson])
 
   // Map de progresso por lessonId
   const progressMap = useMemo(() => {
@@ -84,6 +74,39 @@ export function AlunoEadCourseView({
     }
     return map
   }, [lessonProgress, studentId, course.id])
+
+  // Regra de pré-requisitos sequenciais: se requireSequentialLessons estiver ativado no curso
+  // uma aula (índice > 0) só está liberada se a aula anterior estiver concluída
+  const isLessonLocked = (index: number): boolean => {
+    if (!course.requireSequentialLessons) return false
+    if (index === 0) return false
+    const prevLesson = sortedLessons[index - 1]
+    if (!prevLesson) return false
+    const prevProg = progressMap.get(prevLesson.id)
+    return prevProg?.status !== 'concluido'
+  }
+
+  // Aula selecionada
+  const activeLesson = useMemo(() => {
+    return sortedLessons.find((l) => l.id === activeLessonId) || sortedLessons[0]
+  }, [sortedLessons, activeLessonId])
+
+  const activeLessonIndex = useMemo(() => {
+    if (!activeLesson) return 0
+    return sortedLessons.findIndex((l) => l.id === activeLesson.id)
+  }, [sortedLessons, activeLesson])
+
+  const isActiveLocked = useMemo(() => {
+    return isLessonLocked(activeLessonIndex)
+  }, [activeLessonIndex, course.requireSequentialLessons, sortedLessons, progressMap])
+
+  // Materiais complementares da aula selecionada
+  const activeLessonMaterials = useMemo(() => {
+    if (!activeLesson) return []
+    return materials
+      .filter((m) => m.lessonId === activeLesson.id)
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+  }, [materials, activeLesson])
 
   // Contagem de concluídas e percentual
   const completedCount = useMemo(() => {
@@ -109,6 +132,14 @@ export function AlunoEadCourseView({
   const handleToggleCurrent = async () => {
     if (!activeLesson) return
     if (!canToggleProgress) return
+    if (isActiveLocked) {
+      toast({
+        title: 'Aula bloqueada por pré-requisito',
+        description: 'Conclua a aula anterior para liberar esta videoaula.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsUpdating(true)
     try {
       await onToggleLessonProgress(
@@ -200,22 +231,55 @@ export function AlunoEadCourseView({
         <div className="lg:col-span-8 space-y-4">
           {activeLesson ? (
             <div className="space-y-4">
-              {/* Player do Vídeo */}
-              <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl p-2 sm:p-3">
-                <VideoPlayerEmbed
-                  videoUrl={activeLesson.videoUrl}
-                  videoProvider={activeLesson.videoProvider}
-                  videoEmbedId={activeLesson.videoEmbedId}
-                  title={activeLesson.title}
-                  autoPlay={false}
-                  onEnded={() => {
-                    // Ao terminar o vídeo, marca como concluído se ainda não estiver e se tiver permissão
-                    if (!isActiveCompleted && canToggleProgress) {
-                      handleToggleCurrent()
-                    }
-                  }}
-                />
-              </div>
+              {/* Bloqueio por pré-requisito: se a aula estiver bloqueada, exibe card orientador em vez do player */}
+              {isActiveLocked ? (
+                <div className="bg-slate-950 border border-amber-500/30 rounded-xl p-8 text-center space-y-3 shadow-2xl">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1 max-w-md mx-auto">
+                    <h3 className="text-base font-bold text-white">
+                      Aula Bloqueada por Pré-requisito
+                    </h3>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Conclua a aula anterior para liberar esta videoaula e seu material.
+                      {activeLessonIndex > 0 && sortedLessons[activeLessonIndex - 1] && (
+                        <span className="block mt-1 text-amber-300/90 font-medium">
+                          Aula pendente: #{activeLessonIndex} -{' '}
+                          {sortedLessons[activeLessonIndex - 1].title}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {activeLessonIndex > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleSelectLesson(sortedLessons[activeLessonIndex - 1].id)}
+                      className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10 text-xs mt-2"
+                    >
+                      Ir para aula anterior liberada
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                /* Player do Vídeo */
+                <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl p-2 sm:p-3">
+                  <VideoPlayerEmbed
+                    videoUrl={activeLesson.videoUrl}
+                    videoProvider={activeLesson.videoProvider}
+                    videoEmbedId={activeLesson.videoEmbedId}
+                    title={activeLesson.title}
+                    autoPlay={false}
+                    onEnded={() => {
+                      // Ao terminar o vídeo, marca como concluído se ainda não estiver e se tiver permissão
+                      if (!isActiveCompleted && canToggleProgress && !isActiveLocked) {
+                        handleToggleCurrent()
+                      }
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Aviso se a marcação de conclusão estiver suspensa */}
               {!canToggleProgress && suspensionNotice && (
@@ -243,14 +307,28 @@ export function AlunoEadCourseView({
                             Aula Concluída
                           </Badge>
                         )}
+                        {isActiveLocked && (
+                          <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" />
+                            Bloqueada
+                          </Badge>
+                        )}
                       </div>
                       <CardTitle className="text-lg font-bold text-white">
                         {activeLesson.title}
                       </CardTitle>
                     </div>
 
-                    {/* Botão de Marcar/Desmarcar Concluída (oculto/desabilitado se não puder alterar) */}
-                    {canToggleProgress ? (
+                    {/* Botão de Marcar/Desmarcar Concluída (bloqueado/desabilitado se bloqueada ou suspensa) */}
+                    {isActiveLocked ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-300 bg-amber-500/10 text-xs px-2.5 py-1 flex items-center gap-1.5"
+                      >
+                        <Lock className="w-3 h-3" />
+                        Conclusão Bloqueada (Pré-requisito)
+                      </Badge>
+                    ) : canToggleProgress ? (
                       <div className="flex items-center gap-2">
                         <Button
                           size="sm"
@@ -426,9 +504,15 @@ export function AlunoEadCourseView({
                       onClick={handleNextLesson}
                       disabled={
                         sortedLessons.findIndex((l) => l.id === activeLesson.id) ===
-                        sortedLessons.length - 1
+                          sortedLessons.length - 1 ||
+                        (course.requireSequentialLessons && !isActiveCompleted)
                       }
                       className="text-slate-300 hover:text-white disabled:opacity-30"
+                      title={
+                        course.requireSequentialLessons && !isActiveCompleted
+                          ? 'Conclua a aula atual para avançar para a próxima'
+                          : undefined
+                      }
                     >
                       Próxima Aula →
                     </Button>
@@ -470,6 +554,7 @@ export function AlunoEadCourseView({
                   const isCurrent = lesson.id === activeLesson?.id
                   const prog = progressMap.get(lesson.id)
                   const isCompleted = prog?.status === 'concluido'
+                  const isLocked = isLessonLocked(idx)
 
                   return (
                     <div
@@ -477,52 +562,71 @@ export function AlunoEadCourseView({
                       onClick={() => handleSelectLesson(lesson.id)}
                       className={`p-3 rounded-lg border transition-all cursor-pointer flex items-start gap-2.5 ${
                         isCurrent
-                          ? 'bg-indigo-950/40 border-indigo-500/50 text-white shadow-sm ring-1 ring-indigo-500/40'
-                          : 'bg-slate-950/40 border-slate-800/80 hover:bg-slate-800/50 text-slate-300'
+                          ? isLocked
+                            ? 'bg-amber-950/30 border-amber-500/40 text-amber-100 shadow-sm ring-1 ring-amber-500/30'
+                            : 'bg-indigo-950/40 border-indigo-500/50 text-white shadow-sm ring-1 ring-indigo-500/40'
+                          : isLocked
+                            ? 'bg-slate-950/20 border-slate-800/40 hover:bg-slate-900/40 text-slate-400 opacity-75'
+                            : 'bg-slate-950/40 border-slate-800/80 hover:bg-slate-800/50 text-slate-300'
                       }`}
                     >
-                      {/* Marcador visual de assistida */}
-                      <button
-                        type="button"
-                        disabled={!canToggleProgress}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (canToggleProgress) {
-                            onToggleLessonProgress(
-                              lesson.id,
-                              !isCompleted,
-                              course.id,
-                              lesson.moduleName,
-                              lesson.title,
-                            )
+                      {/* Marcador visual de assistida ou cadeado */}
+                      {isLocked ? (
+                        <div
+                          className="mt-0.5 shrink-0 rounded-full p-0.5 text-amber-400/80"
+                          title="Aula bloqueada: conclua a aula anterior para liberar"
+                        >
+                          <Lock className="w-4 h-4" />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!canToggleProgress}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (canToggleProgress) {
+                              onToggleLessonProgress(
+                                lesson.id,
+                                !isCompleted,
+                                course.id,
+                                lesson.moduleName,
+                                lesson.title,
+                              )
+                            }
+                          }}
+                          className={`mt-0.5 shrink-0 rounded-full p-0.5 transition-colors ${
+                            isCompleted
+                              ? 'text-emerald-400 hover:text-emerald-300'
+                              : 'text-slate-500 hover:text-slate-300'
+                          } ${!canToggleProgress ? 'cursor-default opacity-80' : ''}`}
+                          title={
+                            !canToggleProgress
+                              ? 'Marcação de conclusão bloqueada por situação cadastral'
+                              : isCompleted
+                                ? 'Marcada como concluída (clique para alternar)'
+                                : 'Marcar como concluída'
                           }
-                        }}
-                        className={`mt-0.5 shrink-0 rounded-full p-0.5 transition-colors ${
-                          isCompleted
-                            ? 'text-emerald-400 hover:text-emerald-300'
-                            : 'text-slate-500 hover:text-slate-300'
-                        } ${!canToggleProgress ? 'cursor-default opacity-80' : ''}`}
-                        title={
-                          !canToggleProgress
-                            ? 'Marcação de conclusão bloqueada por situação cadastral'
-                            : isCompleted
-                              ? 'Marcada como concluída (clique para alternar)'
-                              : 'Marcar como concluída'
-                        }
-                      >
-                        {isCompleted ? (
-                          <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
-                        ) : (
-                          <Circle className="w-4 h-4" />
-                        )}
-                      </button>
+                        >
+                          {isCompleted ? (
+                            <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
+                          ) : (
+                            <Circle className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] font-bold text-slate-500">#{idx + 1}</span>
                           <h5
                             className={`text-xs font-medium truncate ${
-                              isCurrent ? 'text-indigo-200 font-semibold' : 'text-slate-200'
+                              isCurrent
+                                ? isLocked
+                                  ? 'text-amber-200 font-semibold'
+                                  : 'text-indigo-200 font-semibold'
+                                : isLocked
+                                  ? 'text-slate-400'
+                                  : 'text-slate-200'
                             }`}
                           >
                             {lesson.title}
@@ -534,11 +638,24 @@ export function AlunoEadCourseView({
                           <span>•</span>
                           <span className="truncate">{lesson.moduleName || 'Módulo Geral'}</span>
                         </div>
+
+                        {isLocked && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-amber-400/90 font-medium">
+                            <Lock className="w-3 h-3 shrink-0" />
+                            <span>Conclua a aula #{idx} para liberar</span>
+                          </div>
+                        )}
                       </div>
 
                       {isCurrent && (
-                        <div className="shrink-0 text-indigo-400">
-                          <PlayCircle className="w-4 h-4" />
+                        <div
+                          className={`shrink-0 ${isLocked ? 'text-amber-400' : 'text-indigo-400'}`}
+                        >
+                          {isLocked ? (
+                            <Lock className="w-4 h-4" />
+                          ) : (
+                            <PlayCircle className="w-4 h-4" />
+                          )}
                         </div>
                       )}
                     </div>

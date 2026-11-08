@@ -71,6 +71,9 @@ export function ProfessorEad({
   const [courseTitle, setCourseTitle] = useState('')
   const [courseDesc, setCourseDesc] = useState('')
   const [courseWorkload, setCourseWorkload] = useState('20')
+  const [courseRequireSeq, setCourseRequireSeq] = useState(false)
+  const [isUpdatingCourseSeq, setIsUpdatingCourseSeq] = useState(false)
+  const { updateEadCourse } = usePortal()
 
   const selectedCourse = useMemo(
     () => eadCourses.find((e) => e.id === selectedCourseId) || eadCourses[0],
@@ -155,6 +158,7 @@ export function ProfessorEad({
       description: courseDesc.trim(),
       workloadHours: Number(courseWorkload) || 20,
       status: 'publicado',
+      requireSequentialLessons: courseRequireSeq,
       instructorId: currentUser?.id,
       instructorName: currentUser?.name,
       enrolledStudentIds: [],
@@ -163,6 +167,31 @@ export function ProfessorEad({
     setIsCourseModalOpen(false)
     setCourseTitle('')
     setCourseDesc('')
+    setCourseRequireSeq(false)
+  }
+
+  const handleToggleSequentialLessons = async (checked: boolean) => {
+    if (!selectedCourse) return
+    setIsUpdatingCourseSeq(true)
+    try {
+      await updateEadCourse(selectedCourse.id, {
+        requireSequentialLessons: checked,
+      })
+      toast({
+        title: checked ? 'Pré-requisitos ativados' : 'Pré-requisitos desativados',
+        description: checked
+          ? 'Os alunos agora precisam concluir cada aula para liberar a seguinte.'
+          : 'Todas as aulas do curso voltam a ficar livres para os alunos.',
+      })
+    } catch {
+      toast({
+        title: 'Erro ao atualizar pré-requisitos',
+        description: 'Não foi possível alterar a configuração do curso.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsUpdatingCourseSeq(false)
+    }
   }
 
   return (
@@ -232,10 +261,34 @@ export function ProfessorEad({
                 <CardHeader>
                   <CardTitle className="text-base">{selectedCourse.title}</CardTitle>
                   <CardDescription>{selectedCourse.description}</CardDescription>
+
+                  {/* Toggle de Pré-requisito de Aulas */}
+                  <div className="mt-3 p-3 rounded-lg border border-slate-200 bg-slate-50/80">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedCourse.requireSequentialLessons)}
+                        disabled={isUpdatingCourseSeq}
+                        onChange={(e) => handleToggleSequentialLessons(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-semibold text-slate-900 block">
+                          Exigir conclusão das aulas em ordem (pré-requisito)
+                        </span>
+                        <span className="text-[11px] text-slate-600 block leading-relaxed">
+                          Quando ativado, o aluno só pode assistir e concluir uma aula se a anterior
+                          estiver concluída. A primeira aula permanece sempre liberada. Ao
+                          desativar, todas voltam a ficar livres.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
                   <Button
                     size="sm"
                     variant="secondary"
-                    className="mt-2 w-fit gap-2"
+                    className="mt-3 w-fit gap-2"
                     onClick={() => setIsLessonModalOpen(true)}
                   >
                     <PlusCircle className="h-4 w-4" /> Nova aula com link de vídeo
@@ -552,6 +605,24 @@ export function ProfessorEad({
                 value={courseWorkload}
                 onChange={(e) => setCourseWorkload(e.target.value)}
               />
+            </div>
+            <div className="pt-2 border-t">
+              <label className="flex items-start gap-2.5 cursor-pointer p-2.5 rounded-lg border border-slate-200 bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={courseRequireSeq}
+                  onChange={(e) => setCourseRequireSeq(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-slate-900 block">
+                    Exigir conclusão das aulas em ordem (pré-requisito)
+                  </span>
+                  <span className="text-[11px] text-slate-600 block">
+                    Os alunos devem assistir e concluir cada aula para liberar a seguinte.
+                  </span>
+                </div>
+              </label>
             </div>
           </div>
           <DialogFooter>

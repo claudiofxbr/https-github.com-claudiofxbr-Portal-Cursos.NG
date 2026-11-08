@@ -2205,6 +2205,27 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     const effectiveStudentId = currentUser?.studentId || student?.id || 'dbphexr97czw7cb'
     const effectiveCourseId = courseId || student?.courseId || 'crs-eng-soft'
 
+    // Validação de pré-requisito sequencial de aulas
+    const eadCourse = eadCourses.find((c) => c.id === effectiveCourseId)
+    if (eadCourse?.requireSequentialLessons && updates.status === 'concluido') {
+      const sortedLessons = eadLessons
+        .filter((l) => l.eadCourseId === effectiveCourseId)
+        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+      const targetIdx = sortedLessons.findIndex((l) => l.id === lessonId)
+      if (targetIdx > 0) {
+        const prevLesson = sortedLessons[targetIdx - 1]
+        const prevProgress = lessonProgress.find(
+          (p) => p.studentId === effectiveStudentId && p.lessonId === prevLesson.id,
+        )
+        if (!prevProgress || prevProgress.status !== 'concluido') {
+          console.warn(
+            `[PortalContext] Conclusão bloqueada por pré-requisito: a aula anterior "${prevLesson.title}" ainda não foi concluída.`,
+          )
+          return null
+        }
+      }
+    }
+
     // Otimista
     setLessonProgress((prev) => {
       const idx = prev.findIndex(

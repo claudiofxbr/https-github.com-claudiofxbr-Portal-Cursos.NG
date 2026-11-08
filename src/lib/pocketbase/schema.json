@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T20:42:03.370Z",
+  "generatedAt": "2026-11-08T21:03:45.242Z",
   "collections": [
     {
       "name": "users",
@@ -2127,6 +2127,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "requireSequentialLessons",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

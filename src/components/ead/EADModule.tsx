@@ -85,6 +85,7 @@ export function EADModule() {
   const [courseWorkload, setCourseWorkload] = useState(20)
   const [courseCatalogId, setCourseCatalogId] = useState<string>('none')
   const [courseStatus, setCourseStatus] = useState<EadCourse['status']>('publicado')
+  const [requireSequentialLessons, setRequireSequentialLessons] = useState(false)
   // Vínculo professor↔curso EAD por ID de usuário (coleção `users`)
   const [courseInstructorId, setCourseInstructorId] = useState<string>('')
   const instructorOptions = useMemo(() => users.filter((u) => u.role !== 'aluno'), [users])
@@ -160,6 +161,7 @@ export function EADModule() {
     setCourseWorkload(20)
     setCourseCatalogId('none')
     setCourseStatus('publicado')
+    setRequireSequentialLessons(false)
     setCourseInstructorId(currentUser?.id || '')
     setIsCourseModalOpen(true)
   }
@@ -171,6 +173,7 @@ export function EADModule() {
     setCourseWorkload(course.workloadHours || 20)
     setCourseCatalogId(course.catalogCourseId || 'none')
     setCourseStatus(course.status || 'publicado')
+    setRequireSequentialLessons(Boolean(course.requireSequentialLessons))
     setCourseInstructorId(course.instructorId || '')
     setIsCourseModalOpen(true)
   }
@@ -197,6 +200,7 @@ export function EADModule() {
         catalogCourseId,
         catalogCourseName,
         status: courseStatus,
+        requireSequentialLessons,
         instructorId: courseInstructorId,
         instructorName: courseInstructorId
           ? instructorNameFromId || editingCourse.instructorName
@@ -215,6 +219,7 @@ export function EADModule() {
         catalogCourseName,
         thumbnail: '',
         status: courseStatus,
+        requireSequentialLessons,
         instructorId: courseInstructorId || currentUser?.id || '',
         instructorName:
           (courseInstructorId ? instructorNameFromId : currentUser?.name) || 'Professor',
@@ -969,6 +974,27 @@ export function EADModule() {
                 O curso EAD fica vinculado ao ID do usuário selecionado — professores homônimos não
                 compartilham turmas.
               </p>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200">
+              <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100/80 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={requireSequentialLessons}
+                  onChange={(e) => setRequireSequentialLessons(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-slate-900 block">
+                    Exigir conclusão das aulas em ordem (pré-requisito)
+                  </span>
+                  <span className="text-[11px] text-slate-600 block leading-relaxed">
+                    Quando ativado, o aluno só pode assistir e concluir uma aula após finalizar a
+                    aula anterior. A primeira aula permanece sempre liberada. Ao desativar, todas
+                    voltam a ficar livres.
+                  </span>
+                </div>
+              </label>
             </div>
           </div>
 

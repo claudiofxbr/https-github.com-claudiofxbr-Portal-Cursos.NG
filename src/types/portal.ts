@@ -550,6 +550,7 @@ export interface EadCourse {
   instructorId?: string
   instructorName?: string
   enrolledStudentIds: string[]
+  requireSequentialLessons?: boolean
   created?: string
   updated?: string
 }

@@ -836,6 +836,7 @@ export function mapEadCourse(rec: AnyRec): EadCourse {
     instructorId: str(rec.instructorId) || undefined,
     instructorName: str(rec.instructorName) || undefined,
     enrolledStudentIds: enrolled,
+    requireSequentialLessons: Boolean(rec.requireSequentialLessons),
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -2346,6 +2347,7 @@ export const portalDb = {
           instructorId: data.instructorId || '',
           instructorName: data.instructorName || '',
           enrolledStudentIds: JSON.stringify(data.enrolledStudentIds || []),
+          requireSequentialLessons: Boolean(data.requireSequentialLessons),
         }
         const rec = await pb.collection(COLLECTIONS.eadCourses).create(payload)
         return mapEadCourse(rec as unknown as AnyRec)
@@ -2372,6 +2374,9 @@ export const portalDb = {
         if (updates.instructorName !== undefined) payload.instructorName = updates.instructorName
         if (updates.enrolledStudentIds !== undefined) {
           payload.enrolledStudentIds = JSON.stringify(updates.enrolledStudentIds)
+        }
+        if (updates.requireSequentialLessons !== undefined) {
+          payload.requireSequentialLessons = Boolean(updates.requireSequentialLessons)
         }
         const rec = await pb.collection(COLLECTIONS.eadCourses).update(courseId, payload)
         return mapEadCourse(rec as unknown as AnyRec)
