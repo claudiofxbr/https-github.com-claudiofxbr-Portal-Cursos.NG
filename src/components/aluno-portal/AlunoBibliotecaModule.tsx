@@ -284,7 +284,6 @@ export function AlunoBibliotecaModule({
           </Badge>
         </button>
       </div>
-
       {activeViewTab === 'acervo' ? (
         /* Visão de Acervo */
         <div className="space-y-4">
@@ -376,7 +375,9 @@ export function AlunoBibliotecaModule({
 
                       <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-1">
                         {book.publisher && <span>Ed: {book.publisher}</span>}
-                        {book.isbn && <span className="font-mono text-[10px]">ISBN: {book.isbn}</span>}
+                        {book.isbn && (
+                          <span className="font-mono text-[10px]">ISBN: {book.isbn}</span>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -400,172 +401,180 @@ export function AlunoBibliotecaModule({
               />
             </div>
           </div>
-        <Card className="bg-slate-900/30 border-slate-800/80">
-          <CardContent className="p-8 text-center space-y-2">
-            <BookOpen className="w-10 h-10 text-slate-600 mx-auto" />
-            <p className="text-sm font-semibold text-slate-300">
-              Nenhum empréstimo registrado no seu perfil
-            </p>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Você não possui livros retirados no momento. Visite a biblioteca da instituição para
-              consultar as mais de {libraryBooks.length} obras do acervo e realizar seu primeiro
-              empréstimo.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {filteredLoans.map((loan) => {
-            const isReturned = !!loan.returnedAt
-            const isOverdue = loan.status === 'atrasado'
 
-            return (
-              <Card
-                key={loan.id}
-                className={`bg-slate-900/60 border transition-all ${
-                  isOverdue
-                    ? 'border-rose-500/40 bg-rose-950/10'
-                    : isReturned
-                      ? 'border-slate-800/80 opacity-75'
-                      : 'border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-bold text-white line-clamp-1">
-                        {loan.bookTitle}
-                      </h3>
-                      {isOverdue && (
-                        <Badge
-                          variant="outline"
-                          className="bg-rose-500/10 text-rose-400 border-rose-500/30 text-[10px] gap-1 font-semibold"
-                        >
-                          <AlertTriangle className="w-3 h-3" />
-                          Prazo Vencido
-                        </Badge>
-                      )}
-                      {loan.status === 'ativo' && (
-                        <Badge
-                          variant="outline"
-                          className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px] gap-1"
-                        >
-                          <Clock className="w-3 h-3" />
-                          Em Andamento
-                        </Badge>
-                      )}
-                      {isReturned && (
-                        <Badge
-                          variant="outline"
-                          className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] gap-1"
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          Devolvido
-                        </Badge>
-                      )}
-                    </div>
+          {filteredLoans.length === 0 ? (
+            <Card className="bg-slate-900/30 border-slate-800/80">
+              <CardContent className="p-8 text-center space-y-2">
+                <BookOpen className="w-10 h-10 text-slate-600 mx-auto" />
+                <p className="text-sm font-semibold text-slate-300">
+                  Nenhum empréstimo registrado no seu perfil
+                </p>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Você não possui livros retirados no momento. Visite a biblioteca da instituição
+                  para consultar as mais de {libraryBooks.length} obras do acervo e realizar seu
+                  primeiro empréstimo.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {filteredLoans.map((loan) => {
+                const isReturned = !!loan.returnedAt
+                const isOverdue = loan.status === 'atrasado'
 
-                    {loan.bookAuthor && <p className="text-xs text-slate-400">{loan.bookAuthor}</p>}
+                return (
+                  <Card
+                    key={loan.id}
+                    className={`bg-slate-900/60 border transition-all ${
+                      isOverdue
+                        ? 'border-rose-500/40 bg-rose-950/10'
+                        : isReturned
+                          ? 'border-slate-800/80 opacity-75'
+                          : 'border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-sm font-bold text-white line-clamp-1">
+                            {loan.bookTitle}
+                          </h3>
+                          {isOverdue && (
+                            <Badge
+                              variant="outline"
+                              className="bg-rose-500/10 text-rose-400 border-rose-500/30 text-[10px] gap-1 font-semibold"
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              Prazo Vencido
+                            </Badge>
+                          )}
+                          {loan.status === 'ativo' && (
+                            <Badge
+                              variant="outline"
+                              className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px] gap-1"
+                            >
+                              <Clock className="w-3 h-3" />
+                              Em Andamento
+                            </Badge>
+                          )}
+                          {isReturned && (
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] gap-1"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Devolvido
+                            </Badge>
+                          )}
+                        </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 font-mono pt-1">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-500" />
-                        Retirada: {loan.loanDate || '-'}
-                      </span>
-                      <span
-                        className={`flex items-center gap-1 font-semibold ${
-                          isOverdue ? 'text-rose-400' : 'text-slate-300'
-                        }`}
-                      >
-                        <Clock className="w-3 h-3 opacity-70" />
-                        Devolução: {loan.dueDate}
-                      </span>
-                      {isReturned && (
-                        <span className="text-emerald-400">Devolvido em: {loan.returnedAt}</span>
-                      )}
-                      {loan.renewals > 0 && (
-                        <span className="text-slate-500">Renovações: {loan.renewals}x</span>
-                      )}
-                    </div>
+                        {loan.bookAuthor && (
+                          <p className="text-xs text-slate-400">{loan.bookAuthor}</p>
+                        )}
 
-                    {loan.notes && (
-                      <p className="text-[11px] text-slate-500 italic flex items-center gap-1 pt-1">
-                        <FileText className="w-3 h-3 text-slate-600 shrink-0" />
-                        {loan.notes}
-                      </p>
-                    )}
-                  </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 font-mono pt-1">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-500" />
+                            Retirada: {loan.loanDate || '-'}
+                          </span>
+                          <span
+                            className={`flex items-center gap-1 font-semibold ${
+                              isOverdue ? 'text-rose-400' : 'text-slate-300'
+                            }`}
+                          >
+                            <Clock className="w-3 h-3 opacity-70" />
+                            Devolução: {loan.dueDate}
+                          </span>
+                          {isReturned && (
+                            <span className="text-emerald-400">
+                              Devolvido em: {loan.returnedAt}
+                            </span>
+                          )}
+                          {loan.renewals > 0 && (
+                            <span className="text-slate-500">Renovações: {loan.renewals}x</span>
+                          )}
+                        </div>
 
-                  <div className="flex flex-col items-end gap-2 self-end sm:self-center shrink-0">
-                    {!isReturned &&
-                      (() => {
-                        const check = canRenewLoan(loan)
+                        {loan.notes && (
+                          <p className="text-[11px] text-slate-500 italic flex items-center gap-1 pt-1">
+                            <FileText className="w-3 h-3 text-slate-600 shrink-0" />
+                            {loan.notes}
+                          </p>
+                        )}
+                      </div>
 
-                        if (check.allowed) {
-                          return (
-                            <div className="flex flex-col items-end gap-1">
-                              <Button
-                                size="sm"
-                                onClick={() => setLoanToRenew(loan)}
-                                className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                Renovar Prazo (+{librarySettings.renewalDays}d)
-                              </Button>
-                              <span className="text-[11px] text-blue-300 font-medium">
-                                {check.message}
-                              </span>
-                            </div>
-                          )
-                        }
+                      <div className="flex flex-col items-end gap-2 self-end sm:self-center shrink-0">
+                        {!isReturned &&
+                          (() => {
+                            const check = canRenewLoan(loan)
 
-                        if (check.reason === 'atrasado') {
-                          return (
-                            <div className="flex flex-col items-end gap-1">
-                              <Button
-                                size="sm"
-                                disabled
-                                className="h-8 text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-rose-500/20"
-                                title="Empréstimo atrasado, devolva primeiro"
-                              >
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 mr-1" />
-                                Renovação Indisponível
-                              </Button>
-                              <span className="text-[11px] text-rose-400 font-medium flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                Empréstimo atrasado, devolva primeiro
-                              </span>
-                            </div>
-                          )
-                        }
+                            if (check.allowed) {
+                              return (
+                                <div className="flex flex-col items-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setLoanToRenew(loan)}
+                                    className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    Renovar Prazo (+{librarySettings.renewalDays}d)
+                                  </Button>
+                                  <span className="text-[11px] text-blue-300 font-medium">
+                                    {check.message}
+                                  </span>
+                                </div>
+                              )
+                            }
 
-                        if (check.reason === 'limite_atingido') {
-                          return (
-                            <div className="flex flex-col items-end gap-1">
-                              <Button
-                                size="sm"
-                                disabled
-                                className="h-8 text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-amber-500/20"
-                                title={`Limite de renovações atingido (${loan.renewals} de ${librarySettings.maxRenewals} usadas)`}
-                              >
-                                <ShieldAlert className="w-3.5 h-3.5 text-amber-400 mr-1" />
-                                Limite Atingido
-                              </Button>
-                              <span className="text-[11px] text-amber-300 font-medium flex items-center gap-1">
-                                <ShieldAlert className="w-3 h-3" />
-                                {check.message}
-                              </span>
-                            </div>
-                          )
-                        }
+                            if (check.reason === 'atrasado') {
+                              return (
+                                <div className="flex flex-col items-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    disabled
+                                    className="h-8 text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-rose-500/20"
+                                    title="Empréstimo atrasado, devolva primeiro"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 mr-1" />
+                                    Renovação Indisponível
+                                  </Button>
+                                  <span className="text-[11px] text-rose-400 font-medium flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Empréstimo atrasado, devolva primeiro
+                                  </span>
+                                </div>
+                              )
+                            }
 
-                        return null
-                      })()}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+                            if (check.reason === 'limite_atingido') {
+                              return (
+                                <div className="flex flex-col items-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    disabled
+                                    className="h-8 text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-amber-500/20"
+                                    title={`Limite de renovações atingido (${loan.renewals} de ${librarySettings.maxRenewals} usadas)`}
+                                  >
+                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400 mr-1" />
+                                    Limite Atingido
+                                  </Button>
+                                  <span className="text-[11px] text-amber-300 font-medium flex items-center gap-1">
+                                    <ShieldAlert className="w-3 h-3" />
+                                    {check.message}
+                                  </span>
+                                </div>
+                              )
+                            }
+
+                            return null
+                          })()}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
       {/* Regras e Orientações da Biblioteca */}

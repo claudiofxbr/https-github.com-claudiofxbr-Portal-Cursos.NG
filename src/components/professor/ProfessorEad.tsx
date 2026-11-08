@@ -32,6 +32,8 @@ import {
   Edit2,
   Lock,
   Unlock,
+  BookOpen,
+  Search,
 } from 'lucide-react'
 import { EadMaterialManagerModal } from '@/components/ead/EadMaterialManagerModal'
 import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
@@ -56,8 +58,14 @@ export function ProfessorEad({
   onNavigateToEad,
 }: ProfessorEadProps) {
   const { toast } = useToast()
-  const { currentUser, eadMaterials, certificates, issueEadCertificate, updateEadCourse } =
-    usePortal()
+  const {
+    currentUser,
+    eadMaterials,
+    certificates,
+    libraryBooks,
+    issueEadCertificate,
+    updateEadCourse,
+  } = usePortal()
   const [issuingCertStudentId, setIssuingCertStudentId] = useState<string | null>(null)
 
   const [selectedCourseId, setSelectedCourseId] = useState<string>(eadCourses[0]?.id || 'none')
@@ -76,12 +84,16 @@ export function ProfessorEad({
   const [courseDesc, setCourseDesc] = useState('')
   const [courseWorkload, setCourseWorkload] = useState('20')
   const [courseRequireSeq, setCourseRequireSeq] = useState(false)
+  const [courseRecommendedBookIds, setCourseRecommendedBookIds] = useState<string[]>([])
+  const [courseBookSearch, setCourseBookSearch] = useState('')
 
   // Edição de curso existente
   const [editCourseTitle, setEditCourseTitle] = useState('')
   const [editCourseDesc, setEditCourseDesc] = useState('')
   const [editCourseWorkload, setEditCourseWorkload] = useState('20')
   const [editCourseRequireSeq, setEditCourseRequireSeq] = useState(false)
+  const [editRecommendedBookIds, setEditRecommendedBookIds] = useState<string[]>([])
+  const [editBookSearch, setEditBookSearch] = useState('')
   const [isSavingCourseEdit, setIsSavingCourseEdit] = useState(false)
   const [isUpdatingCourseSeq, setIsUpdatingCourseSeq] = useState(false)
 
@@ -169,6 +181,7 @@ export function ProfessorEad({
       workloadHours: Number(courseWorkload) || 20,
       status: 'publicado',
       requireSequentialLessons: courseRequireSeq,
+      recommendedBookIds: courseRecommendedBookIds,
       instructorId: currentUser?.id,
       instructorName: currentUser?.name,
       enrolledStudentIds: [],
@@ -178,6 +191,8 @@ export function ProfessorEad({
     setCourseTitle('')
     setCourseDesc('')
     setCourseRequireSeq(false)
+    setCourseRecommendedBookIds([])
+    setCourseBookSearch('')
   }
 
   const handleOpenEditCourse = (course: EadCourse) => {
@@ -185,6 +200,8 @@ export function ProfessorEad({
     setEditCourseDesc(course.description || '')
     setEditCourseWorkload(String(course.workloadHours || 20))
     setEditCourseRequireSeq(Boolean(course.requireSequentialLessons))
+    setEditRecommendedBookIds(course.recommendedBookIds || [])
+    setEditBookSearch('')
     setIsEditCourseModalOpen(true)
   }
 
@@ -206,6 +223,7 @@ export function ProfessorEad({
         description: editCourseDesc.trim(),
         workloadHours: Number(editCourseWorkload) || 20,
         requireSequentialLessons: editCourseRequireSeq,
+        recommendedBookIds: editRecommendedBookIds,
       })
       toast({
         title: 'Curso EAD atualizado',
@@ -351,6 +369,14 @@ export function ProfessorEad({
                               Aulas Livres
                             </span>
                           )}
+                        </Badge>
+
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-50 text-purple-700 border-purple-200 font-medium flex items-center gap-1"
+                        >
+                          <BookOpen className="w-3 h-3 text-purple-600" />
+                          {selectedCourse.recommendedBookIds?.length || 0} obra(s) recomendada(s)
                         </Badge>
                       </div>
                       <CardDescription>{selectedCourse.description}</CardDescription>
@@ -749,7 +775,7 @@ export function ProfessorEad({
                 onChange={(e) => setCourseWorkload(e.target.value)}
               />
             </div>
-            <div className="pt-2 border-t">
+            <div className="pt-2 border-t space-y-3">
               <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50">
                 <div className="space-y-0.5">
                   <span className="text-xs font-semibold text-slate-900 block">
@@ -765,6 +791,95 @@ export function ProfessorEad({
                   checked={courseRequireSeq}
                   onCheckedChange={setCourseRequireSeq}
                 />
+              </div>
+
+              {/* Bibliografia Recomendada da Biblioteca */}
+              <div className="space-y-2 pt-1 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-purple-600" />
+                    Bibliografia Recomendada (Acervo da Biblioteca)
+                  </Label>
+                  <span className="text-[11px] text-purple-700 font-semibold">
+                    {courseRecommendedBookIds.length} selecionada(s)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Selecione livros do acervo para aparecerem no player do aluno como obras de apoio
+                  ao curso.
+                </p>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Input
+                    placeholder="Filtrar por título, autor ou ISBN..."
+                    value={courseBookSearch}
+                    onChange={(e) => setCourseBookSearch(e.target.value)}
+                    className="pl-8 text-xs h-8"
+                  />
+                </div>
+
+                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-md p-1.5 space-y-1 bg-slate-50/50">
+                  {libraryBooks
+                    .filter((b) => {
+                      if (!courseBookSearch.trim()) return true
+                      const q = courseBookSearch.toLowerCase().trim()
+                      return (
+                        b.title.toLowerCase().includes(q) ||
+                        b.author.toLowerCase().includes(q) ||
+                        (b.isbn && b.isbn.toLowerCase().includes(q))
+                      )
+                    })
+                    .map((book) => {
+                      const isSelected = courseRecommendedBookIds.includes(book.id)
+                      return (
+                        <label
+                          key={book.id}
+                          className={`flex items-center justify-between gap-2 p-2 rounded text-xs cursor-pointer border transition-colors ${
+                            isSelected
+                              ? 'bg-purple-50/80 border-purple-300 text-purple-900 font-medium'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setCourseRecommendedBookIds([
+                                    ...courseRecommendedBookIds,
+                                    book.id,
+                                  ])
+                                } else {
+                                  setCourseRecommendedBookIds(
+                                    courseRecommendedBookIds.filter((id) => id !== book.id),
+                                  )
+                                }
+                              }}
+                              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div className="min-w-0">
+                              <span className="block truncate font-semibold">{book.title}</span>
+                              <span className="block text-[10px] text-slate-500 truncate">
+                                {book.author} {book.category ? `• ${book.category}` : ''}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] shrink-0 ${
+                              book.availableCopies > 0
+                                ? 'text-emerald-700 border-emerald-300 bg-emerald-50'
+                                : 'text-slate-500 border-slate-200 bg-slate-50'
+                            }`}
+                          >
+                            {book.availableCopies}/{book.totalCopies} disp.
+                          </Badge>
+                        </label>
+                      )
+                    })}
+                </div>
               </div>
             </div>
           </div>
@@ -813,7 +928,7 @@ export function ProfessorEad({
                 onChange={(e) => setEditCourseWorkload(e.target.value)}
               />
             </div>
-            <div className="pt-2 border-t">
+            <div className="pt-2 border-t space-y-3">
               <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50">
                 <div className="space-y-0.5">
                   <span className="text-xs font-semibold text-slate-900 block">
@@ -830,6 +945,91 @@ export function ProfessorEad({
                   checked={editCourseRequireSeq}
                   onCheckedChange={setEditCourseRequireSeq}
                 />
+              </div>
+
+              {/* Bibliografia Recomendada no modal de Edição */}
+              <div className="space-y-2 pt-1 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-purple-600" />
+                    Bibliografia Recomendada (Acervo da Biblioteca)
+                  </Label>
+                  <span className="text-[11px] text-purple-700 font-semibold">
+                    {editRecommendedBookIds.length} selecionada(s)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Vincule livros do acervo como obras de apoio recomendadas para este curso EAD.
+                </p>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Input
+                    placeholder="Filtrar por título, autor ou ISBN..."
+                    value={editBookSearch}
+                    onChange={(e) => setEditBookSearch(e.target.value)}
+                    className="pl-8 text-xs h-8"
+                  />
+                </div>
+
+                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-md p-1.5 space-y-1 bg-slate-50/50">
+                  {libraryBooks
+                    .filter((b) => {
+                      if (!editBookSearch.trim()) return true
+                      const q = editBookSearch.toLowerCase().trim()
+                      return (
+                        b.title.toLowerCase().includes(q) ||
+                        b.author.toLowerCase().includes(q) ||
+                        (b.isbn && b.isbn.toLowerCase().includes(q))
+                      )
+                    })
+                    .map((book) => {
+                      const isSelected = editRecommendedBookIds.includes(book.id)
+                      return (
+                        <label
+                          key={book.id}
+                          className={`flex items-center justify-between gap-2 p-2 rounded text-xs cursor-pointer border transition-colors ${
+                            isSelected
+                              ? 'bg-purple-50/80 border-purple-300 text-purple-900 font-medium'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditRecommendedBookIds([...editRecommendedBookIds, book.id])
+                                } else {
+                                  setEditRecommendedBookIds(
+                                    editRecommendedBookIds.filter((id) => id !== book.id),
+                                  )
+                                }
+                              }}
+                              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div className="min-w-0">
+                              <span className="block truncate font-semibold">{book.title}</span>
+                              <span className="block text-[10px] text-slate-500 truncate">
+                                {book.author} {book.category ? `• ${book.category}` : ''}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] shrink-0 ${
+                              book.availableCopies > 0
+                                ? 'text-emerald-700 border-emerald-300 bg-emerald-50'
+                                : 'text-slate-500 border-slate-200 bg-slate-50'
+                            }`}
+                          >
+                            {book.availableCopies}/{book.totalCopies} disp.
+                          </Badge>
+                        </label>
+                      )
+                    })}
+                </div>
               </div>
             </div>
           </div>

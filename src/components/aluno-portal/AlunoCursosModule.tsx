@@ -50,11 +50,13 @@ import {
 export interface AlunoCursosModuleProps {
   initialEadCourseId?: string | null
   onClearInitialEadCourseId?: () => void
+  onNavigateToBiblioteca?: (searchQuery?: string) => void
 }
 
 export function AlunoCursosModule({
   initialEadCourseId,
   onClearInitialEadCourseId,
+  onNavigateToBiblioteca,
 }: AlunoCursosModuleProps = {}) {
   const {
     currentUser,
@@ -457,6 +459,7 @@ export function AlunoCursosModule({
           lessonProgress={lessonProgress}
           materials={eadMaterials}
           studentId={effectiveStudentId}
+          onNavigateToBiblioteca={onNavigateToBiblioteca}
           onToggleLessonProgress={async (
             lessonId,
             completed,
@@ -591,6 +594,12 @@ export function AlunoCursosModule({
                         <Badge className="bg-indigo-600/20 text-indigo-300 border-indigo-500/30 text-[10px]">
                           EAD Videoaulas
                         </Badge>
+                        {(eadCourse.recommendedBookIds?.length || 0) > 0 && (
+                          <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[10px] flex items-center gap-1">
+                            <BookOpen className="w-2.5 h-2.5" />
+                            {eadCourse.recommendedBookIds?.length} obra(s)
+                          </Badge>
+                        )}
                         {isCourseCompleted ? (
                           <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] font-bold">
                             <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-400" />

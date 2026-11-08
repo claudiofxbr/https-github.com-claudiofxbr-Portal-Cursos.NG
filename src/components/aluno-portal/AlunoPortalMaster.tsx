@@ -17,12 +17,22 @@ import { AlunoCobrancasModule } from './AlunoCobrancasModule'
 export function AlunoPortalMaster() {
   const [activeTab, setActiveTab] = useState<StudentPortalTab>('inicio')
   const [targetEadCourseId, setTargetEadCourseId] = useState<string | null>(null)
+  const [targetBibliotecaSearch, setTargetBibliotecaSearch] = useState<string>('')
 
   const handleOpenEadCourse = (courseId?: string | null) => {
     if (courseId) {
       setTargetEadCourseId(courseId)
     }
     setActiveTab('cursos')
+  }
+
+  const handleNavigateToBiblioteca = (searchQuery?: string) => {
+    if (searchQuery) {
+      setTargetBibliotecaSearch(searchQuery)
+    } else {
+      setTargetBibliotecaSearch('')
+    }
+    setActiveTab('biblioteca')
   }
 
   const renderContent = () => {
@@ -46,6 +56,7 @@ export function AlunoPortalMaster() {
             <AlunoCursosModule
               initialEadCourseId={targetEadCourseId}
               onClearInitialEadCourseId={() => setTargetEadCourseId(null)}
+              onNavigateToBiblioteca={handleNavigateToBiblioteca}
             />
           </InstitutionalErrorBoundary>
         )
@@ -58,7 +69,12 @@ export function AlunoPortalMaster() {
       case 'minhas_notas':
         return <AlunoMinhasNotasModule />
       case 'biblioteca':
-        return <AlunoBibliotecaModule />
+        return (
+          <AlunoBibliotecaModule
+            initialSearch={targetBibliotecaSearch}
+            initialTab={targetBibliotecaSearch ? 'acervo' : 'meus_emprestimos'}
+          />
+        )
       case 'cobrancas':
         return <AlunoCobrancasModule />
       case 'suporte':

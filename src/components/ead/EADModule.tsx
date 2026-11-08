@@ -59,6 +59,7 @@ export function EADModule() {
     students,
     currentUser,
     lessonProgress,
+    libraryBooks,
     createEadCourse,
     updateEadCourse,
     deleteEadCourse,
@@ -90,6 +91,8 @@ export function EADModule() {
   const [courseCatalogId, setCourseCatalogId] = useState<string>('none')
   const [courseStatus, setCourseStatus] = useState<EadCourse['status']>('publicado')
   const [requireSequentialLessons, setRequireSequentialLessons] = useState(false)
+  const [recommendedBookIds, setRecommendedBookIds] = useState<string[]>([])
+  const [bookSearchFilter, setBookSearchFilter] = useState('')
   // Vínculo professor↔curso EAD por ID de usuário (coleção `users`)
   const [courseInstructorId, setCourseInstructorId] = useState<string>('')
   const instructorOptions = useMemo(() => users.filter((u) => u.role !== 'aluno'), [users])
@@ -166,7 +169,9 @@ export function EADModule() {
     setCourseCatalogId('none')
     setCourseStatus('publicado')
     setRequireSequentialLessons(false)
-    setCourseInstructorId(currentUser?.id || '')
+    setRecommendedBookIds([])
+    setBookSearchFilter('')
+    setCourseInstructorId('')
     setIsCourseModalOpen(true)
   }
 
@@ -176,12 +181,13 @@ export function EADModule() {
     setCourseDesc(course.description || '')
     setCourseWorkload(course.workloadHours || 20)
     setCourseCatalogId(course.catalogCourseId || 'none')
-    setCourseStatus(course.status || 'publicado')
+    setCourseStatus(course.status)
     setRequireSequentialLessons(Boolean(course.requireSequentialLessons))
+    setRecommendedBookIds(course.recommendedBookIds || [])
+    setBookSearchFilter('')
     setCourseInstructorId(course.instructorId || '')
     setIsCourseModalOpen(true)
   }
-
   const handleSaveCourse = async () => {
     if (!courseTitle.trim()) {
       toast({
@@ -205,6 +211,7 @@ export function EADModule() {
         catalogCourseName,
         status: courseStatus,
         requireSequentialLessons,
+        recommendedBookIds,
         instructorId: courseInstructorId,
         instructorName: courseInstructorId
           ? instructorNameFromId || editingCourse.instructorName
@@ -224,6 +231,7 @@ export function EADModule() {
         thumbnail: '',
         status: courseStatus,
         requireSequentialLessons,
+        recommendedBookIds,
         instructorId: courseInstructorId || currentUser?.id || '',
         instructorName:
           (courseInstructorId ? instructorNameFromId : currentUser?.name) || 'Professor',
@@ -691,6 +699,13 @@ export function EADModule() {
                           </span>
                         )}
                       </Badge>
+                      <Badge
+                        variant="outline"
+                        className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-medium flex items-center gap-1"
+                      >
+                        <BookOpen className="w-3 h-3 text-purple-600" />
+                        {selectedCourse.recommendedBookIds?.length || 0} obra(s) recomendada(s)
+                      </Badge>
                     </div>
                     <CardDescription className="text-xs text-slate-500 mt-0.5">
                       Carga Horária: {selectedCourse.workloadHours || 20}h • Instrutor:{' '}
@@ -1084,7 +1099,7 @@ export function EADModule() {
               </p>
             </div>
 
-            <div className="pt-2 border-t border-slate-200">
+            <div className="pt-2 border-t border-slate-200 space-y-3">
               <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100/80 cursor-pointer transition-colors">
                 <input
                   type="checkbox"
@@ -1103,6 +1118,91 @@ export function EADModule() {
                   </span>
                 </div>
               </label>
+
+              {/* Bibliografia Recomendada da Biblioteca */}
+              <div className="space-y-2 pt-1 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-purple-600" />
+                    Bibliografia Recomendada (Acervo da Biblioteca)
+                  </label>
+                  <span className="text-[11px] text-purple-700 font-semibold">
+                    {recommendedBookIds.length} selecionada(s)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Obras de apoio vinculadas ao curso, visíveis no player e com atalho para o acervo.
+                </p>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Input
+                    placeholder="Filtrar por título, autor ou ISBN..."
+                    value={bookSearchFilter}
+                    onChange={(e) => setBookSearchFilter(e.target.value)}
+                    className="pl-8 text-xs h-8"
+                  />
+                </div>
+
+                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-md p-1.5 space-y-1 bg-slate-50/50">
+                  {libraryBooks
+                    .filter((b) => {
+                      if (!bookSearchFilter.trim()) return true
+                      const q = bookSearchFilter.toLowerCase().trim()
+                      return (
+                        b.title.toLowerCase().includes(q) ||
+                        b.author.toLowerCase().includes(q) ||
+                        (b.isbn && b.isbn.toLowerCase().includes(q))
+                      )
+                    })
+                    .map((book) => {
+                      const isSelected = recommendedBookIds.includes(book.id)
+                      return (
+                        <label
+                          key={book.id}
+                          className={`flex items-center justify-between gap-2 p-2 rounded text-xs cursor-pointer border transition-colors ${
+                            isSelected
+                              ? 'bg-purple-50/80 border-purple-300 text-purple-900 font-medium'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setRecommendedBookIds([...recommendedBookIds, book.id])
+                                } else {
+                                  setRecommendedBookIds(
+                                    recommendedBookIds.filter((id) => id !== book.id),
+                                  )
+                                }
+                              }}
+                              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div className="min-w-0">
+                              <span className="block truncate font-semibold">{book.title}</span>
+                              <span className="block text-[10px] text-slate-500 truncate">
+                                {book.author} {book.category ? `• ${book.category}` : ''}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] shrink-0 ${
+                              book.availableCopies > 0
+                                ? 'text-emerald-700 border-emerald-300 bg-emerald-50'
+                                : 'text-slate-500 border-slate-200 bg-slate-50'
+                            }`}
+                          >
+                            {book.availableCopies}/{book.totalCopies} disp.
+                          </Badge>
+                        </label>
+                      )
+                    })}
+                </div>
+              </div>
             </div>
           </div>
 

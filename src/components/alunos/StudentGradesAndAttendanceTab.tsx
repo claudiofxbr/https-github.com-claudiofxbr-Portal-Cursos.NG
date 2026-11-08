@@ -158,6 +158,7 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
         workloadHours: course.workloadHours || 20,
         totalLessons,
         completedLessons: completedCount,
+        recommendedBooksCount: course.recommendedBookIds?.length || 0,
         percent,
         isCompleted,
       }
@@ -624,6 +625,11 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
                     <p className="text-sm font-semibold text-white">{item.courseTitle}</p>
                     <p className="text-[11px] text-slate-400">
                       Instrutor: {item.instructorName} • {item.workloadHours}h carga horária
+                      {item.recommendedBooksCount > 0 && (
+                        <span className="text-purple-300 font-medium ml-1.5">
+                          • 📚 {item.recommendedBooksCount} obra(s) recomendada(s)
+                        </span>
+                      )}
                     </p>
                   </div>
                   {item.isCompleted ? (
