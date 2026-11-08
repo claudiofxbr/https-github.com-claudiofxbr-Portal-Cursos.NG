@@ -20,6 +20,7 @@ import {
   PlayCircle,
   FolderDown,
   User,
+  DollarSign,
 } from 'lucide-react'
 
 interface AlunoInicioOverviewProps {
@@ -38,6 +39,7 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
     studentSupportTickets,
     grades,
     attendance,
+    charges,
   } = usePortal()
 
   const currentStudent =
@@ -48,6 +50,24 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
     ) || students[0]
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
+  const effectiveCpf = (currentUser?.cpf || currentStudent?.cpf || '').trim()
+  const cleanCpf = effectiveCpf.replace(/\D/g, '')
+
+  // Cobranças do aluno
+  const myCharges = charges.filter((c) => {
+    if (effectiveStudentId && c.studentId === effectiveStudentId) return true
+    if (effectiveCpf && c.studentCpf === effectiveCpf) return true
+    const chgCleanCpf = (c.studentCpf || '').replace(/\D/g, '')
+    if (cleanCpf && chgCleanCpf && cleanCpf === chgCleanCpf) return true
+    if (
+      currentStudent?.fullName &&
+      c.studentName.toLowerCase().trim() === currentStudent.fullName.toLowerCase().trim()
+    ) {
+      return true
+    }
+    return false
+  })
+  const pendingCharges = myCharges.filter((c) => c.status === 'pendente' || c.status === 'atrasado')
 
   // Curso matriculado
   const myCourse =
@@ -224,27 +244,40 @@ export function AlunoInicioOverview({ setActiveTab }: AlunoInicioOverviewProps) 
           </CardContent>
         </Card>
 
-        {/* Card Chamados de Suporte */}
+        {/* Card Financeiro / Mensalidades */}
         <Card className="bg-slate-900/70 border-slate-800 hover:border-slate-700 transition-all">
           <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-xs font-medium text-slate-400">
-              Central de Atendimento
+              Situação Financeira
             </CardTitle>
-            <HelpCircle className="w-4 h-4 text-cyan-400" />
+            <DollarSign className="w-4 h-4 text-emerald-400" />
           </CardHeader>
           <CardContent className="p-4 pt-1 space-y-2">
             <div className="flex items-baseline justify-between">
               <span className="text-2xl font-bold text-white font-mono">
-                {studentSupportTickets.length}
+                {pendingCharges.length}
               </span>
-              <span className="text-[11px] text-slate-400">tickets abertos</span>
+              <Badge
+                variant="outline"
+                className={
+                  pendingCharges.length === 0
+                    ? 'border-emerald-500/30 text-emerald-400 text-[10px]'
+                    : 'border-amber-500/30 text-amber-400 text-[10px]'
+                }
+              >
+                {pendingCharges.length === 0 ? 'Em dia' : 'Pendente(s)'}
+              </Badge>
             </div>
-            <p className="text-[11px] text-slate-400">Secretaria, Financeiro & TI</p>
+            <p className="text-[11px] text-slate-400">
+              {pendingCharges.length === 0
+                ? 'Nenhuma mensalidade em aberto'
+                : 'Mensalidade disponível para pagamento'}
+            </p>
             <button
-              onClick={() => setActiveTab('suporte')}
-              className="text-[11px] text-cyan-400 hover:underline inline-flex items-center gap-1 pt-1"
+              onClick={() => setActiveTab('cobrancas')}
+              className="text-[11px] text-emerald-400 hover:underline inline-flex items-center gap-1 pt-1 font-medium"
             >
-              Abrir novo chamado <ArrowRight className="w-3 h-3" />
+              Pagar ou ver recibos <ArrowRight className="w-3 h-3" />
             </button>
           </CardContent>
         </Card>

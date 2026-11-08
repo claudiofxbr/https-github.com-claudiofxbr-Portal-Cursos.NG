@@ -28,6 +28,7 @@ import {
   Sparkles,
   BookOpen,
   CheckCircle2,
+  DollarSign,
 } from 'lucide-react'
 
 interface AlunoPortalShellProps {
@@ -51,6 +52,7 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
     studentNotifications,
     studentSupportTickets,
     lessonProgress,
+    charges,
   } = usePortal()
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -64,6 +66,25 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
     ) || students[0]
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
+  const effectiveCpf = (currentUser?.cpf || currentStudent?.cpf || '').trim()
+  const cleanCpf = effectiveCpf.replace(/\D/g, '')
+
+  // Cobranças pendentes do aluno
+  const pendingChargesCount = charges.filter((c) => {
+    const isPending = c.status === 'pendente' || c.status === 'atrasado'
+    if (!isPending) return false
+    if (effectiveStudentId && c.studentId === effectiveStudentId) return true
+    if (effectiveCpf && c.studentCpf === effectiveCpf) return true
+    const chgCleanCpf = (c.studentCpf || '').replace(/\D/g, '')
+    if (cleanCpf && chgCleanCpf && cleanCpf === chgCleanCpf) return true
+    if (
+      currentStudent?.fullName &&
+      c.studentName.toLowerCase().trim() === currentStudent.fullName.toLowerCase().trim()
+    ) {
+      return true
+    }
+    return false
+  }).length
 
   // Notificações não lidas
   const unreadCount = studentNotifications.filter(
@@ -92,6 +113,12 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
     },
     { id: 'minhas_notas', label: 'Minhas Notas e Frequência', icon: Award },
     { id: 'biblioteca', label: 'Minha Biblioteca', icon: BookOpen },
+    {
+      id: 'cobrancas',
+      label: 'Minhas Cobranças',
+      icon: DollarSign,
+      badge: pendingChargesCount > 0 ? `${pendingChargesCount} aberta(s)` : undefined,
+    },
     { id: 'perfil', label: 'Meu Perfil', icon: User },
     {
       id: 'suporte',
@@ -279,6 +306,13 @@ export function AlunoPortalShell({ activeTab, setActiveTab, children }: AlunoPor
                 >
                   <Award className="w-3.5 h-3.5 mr-2 text-amber-400" />
                   Boletim / Minhas Notas
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setActiveTab('cobrancas')}
+                  className="cursor-pointer text-xs focus:bg-slate-800 focus:text-white"
+                >
+                  <DollarSign className="w-3.5 h-3.5 mr-2 text-emerald-400" />
+                  Minhas Cobranças & Mensalidades
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => setActiveTab('suporte')}

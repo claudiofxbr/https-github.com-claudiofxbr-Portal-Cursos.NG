@@ -386,6 +386,7 @@ export type StudentPortalTab =
   | 'minhas_notas'
   | 'certificados'
   | 'biblioteca'
+  | 'cobrancas'
   | 'suporte'
 
 export interface Certificate {
