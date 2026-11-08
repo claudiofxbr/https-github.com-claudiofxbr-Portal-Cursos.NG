@@ -3,6 +3,7 @@ import { usePortal } from '@/context/PortalContext'
 import { Student, Charge, StudentDocument, ACADEMIC_RULES } from '@/types/portal'
 import {
   calculateAcademicSummary,
+  calculateConsolidatedAttendance,
   getAcademicStatusBadge,
   getAttendanceBadge,
 } from '@/lib/academicCalculations'
@@ -103,6 +104,9 @@ export function AlunosModule({
     issueCertificate,
     revokeCertificate,
     getStudentCertificates,
+    eadCourses,
+    eadLessons,
+    lessonProgress,
   } = usePortal()
   const { toast } = useToast()
 
@@ -326,17 +330,19 @@ export function AlunosModule({
       overallAverage = Math.round((sumAvg / summaries.length) * 10) / 10
     }
 
-    // % de Frequência acumulada
-    let overallAttendancePercent = 100
-    let totalClasses = 0
-    let totalPresents = 0
-    if (selectedStudentAttendance.length > 0) {
-      totalClasses = selectedStudentAttendance.length
-      totalPresents = selectedStudentAttendance.filter(
-        (a) => a.status === 'presente' || a.status === 'falta_justificada',
-      ).length
-      overallAttendancePercent = Math.round((totalPresents / totalClasses) * 1000) / 10
-    }
+    // Frequência consolidada com EAD
+    const consolidatedAtt = calculateConsolidatedAttendance(
+      viewStudent.id,
+      selectedStudentAttendance,
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      viewStudent.cpf,
+    )
+
+    const overallAttendancePercent = consolidatedAtt.overallAttendancePercent
+    const totalClasses = consolidatedAtt.totalClassesCombined
+    const totalPresents = consolidatedAtt.totalPresentsCombined
 
     // Situação geral MEC: aprovado se média >= 6.0 e frequência >= 75%
     let status: 'aprovado' | 'reprovado' | 'em_curso' = 'em_curso'
@@ -354,8 +360,16 @@ export function AlunosModule({
       totalPresents,
       status,
       hasData: true,
+      consolidatedAtt,
     }
-  }, [viewStudent, selectedStudentGrades, selectedStudentAttendance])
+  }, [
+    viewStudent,
+    selectedStudentGrades,
+    selectedStudentAttendance,
+    eadCourses,
+    eadLessons,
+    lessonProgress,
+  ])
 
   // Filtragem de alunos (busca por nome e CPF normalizado sem pontuação)
   const filteredStudents = useMemo(() => {
@@ -1039,9 +1053,19 @@ export function AlunosModule({
 
                     {/* Frequência Acumulada */}
                     <div className="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between">
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        % Frequência Acumulada
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          % Frequência Acumulada MEC
+                        </span>
+                        {academicConsolidated.consolidatedAtt?.hasEad && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] px-1.5 py-0 border-indigo-500/40 text-indigo-300 bg-indigo-950/30"
+                          >
+                            Presencial + EAD
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-baseline gap-2 mt-1">
                         <span
                           className={`text-2xl font-bold font-mono ${
@@ -1062,9 +1086,36 @@ export function AlunosModule({
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-slate-500 mt-1">
-                        Mínimo legal MEC: {ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%
-                      </span>
+                      {academicConsolidated.consolidatedAtt?.hasEad ? (
+                        <div className="space-y-0.5 mt-1.5 pt-1 border-t border-slate-800/80 text-[10px] text-slate-400">
+                          <div className="flex items-center justify-between">
+                            <span>Chamadas presenciais:</span>
+                            <span className="font-mono text-slate-300">
+                              {academicConsolidated.consolidatedAtt.manualPresents}/
+                              {academicConsolidated.consolidatedAtt.manualClasses} (
+                              {academicConsolidated.consolidatedAtt.manualAttendancePercent}%)
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Aulas EAD concluídas:</span>
+                            <span className="font-mono text-indigo-300">
+                              {academicConsolidated.consolidatedAtt.eadCompletedLessons}/
+                              {academicConsolidated.consolidatedAtt.eadTotalLessons} (
+                              {academicConsolidated.consolidatedAtt.eadAttendancePercent}%)
+                            </span>
+                          </div>
+                          <span
+                            className="text-[9px] text-slate-500 block truncate"
+                            title={academicConsolidated.consolidatedAtt.formulaExplanation}
+                          >
+                            Fórmula MEC: (presenças + EAD concluídas) ÷ total
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 mt-1">
+                          Mínimo legal MEC: {ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT}%
+                        </span>
+                      )}
                     </div>
 
                     {/* Situação Acadêmica Geral */}

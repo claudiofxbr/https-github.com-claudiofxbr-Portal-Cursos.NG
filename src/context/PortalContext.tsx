@@ -54,6 +54,7 @@ import {
   AnyRec,
   parseVideoUrl,
 } from '@/lib/portalDb'
+import { calculateConsolidatedAttendance } from '@/lib/academicCalculations'
 
 interface PortalContextType {
   // Gate
@@ -1503,16 +1504,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     })
     const averageGrade = gradeCount > 0 ? Number((totalGrade / gradeCount).toFixed(1)) : 0
 
-    let totalClasses = 0
-    let attendedClasses = 0
-    studentAttendance.forEach((a) => {
-      totalClasses += a.hours || 1
-      if (a.status === 'presente' || a.status === 'falta_justificada') {
-        attendedClasses += a.hours || 1
-      }
-    })
-    const attendancePercent =
-      totalClasses > 0 ? Number(((attendedClasses / totalClasses) * 100).toFixed(1)) : 100
+    // Frequência consolidada MEC (presenças manuais + videoaulas EAD concluídas)
+    const consolidatedAtt = calculateConsolidatedAttendance(
+      student.id,
+      studentAttendance,
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      student.cpf,
+    )
+    const attendancePercent = consolidatedAtt.overallAttendancePercent
 
     // Critérios MEC: nota >= 6.0 e frequência >= 75%
     const isGradeApproved = averageGrade >= 6.0

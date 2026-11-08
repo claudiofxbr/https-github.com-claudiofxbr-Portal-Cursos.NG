@@ -40,6 +40,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { usePortal } from '@/context/PortalContext'
+import { calculateConsolidatedAttendance } from '@/lib/academicCalculations'
 
 interface StudentGradesAndAttendanceTabProps {
   student: Student
@@ -74,6 +76,7 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
   readOnly = false,
 }) => {
   const { toast } = useToast()
+  const { eadCourses, eadLessons, lessonProgress } = usePortal()
 
   // Permissões:
   // - Lançamento: professor, coordenador, root, admin, secretaria, matricula
@@ -103,6 +106,18 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
 
   // Resumo consolidado por disciplina
   const summaries = calculateAcademicSummary(studentGrades, studentAtt)
+
+  // Frequência global consolidada com o módulo EAD
+  const consolidatedAtt = useMemo(() => {
+    return calculateConsolidatedAttendance(
+      student.id,
+      studentAtt,
+      eadCourses,
+      eadLessons,
+      lessonProgress,
+      student.cpf,
+    )
+  }, [student, studentAtt, eadCourses, eadLessons, lessonProgress])
 
   // Modais de Lançamento / Edição de Nota
   const [gradeModalOpen, setGradeModalOpen] = useState(false)
@@ -433,6 +448,76 @@ export const StudentGradesAndAttendanceTab: React.FC<StudentGradesAndAttendanceT
           </div>
         )}
       </div>
+
+      {/* Painel de Frequência Consolidada MEC (Presencial + EAD) */}
+      {consolidatedAtt.hasEad && (
+        <div className="bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-950 p-3.5 rounded-xl border border-indigo-500/30 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-white font-semibold text-xs flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-indigo-400" />
+                Frequência Consolidada MEC (Presencial + EAD)
+              </span>
+              <Badge
+                className={`text-[10px] font-mono font-bold ${
+                  consolidatedAtt.overallAttendancePercent >=
+                  ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                }`}
+              >
+                {consolidatedAtt.overallAttendancePercent}% Global
+              </Badge>
+            </div>
+            <span className="text-[11px] text-slate-400">
+              {consolidatedAtt.totalPresentsCombined} de {consolidatedAtt.totalClassesCombined}{' '}
+              presenças contabilizadas
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800/60">
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 block">Chamadas Presenciais</span>
+                <span className="text-xs font-semibold text-slate-200">
+                  {consolidatedAtt.manualPresents} de {consolidatedAtt.manualClasses} aulas
+                </span>
+              </div>
+              <span
+                className={`text-sm font-bold font-mono ${
+                  consolidatedAtt.manualAttendancePercent >=
+                  ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                    ? 'text-emerald-400'
+                    : 'text-rose-400'
+                }`}
+              >
+                {consolidatedAtt.manualAttendancePercent}%
+              </span>
+            </div>
+
+            <div className="bg-slate-950/60 p-2.5 rounded-lg border border-indigo-900/40 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-indigo-300 block">Aulas EAD Concluídas</span>
+                <span className="text-xs font-semibold text-slate-200">
+                  {consolidatedAtt.eadCompletedLessons} de {consolidatedAtt.eadTotalLessons} aulas
+                </span>
+              </div>
+              <span
+                className={`text-sm font-bold font-mono ${
+                  consolidatedAtt.eadAttendancePercent >=
+                  ACADEMIC_RULES.MIN_PASSING_ATTENDANCE_PERCENT
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {consolidatedAtt.eadAttendancePercent}%
+              </span>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-400 italic">{consolidatedAtt.formulaExplanation}</p>
+        </div>
+      )}
 
       {/* Visão Consolidada por Disciplina */}
       {summaries.length === 0 ? (

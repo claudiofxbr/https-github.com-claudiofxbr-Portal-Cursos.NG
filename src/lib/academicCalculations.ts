@@ -1,4 +1,114 @@
-import { Grade, AttendanceRecord, SubjectAcademicSummary, ACADEMIC_RULES } from '@/types/portal'
+import {
+  Grade,
+  AttendanceRecord,
+  SubjectAcademicSummary,
+  ACADEMIC_RULES,
+  EadCourse,
+  EadLesson,
+  LessonProgress,
+} from '@/types/portal'
+
+export interface ConsolidatedAttendanceResult {
+  manualClasses: number
+  manualPresents: number
+  manualAbsences: number
+  manualAttendancePercent: number
+  eadEnrolledCoursesCount: number
+  eadTotalLessons: number
+  eadCompletedLessons: number
+  eadAttendancePercent: number
+  hasEad: boolean
+  totalClassesCombined: number
+  totalPresentsCombined: number
+  overallAttendancePercent: number
+  formulaExplanation: string
+}
+
+/**
+ * Calcula a frequência consolidada MEC integrando chamadas manuais/presenciais
+ * e o progresso das videoaulas EAD dos cursos matriculados (enrolledStudentIds).
+ * Fórmula: (presenças manuais + aulas EAD concluídas) / (total de aulas manuais + aulas EAD matriculadas)
+ */
+export function calculateConsolidatedAttendance(
+  studentId: string,
+  attendance: AttendanceRecord[],
+  eadCourses: EadCourse[] = [],
+  eadLessons: EadLesson[] = [],
+  lessonProgress: LessonProgress[] = [],
+  studentCpf?: string,
+): ConsolidatedAttendanceResult {
+  const cleanCpf = studentCpf ? studentCpf.replace(/\D/g, '') : ''
+  const studentAtt = attendance.filter(
+    (a) =>
+      a.studentId === studentId ||
+      (cleanCpf && a.studentCpf && a.studentCpf.replace(/\D/g, '') === cleanCpf),
+  )
+
+  const manualClasses = studentAtt.length
+  const manualPresents = studentAtt.filter(
+    (a) => a.status === 'presente' || a.status === 'falta_justificada',
+  ).length
+  const manualAbsences = studentAtt.filter((a) => a.status === 'falta').length
+  const manualAttendancePercent =
+    manualClasses > 0 ? Math.round((manualPresents / manualClasses) * 1000) / 10 : 100
+
+  // Cursos EAD em que o aluno está matriculado explicitamente
+  const enrolledCourses = eadCourses.filter(
+    (c) => Array.isArray(c.enrolledStudentIds) && c.enrolledStudentIds.includes(studentId),
+  )
+  const enrolledCourseIds = new Set(enrolledCourses.map((c) => c.id))
+
+  // Aulas pertencentes a esses cursos
+  const relevantLessons = eadLessons.filter((l) => enrolledCourseIds.has(l.eadCourseId))
+  const eadTotalLessons = relevantLessons.length
+
+  // Progresso do aluno com status 'concluido' para aulas dos cursos matriculados
+  let eadCompletedLessons = 0
+  if (eadTotalLessons > 0) {
+    const completedLessonIds = new Set(
+      lessonProgress
+        .filter((p) => p.studentId === studentId && p.status === 'concluido')
+        .map((p) => p.lessonId),
+    )
+    relevantLessons.forEach((l) => {
+      if (completedLessonIds.has(l.id)) {
+        eadCompletedLessons += 1
+      }
+    })
+  }
+
+  const hasEad = eadTotalLessons > 0
+  const eadAttendancePercent =
+    eadTotalLessons > 0 ? Math.round((eadCompletedLessons / eadTotalLessons) * 1000) / 10 : 100
+
+  const totalClassesCombined = manualClasses + eadTotalLessons
+  const totalPresentsCombined = manualPresents + eadCompletedLessons
+
+  const overallAttendancePercent =
+    totalClassesCombined > 0
+      ? Math.round((totalPresentsCombined / totalClassesCombined) * 1000) / 10
+      : manualAttendancePercent
+
+  const formulaExplanation = hasEad
+    ? `(${manualPresents} presenças presenciais + ${eadCompletedLessons} aulas EAD concluídas) ÷ (${manualClasses} aulas presenciais + ${eadTotalLessons} aulas EAD matriculadas) = ${overallAttendancePercent}%`
+    : `${manualPresents} presenças presenciais ÷ ${manualClasses} aulas presenciais = ${overallAttendancePercent}%`
+
+  return {
+    manualClasses,
+    manualPresents,
+    manualAbsences,
+    manualAttendancePercent,
+    eadEnrolledCoursesCount: enrolledCourses.length,
+    eadTotalLessons,
+    eadCompletedLessons,
+    eadAttendancePercent,
+    hasEad,
+    totalClassesCombined,
+    totalPresentsCombined,
+    overallAttendancePercent,
+    formulaExplanation,
+  }
+}
 
 /**
  * Calcula o resumo consolidado por disciplina para um aluno
