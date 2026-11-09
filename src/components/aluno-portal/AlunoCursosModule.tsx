@@ -40,6 +40,7 @@ import {
   Download,
 } from 'lucide-react'
 import { AlunoEadCourseView } from '@/components/aluno-portal/AlunoEadCourseView'
+import { EadCourseViewErrorBoundary } from '@/components/aluno-portal/EadCourseViewErrorBoundary'
 import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
 import { generateCourseOfflineKitPdf } from '@/lib/eadOfflineKitPdfExport'
 import {
@@ -99,11 +100,14 @@ export function AlunoCursosModule({
     }
   }, [initialEadCourseId])
 
+  // E-mail lido de forma defensiva: registro de aluno sem e-mail não pode
+  // derrubar a montagem da view (era uma das exceções do bug do player EAD).
+  const safeEmail = (v?: string | null): string => (typeof v === 'string' ? v.toLowerCase() : '')
   const currentStudent =
     students.find(
       (s) =>
         (currentUser?.studentId && s.id === currentUser.studentId) ||
-        (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
+        (!!currentUser?.email && safeEmail(s.email) === currentUser.email.toLowerCase()),
     ) || students[0]
 
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
@@ -457,44 +461,54 @@ export function AlunoCursosModule({
       )
     }
 
-    // Caso 4: Acesso autorizado ao curso EAD
+    // Caso 4: Acesso autorizado ao curso EAD — envolto em error boundary local:
+    // qualquer exceção (aula malformada, vídeo quebrado) mantém o aluno logado
+    // em Meus Cursos com mensagem institucional, nunca caindo no portão.
     if (selectedEadCourse) {
       return (
-        <AlunoEadCourseView
-          course={selectedEadCourse}
-          lessons={selectedEadLessons}
-          lessonProgress={lessonProgress}
-          materials={eadMaterials}
-          studentId={effectiveStudentId}
-          initialLessonId={initialEadLessonId}
-          onNavigateToBiblioteca={onNavigateToBiblioteca}
-          onToggleLessonProgress={async (
-            lessonId,
-            completed,
-            courseId,
-            moduleName,
-            lessonTitle,
-          ) => {
-            // Revalidação estrita antes de registrar
-            if (!eligibility.canToggleProgress) {
-              return
-            }
-            await updateLessonProgress(
-              lessonId,
-              {
-                status: completed ? 'concluido' : 'em_andamento',
-                completedAt: completed ? new Date().toISOString() : undefined,
-              },
-              courseId,
-              moduleName,
-              lessonTitle,
-            )
-          }}
+        <EadCourseViewErrorBoundary
+          courseTitle={selectedEadCourse.title}
           onBackToList={() => {
             setActiveEadCourseId(null)
             if (onClearInitialEadCourseId) onClearInitialEadCourseId()
           }}
-        />
+        >
+          <AlunoEadCourseView
+            course={selectedEadCourse}
+            lessons={selectedEadLessons}
+            lessonProgress={lessonProgress}
+            materials={eadMaterials}
+            studentId={effectiveStudentId}
+            initialLessonId={initialEadLessonId}
+            onNavigateToBiblioteca={onNavigateToBiblioteca}
+            onToggleLessonProgress={async (
+              lessonId,
+              completed,
+              courseId,
+              moduleName,
+              lessonTitle,
+            ) => {
+              // Revalidação estrita antes de registrar
+              if (!eligibility.canToggleProgress) {
+                return
+              }
+              await updateLessonProgress(
+                lessonId,
+                {
+                  status: completed ? 'concluido' : 'em_andamento',
+                  completedAt: completed ? new Date().toISOString() : undefined,
+                },
+                courseId,
+                moduleName,
+                lessonTitle,
+              )
+            }}
+            onBackToList={() => {
+              setActiveEadCourseId(null)
+              if (onClearInitialEadCourseId) onClearInitialEadCourseId()
+            }}
+          />
+        </EadCourseViewErrorBoundary>
       )
     }
   }

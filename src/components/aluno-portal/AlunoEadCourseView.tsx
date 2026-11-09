@@ -66,20 +66,24 @@ export function AlunoEadCourseView({
 }: AlunoEadCourseViewProps) {
   const { libraryBooks, students, currentUser } = usePortal()
 
+  // E-mail lido de forma defensiva: registro sem e-mail (ou malformado) não pode
+  // lançar exceção na montagem da view e desmontar o portal até o portão.
+  const safeEmail = (v?: string | null): string => (typeof v === 'string' ? v.toLowerCase() : '')
   const currentStudent =
     students.find(
       (s) =>
         (currentUser?.studentId && s.id === currentUser.studentId) ||
-        (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (!!currentUser?.email && safeEmail(s.email) === currentUser.email.toLowerCase()) ||
         s.id === studentId,
     ) ||
     students.find((s) => s.id === studentId) ||
     students[0]
 
-  // Ordena aulas pela ordem cadastrada
+  // Ordena aulas pela ordem cadastrada (prop nunca deve ser undefined/null)
+  const safeLessons = Array.isArray(lessons) ? lessons : []
   const sortedLessons = useMemo(() => {
-    return [...lessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-  }, [lessons])
+    return [...safeLessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+  }, [safeLessons])
 
   const { toast } = useToast()
   const [activeLessonId, setActiveLessonId] = useState<string>(() => {

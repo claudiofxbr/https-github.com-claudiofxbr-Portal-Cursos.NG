@@ -21,14 +21,13 @@ export function AlunoPortalMaster() {
   const [targetBibliotecaSearch, setTargetBibliotecaSearch] = useState<string>('')
 
   const handleOpenEadCourse = (courseId?: string | null, lessonId?: string | null) => {
-    if (courseId) {
-      setTargetEadCourseId(courseId)
-    }
-    if (lessonId) {
-      setTargetEadLessonId(lessonId)
-    } else {
-      setTargetEadLessonId(null)
-    }
+    // Defensivo: notificações/atalhos podem chegar com IDs vazios ou malformados
+    // (ex.: aula removida do banco). Nesse caso abre a lista "Meus Cursos"
+    // normalmente, mantendo o aluno logado — nunca uma exceção até o portão.
+    const cleanCourseId = typeof courseId === 'string' && courseId.trim() ? courseId.trim() : null
+    const cleanLessonId = typeof lessonId === 'string' && lessonId.trim() ? lessonId.trim() : null
+    setTargetEadCourseId(cleanCourseId)
+    setTargetEadLessonId(cleanLessonId)
     setActiveTab('cursos')
   }
 
