@@ -343,6 +343,9 @@ export interface LessonProgress {
   status: LessonStatus
   completedAt?: string
   lastWatchedSeconds: number
+  videoUrl?: string
+  videoProvider?: 'youtube' | 'vimeo' | 'mp4' | 'outro'
+  videoEmbedId?: string
   created?: string
   updated?: string
 }

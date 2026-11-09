@@ -26,6 +26,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { LessonProgress } from '@/types/portal'
+import { VideoPlayerEmbed } from '@/components/ead/VideoPlayerEmbed'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -49,6 +50,89 @@ import {
   isEadCourseActive,
 } from '@/lib/eadAccessValidator'
 import { useToast } from '@/hooks/use-toast'
+
+// Aulas de fallback do curso de graduação (Engenharia de Software). Usadas quando o
+// aluno ainda não tem registros em lesson_progress, para que a grade do curso
+// continue exibível (com player real) mesmo sem progresso salvo no banco.
+const STATIC_ENGSOFT_LESSONS: Omit<LessonProgress, 'id' | 'studentId' | 'courseId'>[] = [
+  {
+    moduleName: 'Módulo 1: Fundamentos de Arquitetura em Nuvem',
+    lessonId: 'engsoft-m1-l1',
+    lessonTitle: 'Aula 01: Introdução aos Princípios Cloud Native e 12-Factor Apps',
+    durationMinutes: 45,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=Wvf0mBNGjXY',
+    videoEmbedId: 'Wvf0mBNGjXY',
+  },
+  {
+    moduleName: 'Módulo 1: Fundamentos de Arquitetura em Nuvem',
+    lessonId: 'engsoft-m1-l2',
+    lessonTitle: 'Aula 02: Contêineres com Docker e Orquestração com Kubernetes',
+    durationMinutes: 60,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=fqMOX6JJhGo',
+    videoEmbedId: 'fqMOX6JJhGo',
+  },
+  {
+    moduleName: 'Módulo 2: Microsserviços e Mensageria',
+    lessonId: 'engsoft-m2-l1',
+    lessonTitle: 'Aula 03: Padrões de Comunicação Síncrona vs Assíncrona (RabbitMQ / Kafka)',
+    durationMinutes: 55,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=xy6jNKI3tKU',
+    videoEmbedId: 'xy6jNKI3tKU',
+  },
+  {
+    moduleName: 'Módulo 2: Microsserviços e Mensageria',
+    lessonId: 'engsoft-m2-l2',
+    lessonTitle: 'Aula 04: Service Mesh, API Gateways e Resiliência (Circuit Breakers)',
+    durationMinutes: 50,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=kyNL7yCvQQc',
+    videoEmbedId: 'kyNL7yCvQQc',
+  },
+  {
+    moduleName: 'Módulo 3: Engenharia de Software Moderna & DevOps',
+    lessonId: 'engsoft-m3-l1',
+    lessonTitle: 'Aula 05: Pipelines CI/CD com GitHub Actions e Deploy Automatizado',
+    durationMinutes: 65,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=j5Zsa_eOXeY',
+    videoEmbedId: 'j5Zsa_eOXeY',
+  },
+  {
+    moduleName: 'Módulo 3: Engenharia de Software Moderna & DevOps',
+    lessonId: 'engsoft-m3-l2',
+    lessonTitle: 'Aula 06: Observabilidade: Logs Estruturados, Métricas e Traces com OpenTelemetry',
+    durationMinutes: 40,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=gyzBTOgGKTI',
+    videoEmbedId: 'gyzBTOgGKTI',
+  },
+  {
+    moduleName: 'Módulo 4: Qualidade e Testes de Software',
+    lessonId: 'engsoft-m4-l1',
+    lessonTitle: 'Aula 07: Estratégias de Testes: Unitários, Integração e Mutação',
+    durationMinutes: 50,
+    status: 'nao_iniciado',
+    lastWatchedSeconds: 0,
+    videoProvider: 'youtube',
+    videoUrl: 'https://www.youtube.com/watch?v=jydYq7oAtD8',
+    videoEmbedId: 'jydYq7oAtD8',
+  },
+]
 
 export interface AlunoCursosModuleProps {
   initialEadCourseId?: string | null
@@ -150,85 +234,26 @@ export function AlunoCursosModule({
   const activeCourse =
     courses.find((c) => c.id === (selectedCourseId || enrolledCourse?.id)) || enrolledCourse
 
-  // Aulas e progresso do aluno para o curso ativo
+  // Aulas e progresso do aluno para o curso ativo. Aceita também o courseId legado
+  // 'crs-eng-soft' (registros antigos de seed) para não perder o progresso salvo.
   const studentLessons = lessonProgress.filter(
-    (p) => p.studentId === effectiveStudentId && (!p.courseId || p.courseId === activeCourse?.id),
+    (p) =>
+      p.studentId === effectiveStudentId &&
+      (!p.courseId ||
+        p.courseId === activeCourse?.id ||
+        (activeCourse?.code === 'ENG-SOFT-01' && p.courseId === 'crs-eng-soft')),
   )
 
   // Se a lista de progresso estiver vazia, cria uma lista padrão para exibir a grade
   const displayLessons: LessonProgress[] =
     studentLessons.length > 0
       ? studentLessons
-      : [
-          {
-            id: 'lp-1',
-            studentId: effectiveStudentId,
-            courseId: activeCourse?.id || 'crs-eng-soft',
-            moduleName: 'Módulo 1: Fundamentos de Arquitetura Limpa',
-            lessonId: 'aula-1',
-            lessonTitle: 'Aula 01: Introdução aos Padrões SOLID e Coesão',
-            durationMinutes: 45,
-            status: 'concluido',
-            completedAt: '2026-03-01 10:30',
-            lastWatchedSeconds: 2700,
-          },
-          {
-            id: 'lp-2',
-            studentId: effectiveStudentId,
-            courseId: activeCourse?.id || 'crs-eng-soft',
-            moduleName: 'Módulo 1: Fundamentos de Arquitetura Limpa',
-            lessonId: 'aula-2',
-            lessonTitle: 'Aula 02: Inversão de Dependências na Prática com TS',
-            durationMinutes: 50,
-            status: 'concluido',
-            completedAt: '2026-03-03 14:15',
-            lastWatchedSeconds: 3000,
-          },
-          {
-            id: 'lp-3',
-            studentId: effectiveStudentId,
-            courseId: activeCourse?.id || 'crs-eng-soft',
-            moduleName: 'Módulo 2: Modelagem de Domínio & Bancos',
-            lessonId: 'aula-3',
-            lessonTitle: 'Aula 03: Entidades, Value Objects e Migrações SQL',
-            durationMinutes: 40,
-            status: 'em_andamento',
-            lastWatchedSeconds: 1200,
-          },
-          {
-            id: 'lp-4',
-            studentId: effectiveStudentId,
-            courseId: activeCourse?.id || 'crs-eng-soft',
-            moduleName: 'Módulo 2: Modelagem de Domínio & Bancos',
-            lessonId: 'aula-4',
-            lessonTitle: 'Aula 04: Estratégias de Indexação e Consistência Transacional',
-            durationMinutes: 55,
-            status: 'nao_iniciado',
-            lastWatchedSeconds: 0,
-          },
-          {
-            id: 'lp-5',
-            studentId: effectiveStudentId,
-            courseId: activeCourse?.id || 'crs-eng-soft',
-            moduleName: 'Módulo 3: Testes de Software & Segurança Web',
-            lessonId: 'aula-5',
-            lessonTitle: 'Aula 05: Testes Unitários e Integração com Vitest',
-            durationMinutes: 60,
-            status: 'nao_iniciado',
-            lastWatchedSeconds: 0,
-          },
-          {
-            id: 'lp-6',
-            studentId: effectiveStudentId,
-            courseId: activeCourse?.id || 'crs-eng-soft',
-            moduleName: 'Módulo 3: Testes de Software & Segurança Web',
-            lessonId: 'aula-6',
-            lessonTitle: 'Aula 06: Autenticação JWT, RBAC e Prevenção de XSS/CSRF',
-            durationMinutes: 45,
-            status: 'nao_iniciado',
-            lastWatchedSeconds: 0,
-          },
-        ]
+      : STATIC_ENGSOFT_LESSONS.map((base, idx) => ({
+          ...base,
+          id: `lp-fallback-${idx + 1}`,
+          studentId: effectiveStudentId,
+          courseId: activeCourse?.id || 'crs-eng-soft',
+        }))
 
   // Filtro de busca de aulas
   const filteredLessons = displayLessons.filter(
@@ -1068,22 +1093,15 @@ export function AlunoCursosModule({
               </DialogDescription>
             </DialogHeader>
 
-            {/* Simulação de Player de Vídeo Profissional */}
-            <div className="relative aspect-video rounded-xl bg-slate-950 border border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
-              <div className="w-16 h-16 rounded-full bg-blue-600/30 border border-blue-500/50 flex items-center justify-center text-blue-400 mb-3 shadow-lg cursor-pointer hover:scale-105 transition-transform">
-                <PlayCircle className="w-10 h-10" />
-              </div>
-              <p className="text-sm font-semibold text-white">
-                Transmissão em Alta Definição (1080p)
-              </p>
-              <p className="text-xs text-slate-400 max-w-sm mt-1">
-                Aula gravada pelo corpo docente da coordenação pedagógica. Material de apoio
-                disponível na aba Materiais.
-              </p>
-              <div className="absolute bottom-2 left-4 right-4 flex items-center justify-between text-[11px] text-slate-400">
-                <span>00:00 / {activeLessonModal.durationMinutes}:00</span>
-                <span className="text-emerald-400">● Servidor CDN Ativo</span>
-              </div>
+            {/* Player de vídeo real (mesmo player dos cursos EAD) */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl p-2">
+              <VideoPlayerEmbed
+                videoUrl={activeLessonModal.videoUrl}
+                videoProvider={activeLessonModal.videoProvider}
+                videoEmbedId={activeLessonModal.videoEmbedId}
+                title={activeLessonModal.lessonTitle}
+                autoPlay={false}
+              />
             </div>
 
             {/* Ações dentro do modal */}

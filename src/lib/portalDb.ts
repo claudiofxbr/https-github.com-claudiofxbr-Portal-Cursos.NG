@@ -635,6 +635,9 @@ export function mapLessonProgress(rec: AnyRec): LessonProgress {
     status: str(rec.status, 'nao_iniciado') as LessonProgress['status'],
     completedAt: str(rec.completedAt) || undefined,
     lastWatchedSeconds: num(rec.lastWatchedSeconds, 0),
+    videoUrl: str(rec.videoUrl) || undefined,
+    videoProvider: (str(rec.videoProvider) || 'youtube') as LessonProgress['videoProvider'],
+    videoEmbedId: str(rec.videoEmbedId) || undefined,
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -2164,6 +2167,9 @@ export const portalDb = {
         if (updates.completedAt !== undefined) payload.completedAt = updates.completedAt
         if (updates.lastWatchedSeconds !== undefined)
           payload.lastWatchedSeconds = updates.lastWatchedSeconds
+        if (updates.videoUrl !== undefined) payload.videoUrl = updates.videoUrl
+        if (updates.videoProvider !== undefined) payload.videoProvider = updates.videoProvider
+        if (updates.videoEmbedId !== undefined) payload.videoEmbedId = updates.videoEmbedId
 
         if (recId) {
           const updatedRec = await pb.collection(COLLECTIONS.lessonProgress).update(recId, payload)
