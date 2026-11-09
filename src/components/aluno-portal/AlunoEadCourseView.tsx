@@ -25,9 +25,11 @@ import {
   Lock,
   Library,
   ArrowRight,
+  Download,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { usePortal } from '@/context/PortalContext'
+import { generateLessonOfflineKitPdf } from '@/lib/eadOfflineKitPdfExport'
 
 interface AlunoEadCourseViewProps {
   course: EadCourse
@@ -62,7 +64,18 @@ export function AlunoEadCourseView({
   onBackToList,
   onNavigateToBiblioteca,
 }: AlunoEadCourseViewProps) {
-  const { libraryBooks } = usePortal()
+  const { libraryBooks, students, currentUser } = usePortal()
+
+  const currentStudent =
+    students.find(
+      (s) =>
+        (currentUser?.studentId && s.id === currentUser.studentId) ||
+        (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()) ||
+        s.id === studentId,
+    ) ||
+    students.find((s) => s.id === studentId) ||
+    students[0]
+
   // Ordena aulas pela ordem cadastrada
   const sortedLessons = useMemo(() => {
     return [...lessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
@@ -160,6 +173,87 @@ export function AlunoEadCourseView({
     const prog = progressMap.get(activeLesson.id)
     return prog?.status === 'concluido'
   }, [activeLesson, progressMap])
+
+  const handleDownloadLessonKit = () => {
+    if (!canToggleProgress) {
+      toast({
+        title: 'Download bloqueado',
+        description:
+          suspensionNotice ||
+          'O download de kits de estudo offline está bloqueado para matrículas com pendências cadastrais ou financeiras.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!activeLesson) {
+      toast({
+        title: 'Aula não encontrada',
+        description: 'Selecione uma aula válida para gerar o kit de estudo.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      generateLessonOfflineKitPdf({
+        course,
+        lesson: activeLesson,
+        lessonIndex: activeLessonIndex,
+        materials: activeLessonMaterials,
+        recommendedBooks,
+        student: currentStudent,
+        generatedBy: 'Portal do Aluno • AVA PortalCursos.NG',
+      })
+      toast({
+        title: 'Kit de Estudo da Aula gerado',
+        description: 'O PDF institucional foi aberto para visualização e impressão.',
+      })
+    } catch {
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível gerar o kit de estudo offline. Tente novamente.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleOpenMaterial = (url?: string, title?: string, isPdf?: boolean) => {
+    const cleanUrl = url?.trim()
+    if (!cleanUrl || cleanUrl === '#' || cleanUrl.toLowerCase().startsWith('javascript:')) {
+      toast({
+        title: 'Material sem link cadastrado',
+        description: `O material "${title || 'selecionado'}" ainda não possui URL de download válida configurada pelo professor.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      const opened = window.open(cleanUrl, '_blank', 'noopener,noreferrer')
+      if (!opened) {
+        toast({
+          title: 'Bloqueador de pop-ups ativo',
+          description: 'Autorize pop-ups para abrir e salvar o material de estudo offline.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      toast({
+        title: isPdf ? 'Abrindo PDF para download' : 'Abrindo material complementar',
+        description: isPdf
+          ? 'O documento foi aberto em nova aba. Você pode salvá-lo (Ctrl+S / Download) para estudar offline.'
+          : 'O material foi aberto em nova aba para consulta offline.',
+      })
+    } catch {
+      toast({
+        title: 'Erro ao abrir material',
+        description: 'Não foi possível abrir o link do material.',
+        variant: 'destructive',
+      })
+    }
+  }
 
   const handleToggleCurrent = async () => {
     if (!activeLesson) return
@@ -419,12 +513,27 @@ export function AlunoEadCourseView({
                         </Badge>
                       </div>
 
-                      {/* Aviso explicativo de que material não afeta progresso nem frequência MEC */}
-                      <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                        <Info className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                        Leitura opcional: o progresso é registrado apenas pelo botão de conclusão da
-                        aula
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Botão de Kit de Estudo da Aula em PDF */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleDownloadLessonKit}
+                          disabled={!canToggleProgress}
+                          className="h-7 px-2.5 text-xs font-medium border-indigo-500/40 text-indigo-300 bg-indigo-950/30 hover:bg-indigo-900/50 hover:text-white transition-all gap-1.5 shadow-sm"
+                          title="Baixar PDF A4 institucional com roteiro, materiais, bibliografia e linhas de anotação"
+                        >
+                          <Download className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Baixar Kit de Estudo da Aula (PDF)</span>
+                        </Button>
+
+                        {/* Aviso explicativo de que material não afeta progresso nem frequência MEC */}
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <Info className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                          Leitura opcional: o progresso é registrado apenas pelo botão de conclusão
+                          da aula
+                        </span>
+                      </div>
                     </div>
 
                     {activeLessonMaterials.length === 0 ? (
@@ -503,15 +612,31 @@ export function AlunoEadCourseView({
                                 )}
                               </div>
 
-                              <a
-                                href={mat.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center justify-center gap-1.5 w-full text-xs font-medium px-3 py-1.5 rounded-md bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 transition-all"
-                              >
-                                <span>Acessar Material</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
+                              <div className="space-y-1.5">
+                                {mat.type === 'pdf' && (
+                                  <p className="text-[10px] text-emerald-400/90 flex items-center gap-1">
+                                    <Download className="w-3 h-3 text-emerald-400 shrink-0" />
+                                    <span>Arquivo PDF: pronto para salvar no seu dispositivo</span>
+                                  </p>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleOpenMaterial(mat.url, mat.title, mat.type === 'pdf')
+                                  }
+                                  className="inline-flex items-center justify-center gap-1.5 w-full text-xs font-semibold px-3 py-2 rounded-md bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-200 border border-indigo-500/40 hover:border-indigo-400 transition-all cursor-pointer shadow-sm group"
+                                  title={
+                                    mat.type === 'pdf'
+                                      ? 'Abrir PDF em nova aba para salvar offline'
+                                      : 'Abrir material para estudar offline'
+                                  }
+                                >
+                                  <Download className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
+                                  <span>Baixar para estudar offline</span>
+                                  <ExternalLink className="w-3 h-3 text-indigo-400/70 ml-0.5" />
+                                </button>
+                              </div>
                             </div>
                           )
                         })}

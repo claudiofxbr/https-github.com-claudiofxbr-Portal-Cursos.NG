@@ -41,11 +41,13 @@ import {
 } from 'lucide-react'
 import { AlunoEadCourseView } from '@/components/aluno-portal/AlunoEadCourseView'
 import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
+import { generateCourseOfflineKitPdf } from '@/lib/eadOfflineKitPdfExport'
 import {
   checkEadEligibility,
   checkEadCourseAccess,
   isEadCourseActive,
 } from '@/lib/eadAccessValidator'
+import { useToast } from '@/hooks/use-toast'
 
 export interface AlunoCursosModuleProps {
   initialEadCourseId?: string | null
@@ -76,7 +78,10 @@ export function AlunoCursosModule({
     issueEadCertificate,
   } = usePortal()
 
+  const { toast } = useToast()
+  const { libraryBooks } = usePortal()
   const [generatingEadCertCourseId, setGeneratingEadCertCourseId] = useState<string | null>(null)
+  const [generatingCourseKitId, setGeneratingCourseKitId] = useState<string | null>(null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCourseId, setSelectedCourseId] = useState<string>('')
@@ -719,19 +724,89 @@ export function AlunoCursosModule({
                         )
                       })()}
 
-                    <Button
-                      size="sm"
-                      onClick={() => handleSelectEadCourse(eadCourse.id)}
-                      className={`w-full text-xs font-semibold gap-1.5 shadow-sm text-white ${
-                        isCourseCompleted
-                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                          : 'bg-indigo-600 hover:bg-indigo-500'
-                      }`}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      {isCourseCompleted ? 'Rever Aulas' : 'Assistir Aulas'} ({courseLessons.length}
-                      )
-                    </Button>
+                    <div className="space-y-2 pt-1">
+                      {/* Botão Kit de Estudo do Curso (PDF) para estudo offline */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!eligibility.isEligibleToStudy) {
+                            toast({
+                              title: 'Download indisponível',
+                              description:
+                                eligibility.reasonMessage ||
+                                'O kit de estudo offline não está disponível para matrículas suspensas ou trancadas.',
+                              variant: 'destructive',
+                            })
+                            return
+                          }
+
+                          try {
+                            setGeneratingCourseKitId(eadCourse.id)
+                            const courseRecommendedBooks = (eadCourse.recommendedBookIds || [])
+                              .map((bookId) => libraryBooks.find((b) => b.id === bookId))
+                              .filter((b): b is NonNullable<typeof b> => Boolean(b))
+
+                            generateCourseOfflineKitPdf({
+                              course: eadCourse,
+                              lessons: courseLessons,
+                              materials: eadMaterials,
+                              recommendedBooks: courseRecommendedBooks,
+                              student: currentStudent,
+                              generatedBy: 'Portal do Aluno • AVA PortalCursos.NG',
+                            })
+
+                            toast({
+                              title: 'Kit de Estudo do Curso gerado',
+                              description:
+                                'O PDF completo com todas as aulas e materiais foi gerado para estudo offline.',
+                            })
+                          } catch {
+                            toast({
+                              title: 'Erro ao gerar PDF',
+                              description:
+                                'Não foi possível gerar o kit de estudo do curso. Tente novamente.',
+                              variant: 'destructive',
+                            })
+                          } finally {
+                            setGeneratingCourseKitId(null)
+                          }
+                        }}
+                        disabled={
+                          !eligibility.isEligibleToStudy || generatingCourseKitId === eadCourse.id
+                        }
+                        className="w-full text-xs font-medium border-indigo-500/30 text-indigo-300 bg-indigo-950/20 hover:bg-indigo-900/40 hover:text-white transition-all gap-1.5 shadow-sm h-8"
+                        title={
+                          eligibility.isEligibleToStudy
+                            ? 'Baixar Kit de Estudo do Curso em PDF (roteiro completo, materiais, bibliografia e linhas de anotação)'
+                            : eligibility.reasonMessage ||
+                              'Download bloqueado para este status de matrícula'
+                        }
+                      >
+                        <Download className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>
+                          {generatingCourseKitId === eadCourse.id
+                            ? 'Gerando Kit...'
+                            : 'Kit de Estudo do Curso (PDF)'}
+                        </span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        onClick={() => handleSelectEadCourse(eadCourse.id)}
+                        className={`w-full text-xs font-semibold gap-1.5 shadow-sm text-white ${
+                          isCourseCompleted
+                            ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                            : 'bg-indigo-600 hover:bg-indigo-500'
+                        }`}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        {isCourseCompleted ? 'Rever Aulas' : 'Assistir Aulas'} (
+                        {courseLessons.length})
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )
