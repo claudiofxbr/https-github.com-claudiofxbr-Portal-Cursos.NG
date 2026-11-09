@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 import { AlunoEadCourseView } from '@/components/aluno-portal/AlunoEadCourseView'
 import { EadCourseViewErrorBoundary } from '@/components/aluno-portal/EadCourseViewErrorBoundary'
+import { InstitutionalErrorBoundary } from '@/components/common/InstitutionalErrorBoundary'
 import { generateEadCertificatePdf } from '@/lib/eadCertificatePdfExport'
 import { generateCourseOfflineKitPdf } from '@/lib/eadOfflineKitPdfExport'
 import {
@@ -118,8 +119,9 @@ const STATIC_ENGSOFT_LESSONS: Omit<LessonProgress, 'id' | 'studentId' | 'courseI
     status: 'nao_iniciado',
     lastWatchedSeconds: 0,
     videoProvider: 'youtube',
-    videoUrl: 'https://www.youtube.com/watch?v=gyzBTOgGKTI',
-    videoEmbedId: 'gyzBTOgGKTI',
+    // ID validado via oEmbed do YouTube (o anterior, gyzBTOgGKTI, foi removido do ar)
+    videoUrl: 'https://www.youtube.com/watch?v=CB2nEcnBBcE',
+    videoEmbedId: 'CB2nEcnBBcE',
   },
   {
     moduleName: 'Módulo 4: Qualidade e Testes de Software',
@@ -183,6 +185,14 @@ export function AlunoCursosModule({
       setActiveEadCourseId(initialEadCourseId)
     }
   }, [initialEadCourseId])
+
+  // Fecha a view de curso EAD (voltando à lista) limpando também a sessão de reload
+  // (o AlunoPortalMaster limpa o sessionStorage correspondente)
+  const closeEadCourseView = () => {
+    setActiveEadCourseId(null)
+    setAccessErrorMessage(null)
+    if (onClearInitialEadCourseId) onClearInitialEadCourseId()
+  }
 
   // E-mail lido de forma defensiva: registro de aluno sem e-mail não pode
   // derrubar a montagem da view (era uma das exceções do bug do player EAD).
@@ -417,10 +427,7 @@ export function AlunoCursosModule({
               </p>
             </div>
             <Button
-              onClick={() => {
-                setActiveEadCourseId(null)
-                setAccessErrorMessage(null)
-              }}
+              onClick={closeEadCourseView}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
             >
               Voltar para Meus Cursos
@@ -445,10 +452,7 @@ export function AlunoCursosModule({
               </p>
             </div>
             <Button
-              onClick={() => {
-                setActiveEadCourseId(null)
-                setAccessErrorMessage(null)
-              }}
+              onClick={closeEadCourseView}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
             >
               Voltar para Meus Cursos
@@ -473,10 +477,7 @@ export function AlunoCursosModule({
               </p>
             </div>
             <Button
-              onClick={() => {
-                setActiveEadCourseId(null)
-                setAccessErrorMessage(null)
-              }}
+              onClick={closeEadCourseView}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
             >
               Voltar para Meus Cursos
@@ -493,10 +494,7 @@ export function AlunoCursosModule({
       return (
         <EadCourseViewErrorBoundary
           courseTitle={selectedEadCourse.title}
-          onBackToList={() => {
-            setActiveEadCourseId(null)
-            if (onClearInitialEadCourseId) onClearInitialEadCourseId()
-          }}
+          onBackToList={closeEadCourseView}
         >
           <AlunoEadCourseView
             course={selectedEadCourse}
@@ -528,10 +526,7 @@ export function AlunoCursosModule({
                 lessonTitle,
               )
             }}
-            onBackToList={() => {
-              setActiveEadCourseId(null)
-              if (onClearInitialEadCourseId) onClearInitialEadCourseId()
-            }}
+            onBackToList={closeEadCourseView}
           />
         </EadCourseViewErrorBoundary>
       )
@@ -540,6 +535,29 @@ export function AlunoCursosModule({
 
   const handleSelectEadCourse = (courseId: string) => {
     setActiveEadCourseId(courseId)
+  }
+
+  // Abertura do player da grade de graduação, blindada contra dados malformados:
+  // aula sem ID/título/vídeo válido abre aviso institucional em vez de exceção.
+  const handleOpenGraduationLesson = (lesson: LessonProgress) => {
+    if (!lesson || typeof lesson !== 'object') {
+      toast({
+        title: 'Aula indisponível',
+        description:
+          'Não foi possível identificar a aula selecionada. Atualize a página ou contate o suporte.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!lesson.videoUrl && !lesson.videoEmbedId) {
+      toast({
+        title: 'Vídeo não cadastrado',
+        description: `A aula "${lesson.lessonTitle || 'selecionada'}" ainda não possui videoaula publicada. Contate a secretaria acadêmica.`,
+        variant: 'destructive',
+      })
+      return
+    }
+    setActiveLessonModal(lesson)
   }
 
   return (
@@ -995,7 +1013,7 @@ export function AlunoCursosModule({
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <h4
-                                onClick={() => setActiveLessonModal(lesson)}
+                                onClick={() => handleOpenGraduationLesson(lesson)}
                                 className="text-sm font-medium text-white hover:text-blue-400 cursor-pointer"
                               >
                                 {lesson.lessonTitle}
@@ -1054,7 +1072,7 @@ export function AlunoCursosModule({
 
                           <Button
                             size="sm"
-                            onClick={() => setActiveLessonModal(lesson)}
+                            onClick={() => handleOpenGraduationLesson(lesson)}
                             className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5"
                           >
                             <PlayCircle className="w-3.5 h-3.5" />
@@ -1093,15 +1111,23 @@ export function AlunoCursosModule({
               </DialogDescription>
             </DialogHeader>
 
-            {/* Player de vídeo real (mesmo player dos cursos EAD) */}
+            {/* Player de vídeo real (mesmo player dos cursos EAD). Envolto em boundary
+                compacto: falha de vídeo/dados NUNCA desmonta o portal até o portão —
+                o aluno permanece logado e pode recarregar o player. */}
             <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl p-2">
-              <VideoPlayerEmbed
-                videoUrl={activeLessonModal.videoUrl}
-                videoProvider={activeLessonModal.videoProvider}
-                videoEmbedId={activeLessonModal.videoEmbedId}
-                title={activeLessonModal.lessonTitle}
-                autoPlay={false}
-              />
+              <InstitutionalErrorBoundary
+                compact
+                fallbackTitle="Não foi possível carregar o vídeo desta aula"
+                fallbackDescription="A fonte do vídeo pode estar temporariamente indisponível. Sua sessão e seu progresso estão preservados — tente recarregar o player ou abra um chamado na aba Suporte."
+              >
+                <VideoPlayerEmbed
+                  videoUrl={activeLessonModal.videoUrl}
+                  videoProvider={activeLessonModal.videoProvider}
+                  videoEmbedId={activeLessonModal.videoEmbedId}
+                  title={activeLessonModal.lessonTitle}
+                  autoPlay={false}
+                />
+              </InstitutionalErrorBoundary>
             </div>
 
             {/* Ações dentro do modal */}

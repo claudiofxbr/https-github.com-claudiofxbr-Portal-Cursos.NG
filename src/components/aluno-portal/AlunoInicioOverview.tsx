@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 
 import { checkEadEligibility, isEadCourseActive } from '@/lib/eadAccessValidator'
+import { useToast } from '@/hooks/use-toast'
 
 interface AlunoInicioOverviewProps {
   setActiveTab: (tab: StudentPortalTab) => void
@@ -54,6 +55,7 @@ export function AlunoInicioOverview({ setActiveTab, onOpenEadCourse }: AlunoInic
         (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
     ) || students[0]
 
+  const { toast } = useToast()
   const effectiveStudentId = currentUser?.studentId || currentStudent?.id || 'dbphexr97czw7cb'
   const effectiveCpf = (currentUser?.cpf || currentStudent?.cpf || '').trim()
   const cleanCpf = effectiveCpf.replace(/\D/g, '')
@@ -68,18 +70,43 @@ export function AlunoInicioOverview({ setActiveTab, onOpenEadCourse }: AlunoInic
     return c.enrolledStudentIds.includes(effectiveStudentId)
   })
 
-  // Ação unificada para "Assistir Aulas" / "Continuar Assistindo"
+  // Ação unificada para "Assistir Aulas" / "Continuar Assistindo".
+  // Blindada: nem curso ausente, nem dados malformados derrubam a sessão para o portão.
   const handleWatchLessons = () => {
-    // Se o aluno não for elegível ou não houver curso específico,
-    // navega para a aba cursos onde a validação oficial do eadAccessValidator exibe o bloqueio com motivo
-    if (!eligibility.isEligibleToStudy || !eligibleEadCourse) {
-      setActiveTab('cursos')
-      return
-    }
+    try {
+      // Se o aluno não for elegível ou não houver curso específico,
+      // navega para a aba cursos onde a validação oficial do eadAccessValidator exibe o bloqueio com motivo
+      if (!eligibility.isEligibleToStudy || !eligibleEadCourse) {
+        setActiveTab('cursos')
+        return
+      }
 
-    if (onOpenEadCourse) {
-      onOpenEadCourse(eligibleEadCourse.id)
-    } else {
+      if (
+        !eligibleEadCourse.id ||
+        !eadLessons.some((l) => l.eadCourseId === eligibleEadCourse.id)
+      ) {
+        // Curso sem aulas publicadas: aviso institucional em vez de abrir um destino vazio
+        toast({
+          title: 'Aulas ainda não publicadas',
+          description: `O curso "${eligibleEadCourse.title || 'selecionado'}" ainda não possui videoaulas publicadas. Você será levado à lista de cursos.`,
+        })
+        setActiveTab('cursos')
+        return
+      }
+
+      if (onOpenEadCourse) {
+        onOpenEadCourse(eligibleEadCourse.id)
+      } else {
+        setActiveTab('cursos')
+      }
+    } catch {
+      // Qualquer falha inesperada aqui jamais pode desmontar a raiz do portal
+      toast({
+        title: 'Não foi possível abrir as aulas agora',
+        description:
+          'Ocorreu uma instabilidade ao abrir suas videoaulas. Sua sessão permanece ativa — tente novamente.',
+        variant: 'destructive',
+      })
       setActiveTab('cursos')
     }
   }

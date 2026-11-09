@@ -14,9 +14,56 @@ import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModu
 import { AlunoBibliotecaModule } from './AlunoBibliotecaModule'
 import { AlunoCobrancasModule } from './AlunoCobrancasModule'
 
+// sessionStorage keys usados pelo portal do aluno para sobreviver a reload (F5)
+// no meio de uma aula: aba ativa + curso EAD aberto. Sessão de autenticação em si
+// permanece no PocketBase (authStore), não aqui.
+const STORAGE_ACTIVE_TAB = 'portalcursos.activeTab'
+const STORAGE_ACTIVE_EAD_COURSE = 'portalcursos.activeEadCourseId'
+
+const VALID_STUDENT_TABS: StudentPortalTab[] = [
+  'inicio',
+  'perfil',
+  'cursos',
+  'materiais',
+  'calendario',
+  'notificacoes',
+  'minhas_notas',
+  'biblioteca',
+  'cobrancas',
+  'suporte',
+]
+
+function readStoredTab(): StudentPortalTab {
+  try {
+    const stored = window.sessionStorage.getItem(STORAGE_ACTIVE_TAB)
+    if (stored && (VALID_STUDENT_TABS as string[]).includes(stored)) {
+      return stored as StudentPortalTab
+    }
+  } catch {
+    // sessionStorage indisponível: comportamento padrão (aba Início)
+  }
+  return 'inicio'
+}
+
+function readStoredEadCourseId(): string | null {
+  try {
+    return window.sessionStorage.getItem(STORAGE_ACTIVE_EAD_COURSE)
+  } catch {
+    return null
+  }
+}
+
+function clearStoredEadCourseId() {
+  try {
+    window.sessionStorage.removeItem(STORAGE_ACTIVE_EAD_COURSE)
+  } catch {
+    // silencioso
+  }
+}
+
 export function AlunoPortalMaster() {
-  const [activeTab, setActiveTab] = useState<StudentPortalTab>('inicio')
-  const [targetEadCourseId, setTargetEadCourseId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<StudentPortalTab>(readStoredTab)
+  const [targetEadCourseId, setTargetEadCourseId] = useState<string | null>(readStoredEadCourseId)
   const [targetEadLessonId, setTargetEadLessonId] = useState<string | null>(null)
   const [targetBibliotecaSearch, setTargetBibliotecaSearch] = useState<string>('')
 
@@ -28,7 +75,19 @@ export function AlunoPortalMaster() {
     const cleanLessonId = typeof lessonId === 'string' && lessonId.trim() ? lessonId.trim() : null
     setTargetEadCourseId(cleanCourseId)
     setTargetEadLessonId(cleanLessonId)
+    if (cleanCourseId) {
+      try {
+        window.sessionStorage.setItem(STORAGE_ACTIVE_EAD_COURSE, cleanCourseId)
+      } catch {
+        // sessão de reload indisponível: navegação funciona do mesmo modo
+      }
+    }
     setActiveTab('cursos')
+    try {
+      window.sessionStorage.setItem(STORAGE_ACTIVE_TAB, 'cursos')
+    } catch {
+      // silencioso
+    }
   }
 
   const handleNavigateToBiblioteca = (searchQuery?: string) => {
@@ -38,13 +97,33 @@ export function AlunoPortalMaster() {
       setTargetBibliotecaSearch('')
     }
     setActiveTab('biblioteca')
+    try {
+      window.sessionStorage.setItem(STORAGE_ACTIVE_TAB, 'biblioteca')
+    } catch {
+      // silencioso
+    }
+  }
+
+  const handleTabChange = (tab: StudentPortalTab) => {
+    setTargetEadCourseId(null)
+    setTargetEadLessonId(null)
+    clearStoredEadCourseId()
+    setActiveTab(tab)
+    try {
+      window.sessionStorage.setItem(STORAGE_ACTIVE_TAB, tab)
+    } catch {
+      // silencioso
+    }
   }
 
   const renderContent = () => {
     switch (activeTab) {
       case 'inicio':
         return (
-          <AlunoInicioOverview setActiveTab={setActiveTab} onOpenEadCourse={handleOpenEadCourse} />
+          <AlunoInicioOverview
+            setActiveTab={handleTabChange}
+            onOpenEadCourse={handleOpenEadCourse}
+          />
         )
       case 'perfil':
         return <AlunoPerfilModule />
@@ -54,9 +133,7 @@ export function AlunoPortalMaster() {
             fallbackTitle="Ambiente Virtual de Aprendizagem (EAD)"
             fallbackDescription="Não foi possível renderizar a trilha de aulas no momento. Suas notas e progresso continuam gravados com segurança."
             onNavigateHome={() => {
-              setTargetEadCourseId(null)
-              setTargetEadLessonId(null)
-              setActiveTab('inicio')
+              handleTabChange('inicio')
             }}
           >
             <AlunoCursosModule
@@ -81,22 +158,8 @@ export function AlunoPortalMaster() {
               handleOpenEadCourse(courseId, lessonId)
             }
             onNavigateTab={(tab) => {
-              if (
-                tab in
-                {
-                  inicio: 1,
-                  perfil: 1,
-                  cursos: 1,
-                  materiais: 1,
-                  calendario: 1,
-                  notificacoes: 1,
-                  minhas_notas: 1,
-                  biblioteca: 1,
-                  cobrancas: 1,
-                  suporte: 1,
-                }
-              ) {
-                setActiveTab(tab as StudentPortalTab)
+              if ((VALID_STUDENT_TABS as string[]).includes(tab)) {
+                handleTabChange(tab as StudentPortalTab)
               }
             }}
           />
@@ -116,7 +179,10 @@ export function AlunoPortalMaster() {
         return <AlunoSuporteModule />
       default:
         return (
-          <AlunoInicioOverview setActiveTab={setActiveTab} onOpenEadCourse={handleOpenEadCourse} />
+          <AlunoInicioOverview
+            setActiveTab={handleTabChange}
+            onOpenEadCourse={handleOpenEadCourse}
+          />
         )
     }
   }
@@ -124,7 +190,7 @@ export function AlunoPortalMaster() {
   return (
     <AlunoPortalShell
       activeTab={activeTab}
-      setActiveTab={setActiveTab}
+      setActiveTab={handleTabChange}
       onOpenEadCourse={handleOpenEadCourse}
     >
       {renderContent()}
