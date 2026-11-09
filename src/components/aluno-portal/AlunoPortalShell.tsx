@@ -301,6 +301,20 @@ export function AlunoPortalShell({
                   Meu Perfil & Cadastro
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  onClick={() => setActiveTab('notificacoes')}
+                  className="cursor-pointer text-xs focus:bg-slate-800 focus:text-white flex items-center justify-between"
+                >
+                  <div className="flex items-center">
+                    <Bell className="w-3.5 h-3.5 mr-2 text-blue-400" />
+                    Notificações & Avisos
+                  </div>
+                  {unreadCount > 0 && (
+                    <Badge className="bg-rose-600 text-white text-[10px] px-1.5 py-0 h-4 min-w-[16px] flex items-center justify-center font-bold">
+                      {unreadCount}
+                    </Badge>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => setActiveTab('cursos')}
                   className="cursor-pointer text-xs focus:bg-slate-800 focus:text-white"
                 >

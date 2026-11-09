@@ -35,6 +35,7 @@ interface AlunoEadCourseViewProps {
   lessonProgress: LessonProgress[]
   materials?: EadMaterial[]
   studentId: string
+  initialLessonId?: string | null
   canToggleProgress?: boolean
   suspensionNotice?: string
   onToggleLessonProgress: (
@@ -54,6 +55,7 @@ export function AlunoEadCourseView({
   lessonProgress,
   materials = [],
   studentId,
+  initialLessonId,
   canToggleProgress = true,
   suspensionNotice,
   onToggleLessonProgress,
@@ -67,7 +69,19 @@ export function AlunoEadCourseView({
   }, [lessons])
 
   const { toast } = useToast()
-  const [activeLessonId, setActiveLessonId] = useState<string>(sortedLessons[0]?.id || '')
+  const [activeLessonId, setActiveLessonId] = useState<string>(() => {
+    if (initialLessonId && sortedLessons.some((l) => l.id === initialLessonId)) {
+      return initialLessonId
+    }
+    return sortedLessons[0]?.id || ''
+  })
+
+  // Sincroniza se o prop initialLessonId mudar
+  React.useEffect(() => {
+    if (initialLessonId && sortedLessons.some((l) => l.id === initialLessonId)) {
+      setActiveLessonId(initialLessonId)
+    }
+  }, [initialLessonId, sortedLessons])
   const [isUpdating, setIsUpdating] = useState(false)
 
   // Map de progresso por lessonId

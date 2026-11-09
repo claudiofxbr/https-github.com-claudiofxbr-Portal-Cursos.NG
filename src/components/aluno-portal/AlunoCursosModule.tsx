@@ -49,12 +49,14 @@ import {
 
 export interface AlunoCursosModuleProps {
   initialEadCourseId?: string | null
+  initialEadLessonId?: string | null
   onClearInitialEadCourseId?: () => void
   onNavigateToBiblioteca?: (searchQuery?: string) => void
 }
 
 export function AlunoCursosModule({
   initialEadCourseId,
+  initialEadLessonId,
   onClearInitialEadCourseId,
   onNavigateToBiblioteca,
 }: AlunoCursosModuleProps = {}) {
@@ -459,6 +461,7 @@ export function AlunoCursosModule({
           lessonProgress={lessonProgress}
           materials={eadMaterials}
           studentId={effectiveStudentId}
+          initialLessonId={initialEadLessonId}
           onNavigateToBiblioteca={onNavigateToBiblioteca}
           onToggleLessonProgress={async (
             lessonId,

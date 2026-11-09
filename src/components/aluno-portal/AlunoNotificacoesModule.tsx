@@ -16,7 +16,15 @@ import {
 } from 'lucide-react'
 import { StudentNotification } from '@/types/portal'
 
-export function AlunoNotificacoesModule() {
+export interface AlunoNotificacoesModuleProps {
+  onOpenEadCourseAndLesson?: (courseId: string, lessonId?: string) => void
+  onNavigateTab?: (tab: string) => void
+}
+
+export function AlunoNotificacoesModule({
+  onOpenEadCourseAndLesson,
+  onNavigateTab,
+}: AlunoNotificacoesModuleProps = {}) {
   const { studentNotifications, markNotificationAsRead, markAllNotificationsAsRead, currentUser } =
     usePortal()
 
@@ -56,6 +64,31 @@ export function AlunoNotificacoesModule() {
     setMarkingId(id)
     await markNotificationAsRead(id)
     setMarkingId(null)
+  }
+
+  const handleActionClick = async (notif: StudentNotification) => {
+    // Marca como lida automaticamente ao clicar na notificação
+    if (!notif.read) {
+      await handleMarkOne(notif.id)
+    }
+
+    if (!notif.actionUrl) return
+
+    // Se for ação de curso EAD: ead_course:courseId ou ead_course:courseId:lessonId
+    if (notif.actionUrl.startsWith('ead_course:') && onOpenEadCourseAndLesson) {
+      const parts = notif.actionUrl.split(':')
+      const courseId = parts[1]
+      const lessonId = parts[2]
+      if (courseId) {
+        onOpenEadCourseAndLesson(courseId, lessonId)
+        return
+      }
+    }
+
+    // Se for outra aba do portal do aluno
+    if (onNavigateTab) {
+      onNavigateTab(notif.actionUrl)
+    }
   }
 
   return (
@@ -182,11 +215,24 @@ export function AlunoNotificacoesModule() {
                       <div className="text-[10px] text-slate-500 font-mono pt-0.5">
                         {notif.created}
                       </div>
+
+                      {notif.actionUrl && (
+                        <div className="pt-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleActionClick(notif)}
+                            className="h-7 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5 px-3 rounded-lg shadow-sm"
+                          >
+                            <GraduationCap className="w-3.5 h-3.5" />
+                            Assistir aula agora
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Ações */}
-                  <div className="self-end sm:self-center shrink-0">
+                  <div className="self-end sm:self-center shrink-0 flex items-center gap-2">
                     {!isRead ? (
                       <Button
                         size="sm"
@@ -194,12 +240,13 @@ export function AlunoNotificacoesModule() {
                         onClick={() => handleMarkOne(notif.id)}
                         disabled={isMarking}
                         className="text-xs text-blue-400 hover:text-white hover:bg-blue-950/40 gap-1 h-8"
+                        title="Marcar como lida"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        Marcar como lida
+                        <span className="hidden sm:inline">Marcar como lida</span>
                       </Button>
                     ) : (
-                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <span className="text-[11px] text-slate-500 flex items-center gap-1 px-2 py-1 bg-slate-950/40 rounded-md border border-slate-800/60">
                         <CheckCheck className="w-3.5 h-3.5 text-slate-500" />
                         Lida
                       </span>

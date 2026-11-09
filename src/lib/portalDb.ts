@@ -2177,6 +2177,24 @@ export const portalDb = {
     ),
 
   // --- Portal do Aluno: Notificações ---
+  createStudentNotification: (data: Omit<StudentNotification, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          studentId: data.studentId,
+          title: data.title,
+          message: data.message,
+          type: data.type || 'aviso',
+          read: Boolean(data.read),
+          actionUrl: data.actionUrl || '',
+          readAt: data.readAt || '',
+        }
+        const rec = await pb.collection(COLLECTIONS.studentNotifications).create(payload)
+        return mapStudentNotification(rec as unknown as AnyRec)
+      },
+      null as StudentNotification | null,
+    ),
+
   markNotificationAsRead: (notificationId: string) =>
     safeWrite(
       async () => {

@@ -316,6 +316,9 @@ interface PortalContextType {
     moduleName?: string,
     lessonTitle?: string,
   ) => Promise<LessonProgress | null>
+  createStudentNotification: (
+    data: Omit<StudentNotification, 'id' | 'created' | 'updated'>,
+  ) => Promise<StudentNotification | null>
   markNotificationAsRead: (notificationId: string) => Promise<boolean>
   markAllNotificationsAsRead: () => Promise<boolean>
   createStudentSupportTicket: (
@@ -2309,6 +2312,30 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     return null
   }
 
+  const createStudentNotification = async (
+    data: Omit<StudentNotification, 'id' | 'created' | 'updated'>,
+  ): Promise<StudentNotification | null> => {
+    const tempId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const optimistic: StudentNotification = {
+      ...data,
+      id: tempId,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+    setStudentNotifications((prev) => [optimistic, ...prev])
+
+    try {
+      const saved = await portalDb.createStudentNotification(data)
+      if (saved) {
+        setStudentNotifications((prev) => prev.map((n) => (n.id === tempId ? saved : n)))
+        return saved
+      }
+    } catch (e) {
+      console.warn('[PortalContext] Erro ao criar notificação de aluno:', e)
+    }
+    return optimistic
+  }
+
   const markNotificationAsRead = async (notificationId: string): Promise<boolean> => {
     setStudentNotifications((prev) =>
       prev.map((n) =>
@@ -2554,16 +2581,48 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
     setEadLessons((prev) => [...prev, optimistic])
 
+    let savedLesson: EadLesson | null = null
     try {
       const saved = await portalDb.createEadLesson(data)
       if (saved) {
         setEadLessons((prev) => prev.map((l) => (l.id === tempId ? saved : l)))
-        return saved
+        savedLesson = saved
       }
     } catch (err) {
       console.warn('[PortalContext] Erro ao criar aula EAD:', err)
     }
-    return optimistic
+
+    const effectiveLesson = savedLesson || optimistic
+
+    // Dispara notificação in-app para todos os alunos matriculados neste curso EAD
+    try {
+      const targetCourse = eadCourses.find((c) => c.id === effectiveLesson.eadCourseId)
+      if (
+        targetCourse &&
+        targetCourse.enrolledStudentIds &&
+        targetCourse.enrolledStudentIds.length > 0
+      ) {
+        const courseName = targetCourse.title || 'Curso EAD'
+        const lessonTitle = effectiveLesson.title || 'Nova videoaula'
+        const actionUrl = `ead_course:${targetCourse.id}:${effectiveLesson.id}`
+
+        for (const studentId of targetCourse.enrolledStudentIds) {
+          if (!studentId) continue
+          await createStudentNotification({
+            studentId,
+            title: `Nova Aula Publicada: ${courseName}`,
+            message: `A aula "${lessonTitle}" já está disponível para estudo no seu curso ${courseName}.`,
+            type: 'academico',
+            read: false,
+            actionUrl,
+          })
+        }
+      }
+    } catch (notifErr) {
+      console.warn('[PortalContext] Erro ao disparar notificações de nova aula EAD:', notifErr)
+    }
+
+    return effectiveLesson
   }
 
   const updateEadLesson = async (
@@ -3239,6 +3298,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         studentNotifications,
         studentSupportTickets,
         updateLessonProgress,
+        createStudentNotification,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         createStudentSupportTicket,
