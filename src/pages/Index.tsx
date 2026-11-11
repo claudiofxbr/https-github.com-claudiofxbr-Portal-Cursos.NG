@@ -12,6 +12,7 @@ import { UsuariosEquipeModule } from '@/components/usuarios/UsuariosEquipeModule
 import { ManutencaoModule } from '@/components/manutencao/ManutencaoModule'
 import { LgpdModule } from '@/components/lgpd/LgpdModule'
 import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
+import { AgentesModule } from '@/components/agentes/AgentesModule'
 import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
@@ -119,6 +120,7 @@ export default function Index() {
           {safeActiveModule === 'manutencao' && <ManutencaoModule />}
           {safeActiveModule === 'lgpd' && <LgpdModule />}
           {safeActiveModule === 'diagnostico' && <DiagnosticoModule />}
+          {safeActiveModule === 'agentes' && <AgentesModule />}
           {safeActiveModule === 'professor_area' && (
             <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
           )}

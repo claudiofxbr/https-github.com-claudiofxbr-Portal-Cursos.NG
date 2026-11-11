@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-11T14:57:05.725Z",
+  "generatedAt": "2026-11-11T15:25:08.312Z",
   "collections": [
     {
       "name": "users",
@@ -2699,6 +2699,221 @@
         "CREATE INDEX idx_ead_materials_lesson ON ead_materials (lessonId)",
         "CREATE INDEX idx_ead_materials_course ON ead_materials (eadCourseId)"
       ]
+    },
+    {
+      "name": "agent_findings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')"
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "editor",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "rootCause",
+          "type": "editor",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "severity",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["baixa", "media", "alta", "critica"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["aberto", "em_analise", "encaminhado", "resolvido"]
+        },
+        {
+          "name": "origin",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["codigo", "banco", "github", "processo"]
+        },
+        {
+          "name": "createdByAgent",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_agent_findings_status ON agent_findings (status)",
+        "CREATE INDEX idx_agent_findings_severity ON agent_findings (severity)"
+      ]
+    },
+    {
+      "name": "agent_solutions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')"
+      },
+      "fields": [
+        {
+          "name": "findingId",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "findingTitle",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "proposal",
+          "type": "editor",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "riskAnalysis",
+          "type": "editor",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validationResult",
+          "type": "editor",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "testResult",
+          "type": "editor",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["proposto", "validado", "aplicado", "rejeitado"]
+        },
+        {
+          "name": "createdByAgent",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_agent_solutions_finding ON agent_solutions (findingId)",
+        "CREATE INDEX idx_agent_solutions_status ON agent_solutions (status)"
+      ]
+    },
+    {
+      "name": "agent_cycle_log",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'root' || @request.auth.role = 'admin')"
+      },
+      "fields": [
+        {
+          "name": "eventType",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["iniciado", "etapa_concluida", "impedimento", "encerrado"]
+        },
+        {
+          "name": "message",
+          "type": "editor",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "openFindings",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pendingSolutions",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "createdByAgent",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_agent_cycle_event ON agent_cycle_log (eventType)"]
     }
   ]
 }

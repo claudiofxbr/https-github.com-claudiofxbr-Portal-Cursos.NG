@@ -35,6 +35,7 @@ import {
   Tv,
   Library,
   Calendar,
+  Bot,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -52,6 +53,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Tv,
   Library,
   Calendar,
+  Bot,
 }
 
 interface PortalHeaderAndSidebarProps {

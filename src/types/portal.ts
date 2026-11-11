@@ -40,6 +40,7 @@ export type ModuleKey =
   | 'manutencao'
   | 'lgpd'
   | 'diagnostico'
+  | 'agentes'
   | 'minhas_notas'
   | 'portal_aluno'
   | 'professor_area'

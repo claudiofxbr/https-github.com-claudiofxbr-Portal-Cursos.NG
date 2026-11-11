@@ -137,6 +137,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin'],
   },
   {
+    key: 'agentes',
+    label: 'Agentes Inteligentes',
+    description:
+      'Ciclo Analisador → Solucionador → Gerenciador: problemas, soluções e estado do ciclo',
+    icon: 'Cpu',
+    requiredRoles: ['root', 'admin'],
+  },
+  {
     key: 'portal_aluno',
     label: 'Portal do Aluno',
     description: 'Ambiente virtual com cursos, aulas, materiais, calendário e suporte',
