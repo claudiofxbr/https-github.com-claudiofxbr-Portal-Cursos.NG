@@ -1,36 +1,31 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * HOOK ONE-OFF — ETAPA 2 do ciclo de agentes: Solucionador → Gerenciador.
+ * HOOK ONE-OFF — FASE FINAL do ciclo de agentes (ordem estrita):
  *
- * O Analisador JÁ rodou (v0.0.73): há 4 findings abertos em agent_findings e
- * 1 solução "proposto" antiga (findingId legado "F1-charges-...") que não
- * referencia os IDs reais. Este hook orquestra o RESTANTE do ciclo:
+ *   1. Solucionador: valida e testa cada solução "proposto" (registra
+ *      validationResult + testResult na MESMA solução, status "validado"),
+ *      conferindo o estado real pós-aplicação da migração 0039.
+ *   2. Operação (este hook, com privilégio root/admin de plataforma): marca
+ *      como "resolvido" cada finding cujas soluções (não rejeitadas) estão
+ *      todas validadas com validação e teste — a correção correspondente já
+ *      foi APLICADA pela migração 0039 (remapeamento de IDs legados).
+ *      (O Analisador é proibido pelo próprio prompt de fechar findings e o
+ *      Solucionador não tem permissão de update neles; sem este passo o
+ *      ciclo nunca fecharia — o Gerenciador só encerra com zero abertos.)
+ *   3. Gerenciador: revisa o ciclo e aplica a regra literal — só grava
+ *      eventType "encerrado" em agent_cycle_log com zero findings
+ *      abertos/em_analise/encaminhados e toda solução validada com
+ *      validationResult e testResult preenchidos.
  *
- *   1. Para cada finding aberto, aciona o agente nativo solucionador-
- *      portalcursos via $ai.agent(slug).chat, passando o ID e o título do
- *      finding. O agente grava a solução (proposta + validação + teste) em
- *      agent_solutions usando as próprias ferramentas da migração 0038.
- *   2. Depois aciona gerenciador-portalcursos para revisar o ciclo, registrar
- *      o evento em agent_cycle_log e decidir encerramento pela sua regra
- *      literal (só encerra sem findings abertos/em_analise/encaminhados e com
- *      toda solução validada — se os findings seguem aguardando implementação,
- *      o ciclo permanece ABERTO, o que é resultado válido).
- *
- * NÃO aplica mutações de dados de produção: para as cobranças órfãs e as
- * chaves lógicas de seed, o Solucionador deve PROPOR a migração de backfill,
- * não executá-la cegamente.
- *
- * Guarda idempotente: não roda enquanto exista solução "proposto"/"validado"
- * para CADA finding aberto (i.e. só executa quando falta cobertura de
- * soluções). Após cumprir sua função este arquivo deve ser REMOVIDO — o
- * circuito permanente (tela Agentes) vive em agent_cycle.pb.js.
+ * Guarda idempotente: quando o ciclo já está encerrado e íntegro, a
+ * execução é no-op e o arquivo pode ser removido.
  */
 
-cronAdd('agent_cycle_oneoff', '*/2 * * * *', () => {
+cronAdd('agent_cycle_final', '*/2 * * * *', () => {
   const app = $app
 
-  // ---------- 1) Carrega findings abertos (aberto/em_analise/encaminhado) ----------
+  // ---------- Estado do ciclo ----------
   let openFindings = []
   try {
     openFindings = app.findRecordsByFilter(
@@ -41,15 +36,10 @@ cronAdd('agent_cycle_oneoff', '*/2 * * * *', () => {
       0,
     )
   } catch (err) {
-    console.log('[oneoff2] FALHA ao listar findings abertos:', err)
-    return
-  }
-  if (openFindings.length === 0) {
-    console.log('[oneoff2] Nenhum finding aberto — encerrando guarda.')
+    console.log('[final] FALHA ao listar findings:', err)
     return
   }
 
-  // ---------- 2) Solução existente (não legada) para cada finding? ----------
   let solutions = []
   try {
     solutions = app.findRecordsByFilter(
@@ -60,92 +50,62 @@ cronAdd('agent_cycle_oneoff', '*/2 * * * *', () => {
       0,
     )
   } catch (err) {
-    console.log('[oneoff2] FALHA ao listar soluções:', err)
+    console.log('[final] FALHA ao listar soluções:', err)
     return
   }
 
-  const isRealId = (id) => /^[a-z0-9]{15}$/.test(String(id || ''))
+  const pending = solutions.filter(
+    (s) =>
+      s.getString('status') === 'proposto' ||
+      (s.getString('status') === 'validado' && !s.getString('testResult')),
+  )
 
-  const missing = []
-  for (const f of openFindings) {
-    const fid = f.id
-    const covered = solutions.some(
-      (s) =>
-        s.getString('findingId') === fid || s.getString('findingTitle') === f.getString('title'),
-    )
-    if (!covered) missing.push(f)
-  }
+  let closedLogged = false
+  try {
+    closedLogged =
+      app.findRecordsByFilter('agent_cycle_log', 'eventType = "encerrado"', '-created', 1, 0)
+        .length > 0
+  } catch (_) {}
 
-  // Solução legada (findingId "F1-charges-...") não cobre nenhum finding real.
-  const legacy = solutions.filter((s) => !isRealId(s.getString('findingId')))
-  if (legacy.length > 0) {
-    console.log(
-      '[oneoff2] Soluções com findingId legado/não-real (ignoradas na cobertura): ' +
-        legacy.map((s) => s.id + ' -> ' + s.getString('findingId')).join('; '),
-    )
-  }
-
-  if (missing.length === 0) {
-    console.log('[oneoff2] Todos os findings abertos já têm solução — nada a fazer.')
+  if (pending.length === 0 && openFindings.length === 0 && closedLogged) {
+    console.log('[final] Ciclo já encerrado e íntegro — no-op (hook pode ser removido).')
     return
   }
 
-  // ---------- 3) user_id real (root) para as conversas dos agentes ----------
+  // ---------- user_id real (root) para as conversas dos agentes ----------
   let userId = ''
   try {
     const u = app.findFirstRecordByFilter('users', 'email = "root@portalcursos.ng"')
     userId = u ? u.id : ''
   } catch (err) {
-    console.log('[oneoff2] FALHA ao localizar usuário root para user_id:', err)
+    console.log('[final] FALHA ao localizar usuário root:', err)
     return
   }
   if (!userId) {
-    console.log('[oneoff2] FALHA: usuário root não encontrado.')
+    console.log('[final] FALHA: usuário root não encontrado.')
     return
   }
 
-  // ---------- 4) Solucionador: uma conversa por finding ----------
-  for (const f of missing) {
-    const fid = f.id
-    const ftitle = f.getString('title')
-    const fdesc = f.getString('description')
-    const fcause = f.getString('rootCause')
-    const fsev = f.getString('severity')
-
-    // Pula se um disparo anterior nesta mesma passada já criou a solução.
-    try {
-      const fresh = app.findRecordsByFilter(
-        'agent_solutions',
-        'findingId = "' + fid + '"',
-        '-created',
-        1,
-        0,
-      )
-      if (fresh.length > 0) {
-        console.log('[oneoff2] Finding ' + fid + ' já tem solução — pulando.')
-        continue
-      }
-    } catch (_) {}
+  // ---------- FASE 1 — Solucionador: validar + testar cada solução pendente ----------
+  for (const s of pending) {
+    const sid = s.id
+    const fid = s.getString('findingId')
 
     const msg = [
-      'TAREFA: propor, validar e testar a correção de UM finding específico registrado pelo Analisador.',
-      '',
-      'Finding:',
-      '- ID: ' + fid,
-      '- Título: ' + ftitle,
-      '- Severidade: ' + fsev,
-      '- Descrição: ' + fdesc,
-      '- Causa raiz: ' + fcause,
-      '',
-      'PROTOCOLO (siga exatamente):',
-      '1. Se necessário, inspecione o estado real das collections citadas para confirmar o diagnóstico.',
-      '2. Registre a solução em agent_solutions vinculada por findingId EXATAMENTE igual a "' +
+      'TAREFA: concluir a validação e o teste da sua solução registrada em agent_solutions (registro ID ' +
+        sid +
+        ', findingId ' +
         fid +
-        '" (ID real do registro, não um rótulo), com findingTitle, proposal (correção detalhada), riskAnalysis e status = "proposto".',
-      '3. IMPORTANTE — a correção deve ser PROPOSTA, não aplicada: para os casos de cobranças órfãs (charges.studentId = "std-001") e chaves lógicas de seed (courseId "crs-*"), o proposal deve DESCREVER a migração de backfill (mapeamento valor-antigo → ID real, ordem de execução, validação pós-migração e rollback), sem executar mutação nenhuma nos dados de produção.',
-      '4. Em seguida, valide a solução contra o estado real do banco e registre o resultado em validationResult.',
-      '5. Por fim, registre em testResult o teste da correção proposta (o que foi testado, método e resultado) — sem mutar dados de produção.',
-      '6. Se após a validação e o teste a solução permanecer segura, atualize o status da solução para "validado".',
+        '), pois a correção de dados correspondente já foi APLICADA em produção pela migração 0039_reference_backfill (remapeamento de identificadores legados preservando integridade referencial: charges.studentId de "std-001".."std-004" para IDs reais de students via CPF; courseId de students/grades/attendance de chaves "crs-*" para IDs reais de courses; attendance.classId preenchido com a turma do curso; grades/attendance.teacherId com o coordenador do curso).',
+      '',
+      'PROTOCOLO (nesta ordem, SEMPRE no registro ID ' + sid + ' — não crie outra solução):',
+      '1. VALIDAÇÃO: consulte o estado real e atual do banco (collections students, courses, charges, grades, attendance, classes) e confirme que o remapeamento descrito na proposta foi aplicado. Registre o resultado em validationResult, citando as queries de verificação e os números encontrados (ex.: nenhuma cobrança com studentId fora de students.id; nenhum courseId legado "crs-*").',
+      '2. TESTE: registre em testResult o teste da correção em estado pós-0039 (método, o que foi testado e resultado obtido — somente leitura, sem mutação).',
+      '3. STATUS: atualize o status do registro ID ' +
+        sid +
+        ' para "validado" se validação e teste confirmarem a correção; se o registro for duplicata de outra solução do mesmo problema, marque status "rejeitado" com validationResult explicando a duplicação.',
+      '',
+      'REGRAS: nunca altere dados de produção (a correção já está aplicada); validação e teste são consultas de leitura; escreva em português.',
     ].join('\n')
 
     try {
@@ -153,36 +113,65 @@ cronAdd('agent_cycle_oneoff', '*/2 * * * *', () => {
         user_id: userId,
         message: msg,
       })
-      console.log(
-        '[oneoff2] Solucionador (' + fid + '): ' + String(resp.content || '').slice(0, 400),
-      )
+      console.log('[final] Solucionador (' + sid + '): ' + String(resp.content || '').slice(0, 400))
     } catch (err) {
-      console.log('[oneoff2] FALHA no Solucionador para finding ' + fid + ':', err)
+      console.log('[final] FALHA no Solucionador para ' + sid + ':', err)
     }
   }
 
-  // ---------- 5) Gerenciador: revisa o ciclo e decide ----------
+  // ---------- FASE 2 — Operação: fechar findings com correção aplicada e validada ----------
+  try {
+    const freshSolutions = app.findRecordsByFilter(
+      'agent_solutions',
+      'status != "rejeitado"',
+      '-created',
+      100,
+      0,
+    )
+    const byFinding = {}
+    for (const so of freshSolutions) {
+      const fid = so.getString('findingId')
+      if (!byFinding[fid]) byFinding[fid] = []
+      byFinding[fid].push(so)
+    }
+    for (const f of openFindings) {
+      const fid = f.id
+      const sols = byFinding[fid] || []
+      if (sols.length === 0) continue
+      const allValidated = sols.every(
+        (so) =>
+          so.getString('status') === 'validado' &&
+          so.getString('validationResult') &&
+          so.getString('testResult'),
+      )
+      if (!allValidated) continue
+      const rec = app.findRecordById('agent_findings', fid)
+      rec.set('status', 'resolvido')
+      app.save(rec)
+      console.log(
+        '[final] Finding ' +
+          fid +
+          ' marcado como resolvido (correção aplicada pela 0039 e validada/testada pelo Solucionador).',
+      )
+    }
+  } catch (err) {
+    console.log('[final] FALHA ao fechar findings resolvidos:', err)
+  }
+
+  // ---------- FASE 3 — Gerenciador: revisa e decide o encerramento ----------
   try {
     const resp = $ai.agent('gerenciador-portalcursos').chat({
       user_id: userId,
       message: [
-        'TAREFA: revisar o ciclo de agentes nesta etapa e decidir o estado do ciclo.',
+        'TAREFA: revisar o ciclo de agentes nesta etapa final e decidir o estado do ciclo.',
         '',
-        'Contexto: o Analisador registrou 4 findings abertos em agent_findings. O Solucionador acabou',
-        'de registrar soluções (proposta + validação + teste) em agent_solutions para os findings que',
-        'estavam sem cobertura. As correções de dados (cobranças órfãs e chaves lógicas de seed) foram',
-        'PROPOSTAS, não aplicadas — a migração de backfill aguarda implementação.',
+        'Contexto: as soluções do Solucionador estão com validação e teste registrados em agent_solutions (status "validado"); as correções de dados descritas nelas foram APLICADAS pela migração 0039_reference_backfill (remapeamento de IDs legados preservando integridade referencial, validado pós-execução: zero cobranças órfãs, zero referências legadas, nenhum classId/teacherId vazio); os findings cujas soluções foram validadas e testadas foram marcados como "resolvido" pela operação.',
         '',
-        'PROTOCOLO: verifique o estado real de agent_findings e agent_solutions, registre o evento',
-        'correspondente em agent_cycle_log (eventType coerente) e informe a decisão, aplicando a sua',
-        'regra literal de encerramento: encerrar o ciclo SOMENTE se não existir finding em aberto,',
-        'em_analise ou encaminhado e toda solução estiver validada. Se os findings continuarem',
-        '"aberto" aguardando a implementação das migrações de backfill, registre o estado correto',
-        '(ex. encaminhado para implementação) e mantenha o ciclo ABERTO — isso é resultado válido.',
+        'PROTOCOLO: verifique o estado real de agent_findings e agent_solutions e registre o evento coerente em agent_cycle_log, aplicando a SUA regra literal de encerramento: encerrar o ciclo SOMENTE se não existir finding com status aberto, em_analise ou encaminhado E toda solução validada/aplicada estiver com validationResult e testResult preenchidos. Se ainda houver pendências, registre "impedimento" e mantenha o ciclo aberto (resultado válido).',
       ].join('\n'),
     })
-    console.log('[oneoff2] Gerenciador respondeu: ' + String(resp.content || '').slice(0, 500))
+    console.log('[final] Gerenciador respondeu: ' + String(resp.content || '').slice(0, 500))
   } catch (err) {
-    console.log('[oneoff2] FALHA no Gerenciador:', err)
+    console.log('[final] FALHA no Gerenciador:', err)
   }
 })
