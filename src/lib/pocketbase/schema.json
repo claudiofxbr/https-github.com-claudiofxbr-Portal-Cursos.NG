@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T15:39:40.761Z",
+  "generatedAt": "2026-11-11T14:57:05.725Z",
   "collections": [
     {
       "name": "users",
@@ -120,11 +120,11 @@
       "name": "app_users",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "list": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "view": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -226,11 +226,11 @@
       "name": "students",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = id",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = id",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = id",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -394,9 +394,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -538,11 +538,11 @@
       "name": "charges",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -685,11 +685,11 @@
       "name": "price_table_items",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "list": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "view": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -758,9 +758,9 @@
       "name": "price_audit_logs",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "view": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "create": null,
         "update": null,
         "delete": null
       },
@@ -822,11 +822,11 @@
       "name": "billing_exceptions",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "list": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "view": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -907,9 +907,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1021,11 +1021,11 @@
       "name": "lgpd_requests",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": null
+        "list": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "view": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1119,9 +1119,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1200,11 +1200,11 @@
       "name": "grades",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1310,11 +1310,11 @@
       "name": "attendance",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1422,11 +1422,11 @@
       "name": "lesson_progress",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1510,9 +1510,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1608,9 +1608,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1698,11 +1698,11 @@
       "name": "student_notifications",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1772,11 +1772,11 @@
       "name": "student_support_tickets",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -1892,11 +1892,11 @@
       "name": "certificates",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2046,11 +2046,11 @@
       "name": "ead_courses",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "",
+        "view": "",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2153,9 +2153,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2245,9 +2245,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2323,11 +2323,11 @@
       "name": "library_loans",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "view": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "( @request.auth.id != '' && @request.auth.role != 'aluno' ) || @request.auth.studentId != '' && @request.auth.studentId = studentId",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2430,9 +2430,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2476,9 +2476,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2570,9 +2570,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {
@@ -2632,9 +2632,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "update": "@request.auth.id != '' && @request.auth.role != 'aluno'",
+        "delete": "@request.auth.id != '' && @request.auth.role != 'aluno'"
       },
       "fields": [
         {

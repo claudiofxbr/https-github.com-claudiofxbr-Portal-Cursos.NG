@@ -42,9 +42,27 @@ screenshot.png
 .eslintcache
 .oxlintcache
 
-# Environment variables
-.env*
-!.env
+# Environment variables and secrets — NEVER commit real credentials.
+# Only .env.example (sem segredos reais) pode ser versionado.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# PocketBase local data (dados pessoais — LGPD) e binários do PocketBase
+pocketbase/pb_data/
+pb_data/
+pocketbase/pocketbase
+pocketbase/pocketbase.exe
+pocketbase/*.zip
+
+# Dependências de auditoria
+audit-out/
 
 # Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
 core.[0-9]*
