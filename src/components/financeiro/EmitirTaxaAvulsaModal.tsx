@@ -123,9 +123,10 @@ export const EmitirTaxaAvulsaModal: React.FC<EmitirTaxaAvulsaModalProps> = ({
       const year = new Date().getFullYear()
       const randomSuffix = Math.floor(1000 + Math.random() * 9000)
       const chargeCode = `TAX-${year}-${randomSuffix}`
-      const cleanCpf = (selectedStudent.cpfRaw || selectedStudent.cpf).replace(/\D/g, '')
 
-      const mockPixCode = `00020126580014br.gov.bcb.pix0136cob-portalcursos-tax-${cleanCpf || 'demo'}520400005303986540${cleanAmount.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304DEMO`
+      // LGPD: nenhum dado pessoal (CPF, e-mail, ID) é embutido no código Pix nem na URL do serviço
+      // externo de QR — o QR é gerado com um identificador neutro da cobrança (chargeCode).
+      const mockPixCode = `00020126580014br.gov.bcb.pix0136cob-portalcursos-tax-${chargeCode}520400005303986540${cleanAmount.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304DEMO`
       const mockPixQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_taxa_${chargeCode}`
 
       const newCharge: Charge = {
