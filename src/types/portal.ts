@@ -34,6 +34,7 @@ export type ModuleKey =
   | 'cursos'
   | 'ead'
   | 'biblioteca'
+  | 'biblioteca_cursos'
   | 'financeiro'
   | 'relatorios'
   | 'usuarios'
@@ -420,6 +421,7 @@ export type StudentPortalTab =
   | 'minhas_notas'
   | 'certificados'
   | 'biblioteca'
+  | 'biblioteca_cursos'
   | 'cobrancas'
   | 'suporte'
 

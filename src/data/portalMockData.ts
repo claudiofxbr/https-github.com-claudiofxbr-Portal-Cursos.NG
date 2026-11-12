@@ -94,6 +94,23 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin', 'secretaria'],
   },
   {
+    key: 'biblioteca_cursos',
+    label: 'Biblioteca de Cursos',
+    description:
+      'Catálogo navegável dos cursos da instituição (graduação e pós) com materiais e recursos',
+    icon: 'LibraryBig',
+    requiredRoles: [
+      'root',
+      'admin',
+      'secretaria',
+      'academico',
+      'matricula',
+      'coordenador',
+      'professor',
+      'aluno',
+    ],
+  },
+  {
     key: 'financeiro',
     label: 'Financeiro & Pagamentos',
     description: 'Cobranças, checkout Pix/Cartão demonstrativo, tabela de preços e isenções',

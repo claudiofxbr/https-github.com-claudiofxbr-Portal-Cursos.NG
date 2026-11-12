@@ -13,6 +13,7 @@ import { AlunoPerfilModule } from './AlunoPerfilModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
 import { AlunoBibliotecaModule } from './AlunoBibliotecaModule'
 import { AlunoCobrancasModule } from './AlunoCobrancasModule'
+import { CourseLibraryModule } from '@/components/cursos/CourseLibraryModule'
 
 // sessionStorage keys usados pelo portal do aluno para sobreviver a reload (F5)
 // no meio de uma aula: aba ativa + curso EAD aberto. Sessão de autenticação em si
@@ -29,6 +30,7 @@ const VALID_STUDENT_TABS: StudentPortalTab[] = [
   'notificacoes',
   'minhas_notas',
   'biblioteca',
+  'biblioteca_cursos',
   'cobrancas',
   'suporte',
 ]
@@ -172,6 +174,18 @@ export function AlunoPortalMaster() {
             initialSearch={targetBibliotecaSearch}
             initialTab={targetBibliotecaSearch ? 'acervo' : 'meus_emprestimos'}
           />
+        )
+      case 'biblioteca_cursos':
+        return (
+          <InstitutionalErrorBoundary
+            fallbackTitle="Instabilidade na Biblioteca de Cursos"
+            fallbackDescription="Não foi possível carregar o catálogo de cursos neste momento."
+            onNavigateHome={() => {
+              handleTabChange('inicio')
+            }}
+          >
+            <CourseLibraryModule />
+          </InstitutionalErrorBoundary>
         )
       case 'cobrancas':
         return <AlunoCobrancasModule />

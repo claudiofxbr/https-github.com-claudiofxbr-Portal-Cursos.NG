@@ -20,6 +20,7 @@ import { InstitutionalErrorBoundary } from '@/components/common/InstitutionalErr
 import { EADModule } from '@/components/ead/EADModule'
 import { ProfessorAreaModule } from '@/components/professor/ProfessorAreaModule'
 import { BibliotecaModule } from '@/components/biblioteca/BibliotecaModule'
+import { CourseLibraryModule } from '@/components/cursos/CourseLibraryModule'
 import { DiplomasCertificadosModule } from '@/components/diplomas/DiplomasCertificadosModule'
 import { TurmasModule } from '@/components/turmas/TurmasModule'
 
@@ -128,6 +129,7 @@ export default function Index() {
           <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
         )}
         {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
+        {safeActiveModule === 'biblioteca_cursos' && <CourseLibraryModule />}
       </PortalShell>
     </InstitutionalErrorBoundary>
   )

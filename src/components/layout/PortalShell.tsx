@@ -34,6 +34,7 @@ import {
   Award,
   Tv,
   Library,
+  LibraryBig,
   Calendar,
   Bot,
 } from 'lucide-react'
@@ -52,6 +53,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Award,
   Tv,
   Library,
+  LibraryBig,
   Calendar,
   Bot,
 }

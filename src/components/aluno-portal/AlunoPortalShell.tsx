@@ -27,6 +27,7 @@ import {
   ChevronDown,
   Sparkles,
   BookOpen,
+  LibraryBig,
   CheckCircle2,
   DollarSign,
 } from 'lucide-react'
@@ -120,6 +121,7 @@ export function AlunoPortalShell({
     },
     { id: 'minhas_notas', label: 'Minhas Notas e Frequência', icon: Award },
     { id: 'biblioteca', label: 'Minha Biblioteca', icon: BookOpen },
+    { id: 'biblioteca_cursos', label: 'Biblioteca de Cursos', icon: LibraryBig },
     {
       id: 'cobrancas',
       label: 'Minhas Cobranças',
