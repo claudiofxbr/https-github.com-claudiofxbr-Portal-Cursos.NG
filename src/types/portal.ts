@@ -422,6 +422,7 @@ export type StudentPortalTab =
   | 'certificados'
   | 'biblioteca'
   | 'biblioteca_cursos'
+  | 'minhas_inscricoes'
   | 'cobrancas'
   | 'suporte'
 
@@ -593,6 +594,39 @@ export interface LibraryBook {
 }
 
 export type LibraryLoanStatus = 'ativo' | 'devolvido' | 'atrasado'
+
+export type EnrollmentStatus = 'inscrita' | 'em_analise' | 'confirmada' | 'cancelada'
+
+export const ENROLLMENT_STATUS_LABELS: Record<EnrollmentStatus, string> = {
+  inscrita: 'Inscrita',
+  em_analise: 'Em análise',
+  confirmada: 'Confirmada',
+  cancelada: 'Cancelada',
+}
+
+/** Inscrição de um aluno em um curso do catálogo (Biblioteca de Cursos). */
+export interface Enrollment {
+  id: string
+  studentId: string
+  studentName: string
+  studentEmail?: string
+  courseId: string
+  courseCode: string
+  courseName: string
+  courseLevel?: Course['level']
+  courseModality?: Course['modality']
+  workloadHours: number
+  /** Turma/período sugerido no momento da inscrição, quando disponível nos dados. */
+  period?: string
+  requestedPeriod?: string
+  status: EnrollmentStatus
+  requestedAt: string // YYYY-MM-DD
+  notes?: string
+  reviewedBy?: string
+  reviewedAt?: string
+  created?: string
+  updated?: string
+}
 
 export interface LibraryLoan {
   id: string

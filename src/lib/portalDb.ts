@@ -29,11 +29,13 @@ import {
   LibraryLoan,
   LibraryLoanStatus,
   LibrarySettings,
+  Enrollment,
   ClassItem,
   ClassSchedule,
   DayOfWeek,
   ClassStatus,
 } from '@/types/portal'
+import { mapEnrollment } from '@/lib/enrollmentDb'
 import {
   DEMO_ACCOUNTS,
   INITIAL_BILLING_EXCEPTIONS,
@@ -72,6 +74,7 @@ export const COLLECTIONS = {
   libraryBooks: 'library_books',
   libraryLoans: 'library_loans',
   librarySettings: 'library_settings',
+  courseEnrollments: 'course_enrollments',
   classes: 'classes',
   classSchedules: 'class_schedules',
   appUsers: 'app_users',
@@ -1119,6 +1122,7 @@ export async function loadAllData(): Promise<{
   libraryBooks: LibraryBook[]
   libraryLoans: LibraryLoan[]
   librarySettings: LibrarySettings
+  courseEnrollments: Enrollment[]
   classes: ClassItem[]
   classSchedules: ClassSchedule[]
 }> {
@@ -1150,6 +1154,7 @@ export async function loadAllData(): Promise<{
     rawLibraryBooks,
     libraryLoans,
     librarySettingsList,
+    courseEnrollments,
     rawClasses,
     classSchedules,
   ] = await Promise.all([
@@ -1333,6 +1338,13 @@ export async function loadAllData(): Promise<{
     ),
     safeList(
       async () =>
+        (await pb.collection(COLLECTIONS.courseEnrollments).getFullList({ sort: '-created' })).map(
+          mapEnrollment,
+        ),
+      [],
+    ),
+    safeList(
+      async () =>
         (await pb.collection(COLLECTIONS.classes).getFullList({ sort: '-created' })).map((r) =>
           mapClassItem(r as unknown as AnyRec, []),
         ),
@@ -1398,6 +1410,7 @@ export async function loadAllData(): Promise<{
     libraryBooks,
     libraryLoans,
     librarySettings,
+    courseEnrollments,
     classes,
     classSchedules,
   }
@@ -2763,6 +2776,33 @@ export const portalDb = {
         return mapLibrarySettings(rec as unknown as AnyRec)
       },
       null as LibrarySettings | null,
+    ),
+
+  createCourseEnrollment: (data: Omit<Enrollment, 'id' | 'created' | 'updated'>) =>
+    safeWrite(
+      async () => {
+        const payload = {
+          studentId: data.studentId,
+          studentName: data.studentName,
+          studentEmail: data.studentEmail || '',
+          courseId: data.courseId,
+          courseCode: data.courseCode,
+          courseName: data.courseName,
+          courseLevel: data.courseLevel || '',
+          courseModality: data.courseModality || '',
+          workloadHours: data.workloadHours,
+          period: data.period || '',
+          requestedPeriod: data.requestedPeriod || '',
+          status: data.status,
+          requestedAt: data.requestedAt,
+          notes: data.notes || '',
+          reviewedBy: data.reviewedBy || '',
+          reviewedAt: data.reviewedAt || '',
+        }
+        const rec = await pb.collection(COLLECTIONS.courseEnrollments).create(payload)
+        return mapEnrollment(rec as unknown as AnyRec)
+      },
+      null as Enrollment | null,
     ),
 
   triggerOverdueNotifications: () =>

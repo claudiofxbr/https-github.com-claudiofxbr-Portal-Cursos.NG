@@ -26,6 +26,8 @@ import {
   LibraryBook,
   LibraryLoan,
   LibrarySettings,
+  Enrollment,
+  EnrollmentStatus,
   ClassItem,
   ClassSchedule,
   SystemDiagnostic,
@@ -240,6 +242,15 @@ interface PortalContextType {
     updates: Partial<Omit<EadMaterial, 'id' | 'created' | 'updated'>>,
   ) => Promise<EadMaterial | null>
   deleteEadMaterial: (id: string) => Promise<boolean>
+
+  // Inscrições em cursos (Biblioteca de Cursos)
+  courseEnrollments: Enrollment[]
+  createCourseEnrollment: (data: {
+    courseId: string
+    studentId: string
+    requestedPeriod?: string
+    notes?: string
+  }) => Promise<{ success: boolean; enrollment?: Enrollment; error?: string }>
 
   // Biblioteca (Acervo & Empréstimos)
   libraryBooks: LibraryBook[]
@@ -517,6 +528,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [eadCourses, setEadCourses] = useState<EadCourse[]>([])
   const [eadLessons, setEadLessons] = useState<EadLesson[]>([])
   const [eadMaterials, setEadMaterials] = useState<EadMaterial[]>([])
+  const [courseEnrollments, setCourseEnrollments] = useState<Enrollment[]>([])
   const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([])
   const [libraryLoans, setLibraryLoans] = useState<LibraryLoan[]>([])
   const [librarySettings, setLibrarySettings] = useState<LibrarySettings>(DEFAULT_LIBRARY_SETTINGS)
@@ -577,6 +589,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.eadLessons) setEadLessons(data.eadLessons)
       if (data.eadMaterials) setEadMaterials(data.eadMaterials)
       if (data.libraryBooks) setLibraryBooks(data.libraryBooks)
+      if (data.courseEnrollments) setCourseEnrollments(data.courseEnrollments)
       if (data.libraryLoans) setLibraryLoans(data.libraryLoans)
       if (data.librarySettings) setLibrarySettings(data.librarySettings)
       if (data.classes) setClasses(data.classes)
@@ -737,6 +750,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setLibraryBooks([])
     setLibraryLoans([])
     setLibrarySettings(DEFAULT_LIBRARY_SETTINGS)
+    setCourseEnrollments([])
     setClasses([])
     setClassSchedules([])
     setDiagnostic(INITIAL_DIAGNOSTIC)
@@ -2864,6 +2878,112 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // ---------- Inscrições em cursos (Biblioteca de Cursos) ----------
+  const createCourseEnrollment = async (data: {
+    courseId: string
+    studentId: string
+    requestedPeriod?: string
+    notes?: string
+  }): Promise<{ success: boolean; enrollment?: Enrollment; error?: string }> => {
+    const course = courses.find((c) => c.id === data.courseId)
+    if (!course) {
+      return { success: false, error: 'Curso não encontrado no catálogo.' }
+    }
+
+    const student = students.find((s) => s.id === data.studentId)
+    if (!student) {
+      return { success: false, error: 'Aluno não encontrado.' }
+    }
+
+    // Turma vinculada ao curso, quando existir nos dados (Course não tem período próprio)
+    const linkedClass = classes.find((cl) => cl.courseId === course.id && cl.status !== 'encerrada')
+    const period = linkedClass?.name || ''
+
+    // Validação: não permitir inscrição duplicada do mesmo aluno no mesmo curso
+    const duplicate = courseEnrollments.find(
+      (e) =>
+        e.courseId === course.id &&
+        e.studentId === student.id &&
+        (e.status === 'inscrita' || e.status === 'em_analise' || e.status === 'confirmada'),
+    )
+    if (duplicate) {
+      return {
+        success: false,
+        error: `Você já possui uma inscrição ${
+          duplicate.status === 'inscrita'
+            ? 'registrada'
+            : duplicate.status === 'em_analise'
+              ? 'em análise'
+              : 'confirmada'
+        } neste curso.`,
+      }
+    }
+
+    // Vagas: se o curso informar vacancies/enrolledCount, respeita o limite
+    const hasVacancyInfo =
+      typeof course.vacancies === 'number' &&
+      course.vacancies > 0 &&
+      typeof course.enrolledCount === 'number'
+    if (hasVacancyInfo && course.enrolledCount >= course.vacancies) {
+      return {
+        success: false,
+        error: `Não há vagas disponíveis em "${course.name}" no momento (${course.enrolledCount}/${course.vacancies} preenchidas).`,
+      }
+    }
+
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const tempId = generateId()
+    const optimistic: Enrollment = {
+      id: tempId,
+      studentId: student.id,
+      studentName: student.fullName,
+      studentEmail: student.email || currentUser?.email,
+      courseId: course.id,
+      courseCode: course.code,
+      courseName: course.name,
+      courseLevel: course.level,
+      courseModality: course.modality,
+      workloadHours: course.workloadHours,
+      period,
+      requestedPeriod: data.requestedPeriod,
+      status: 'inscrita',
+      requestedAt: todayIso,
+      notes: data.notes,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+    }
+
+    // Atualização otimista em memória (padrão dos demais módulos)
+    setCourseEnrollments((prev) => [optimistic, ...prev])
+
+    try {
+      const saved = await portalDb.createCourseEnrollment({
+        studentId: student.id,
+        studentName: student.fullName,
+        studentEmail: student.email || currentUser?.email,
+        courseId: course.id,
+        courseCode: course.code,
+        courseName: course.name,
+        courseLevel: course.level,
+        courseModality: course.modality,
+        workloadHours: course.workloadHours,
+        period,
+        requestedPeriod: data.requestedPeriod,
+        status: 'inscrita',
+        requestedAt: todayIso,
+        notes: data.notes,
+      })
+      if (saved) {
+        setCourseEnrollments((prev) => prev.map((e) => (e.id === tempId ? saved : e)))
+        return { success: true, enrollment: saved }
+      }
+      return { success: true, enrollment: optimistic }
+    } catch (err) {
+      console.warn('[PortalContext] Erro ao criar inscrição:', err)
+      return { success: true, enrollment: optimistic }
+    }
+  }
+
   const createLibraryLoan = async (data: {
     bookId: string
     studentId: string
@@ -3378,6 +3498,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         createLibraryBook,
         updateLibraryBook,
         deleteLibraryBook,
+        createCourseEnrollment,
+        courseEnrollments,
         createLibraryLoan,
         returnLibraryLoan,
         renewLibraryLoan,
