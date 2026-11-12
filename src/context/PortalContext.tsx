@@ -54,6 +54,7 @@ import {
   loadAllData,
   loginWithPassword,
   logoutAuth,
+  refreshSessionSilently,
   requestPasswordReset,
   confirmPasswordReset,
   mapAuthUser,
@@ -442,40 +443,23 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const isGateLockedOut = gateLock.lockedUntil > Date.now()
   useLockExpiry(gateLock.lockedUntil, () => setGateLock(UNLOCKED_LOCK))
 
-  // Auth & Session state
+  // Auth & Session state: sem auto-login por armazenamento persistente (SPEC-INIT-001)
+  // A sessão vive estritamente na memória do app e é restaurada exclusivamente via
+  // hidratação silenciosa pós-F5 (chamada a /backend/v1/auth/refresh com cookie HttpOnly).
   const [users, setUsers] = useState<UserAccount[]>(DEMO_ACCOUNTS)
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    // 1. Tenta restaurar do PocketBase authStore nativo (sessão real)
+    // Apenas checa se o PocketBase authStore em memória já possui registro (não consulta localStorage)
     try {
       if (pb.authStore.isValid && pb.authStore.record) {
         const authRec = pb.authStore.record as unknown as AnyRec
-        // Não restaura a conta de serviço compartilhada como usuário de tela
         if (authRec.email !== 'portal@portalcursos.ng') {
           return mapAuthUser(authRec)
         }
       }
     } catch {
-      // continua para fallback
+      // silencioso
     }
-
-    // 2. Fallback de localStorage
-    try {
-      const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
-      const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
-      const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
-      if (savedEmail && savedEmail !== 'portal@portalcursos.ng') {
-        const match = DEMO_ACCOUNTS.find(
-          (u) =>
-            u.email.toLowerCase() === savedEmail.toLowerCase() ||
-            u.id === savedId ||
-            (savedRole && u.role === savedRole),
-        )
-        if (match) return match
-      }
-      return null
-    } catch {
-      return null
-    }
+    return null
   })
 
   const [loginLock, setLoginLock] = useState<LockState>(() =>
@@ -526,6 +510,23 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const bootFromDatabase = useCallback(async () => {
     setIsSyncing(true)
     try {
+      // 1. Hidratação silenciosa pós-F5 (SPEC-INIT-001):
+      // Antes de decidir se o usuário está logado, chama /backend/v1/auth/refresh silenciosamente.
+      // O navegador envia o cookie HttpOnly automaticamente. Se for bem-sucedido, o servidor
+      // retorna um novo Access Token e restaura o usuário em memória.
+      let hydratedUser: UserAccount | null = null
+      try {
+        const refreshResult = await refreshSessionSilently()
+        if (refreshResult && refreshResult.user) {
+          hydratedUser = refreshResult.user
+          setCurrentUser(hydratedUser)
+          // Se recuperou sessão válida, o portão é liberado automaticamente
+          setIsGateUnlocked(true)
+        }
+      } catch (refreshErr) {
+        console.warn('[PortalContext] Falha no refresh silencioso:', refreshErr)
+      }
+
       const data = await loadAllData()
       if (data.users && data.users.length > 0) setUsers(data.users)
       if (data.students && data.students.length > 0) setStudents(data.students)
@@ -556,43 +557,29 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (data.classes) setClasses(data.classes)
       if (data.classSchedules) setClassSchedules(data.classSchedules)
 
-      // Re-valida sessão contra os dados do PocketBase
-      try {
-        if (pb.authStore.isValid && pb.authStore.record) {
-          const rec = pb.authStore.record as unknown as AnyRec
-          if (rec.email !== 'portal@portalcursos.ng') {
-            const authUser = mapAuthUser(rec)
-            // Complementa com dados da lista se houver
-            const foundInList = data.users.find(
-              (u) => u.id === authUser.id || u.email.toLowerCase() === authUser.email.toLowerCase(),
-            )
-            setCurrentUser(foundInList || authUser)
-          }
-        } else {
-          const savedEmail = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
-          const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID)
-          const savedRole = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE)
-          if (savedEmail && savedEmail !== 'portal@portalcursos.ng') {
-            const list = data.users.length > 0 ? data.users : DEMO_ACCOUNTS
-            const matched = list.find(
-              (u) =>
-                (savedEmail && u.email.toLowerCase() === savedEmail.toLowerCase()) ||
-                (savedId && u.id === savedId) ||
-                (savedRole && u.role === savedRole),
-            )
-            if (matched) {
-              setCurrentUser(matched)
-            }
-          }
+      // Re-valida sessão contra os dados carregados
+      if (hydratedUser) {
+        const found = data.users.find(
+          (u) =>
+            u.id === hydratedUser!.id ||
+            u.email.toLowerCase() === hydratedUser!.email.toLowerCase(),
+        )
+        if (found) setCurrentUser(found)
+      } else if (pb.authStore.isValid && pb.authStore.record) {
+        const rec = pb.authStore.record as unknown as AnyRec
+        if (rec.email !== 'portal@portalcursos.ng') {
+          const authUser = mapAuthUser(rec)
+          const found = data.users.find(
+            (u) => u.id === authUser.id || u.email.toLowerCase() === authUser.email.toLowerCase(),
+          )
+          setCurrentUser(found || authUser)
+          setIsGateUnlocked(true)
         }
-      } catch {
-        // localStorage indisponível
       }
 
       setIsBackendReady(true)
     } catch (err) {
       console.warn('[PortalContext] Erro ao carregar dados do banco:', err)
-      // Mantém fallbacks locais, sem tela branca
       setIsBackendReady(false)
     } finally {
       setIsSyncing(false)
@@ -603,24 +590,19 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     bootFromDatabase()
   }, [bootFromDatabase])
 
-  // Persistência local mínima apenas para portão, sessão e locks
+  // Persistência local mínima apenas para portão e locks (SPEC-INIT-001: dados de sessão NUNCA vão para storage)
   useEffect(() => {
     persistJson(STORAGE_KEYS.GATE, isGateUnlocked)
   }, [isGateUnlocked])
 
   useEffect(() => {
-    if (currentUser) {
-      persistJson(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id)
-      persistJson(STORAGE_KEYS.CURRENT_USER_EMAIL, currentUser.email)
-      persistJson(STORAGE_KEYS.CURRENT_USER_ROLE, currentUser.role)
-    } else {
-      try {
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
-      } catch {
-        // falha silenciosa
-      }
+    // Garante que chaves legadas de sessão não persistam em localStorage
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
+    } catch {
+      // falha silenciosa
     }
   }, [currentUser])
 
@@ -702,7 +684,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }
 
   const logout = () => {
-    logoutAuth()
+    logoutAuth().catch(() => {})
     setCurrentUser(null)
     try {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)

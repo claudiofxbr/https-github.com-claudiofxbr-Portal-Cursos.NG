@@ -130,26 +130,87 @@ export async function ensureAuth(): Promise<void> {
   return serviceAuthPromise
 }
 
-// Realiza login real por usuário contra a coleção `users` do PocketBase
+// Realiza login em duas camadas via endpoint seguro /backend/v1/auth/login:
+// - Emite Access Token curto em memória (salvo no authStore do cliente PocketBase)
+// - Emite Refresh Token em cookie HttpOnly + Secure gerenciado pelo servidor
 export async function loginWithPassword(
   email: string,
   password: string,
 ): Promise<{ user: UserAccount; token: string }> {
-  // Limpa promessa de conta de serviço ao fazer login real
   serviceAuthPromise = null
 
-  const authData = await pb
-    .collection('users')
-    .authWithPassword(email.trim().toLowerCase(), password)
-  const rec = authData.record as unknown as AnyRec
+  const baseUrl = pb.baseUrl.replace(/\/$/, '')
+  const resp = await fetch(`${baseUrl}/backend/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+  })
+
+  if (!resp.ok) {
+    const errBody = await resp.json().catch(() => ({}))
+    throw new Error(errBody.error || 'Credenciais inválidas.')
+  }
+
+  const data = await resp.json()
+  const token = data.token
+  const rec = data.record as unknown as AnyRec
   const user = mapAuthUser(rec)
-  return { user, token: authData.token }
+
+  // Salva na memória do cliente PocketBase para que as requisições autenticadas funcionem imediatamente
+  pb.authStore.save(token, rec as any)
+
+  return { user, token }
 }
 
-// Encerra sessão real no PocketBase
-export function logoutAuth(): void {
-  pb.authStore.clear()
-  serviceAuthPromise = null
+// Hidratação silenciosa pós-F5: tenta restaurar a sessão via cookie HttpOnly
+// Chamada pelo PortalContext no bootstrap antes de exibir o login/portão
+export async function refreshSessionSilently(): Promise<{
+  user: UserAccount
+  token: string
+} | null> {
+  try {
+    const baseUrl = pb.baseUrl.replace(/\/$/, '')
+    const resp = await fetch(`${baseUrl}/backend/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    })
+
+    if (!resp.ok) {
+      pb.authStore.clear()
+      return null
+    }
+
+    const data = await resp.json()
+    const token = data.token
+    const rec = data.record as unknown as AnyRec
+    const user = mapAuthUser(rec)
+
+    pb.authStore.save(token, rec as any)
+    return { user, token }
+  } catch (err) {
+    console.warn('[portalDb] refresh silencioso falhou:', err)
+    pb.authStore.clear()
+    return null
+  }
+}
+
+// Encerra sessão real: revoga no backend (invalidando refresh token e cookie) e limpa a memória
+export async function logoutAuth(): Promise<void> {
+  try {
+    const baseUrl = pb.baseUrl.replace(/\/$/, '')
+    await fetch(`${baseUrl}/backend/v1/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    }).catch(() => {})
+  } finally {
+    pb.authStore.clear()
+    serviceAuthPromise = null
+  }
 }
 
 // Solicita e-mail de redefinição de senha através do PocketBase Skip Cloud

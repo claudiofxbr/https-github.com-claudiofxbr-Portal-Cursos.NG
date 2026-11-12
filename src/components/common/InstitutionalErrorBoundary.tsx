@@ -1,7 +1,8 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
+import { AlertTriangle, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { logoutAuth } from '@/lib/portalDb'
 
 interface Props {
   children: ReactNode
@@ -17,6 +18,12 @@ interface State {
   error: Error | null
 }
 
+/**
+ * SPEC-INIT-001 Inversão de Error Boundaries:
+ * Em caso de falha em módulo logado, o boundary NÃO diz "Sua sessão permanece ativa".
+ * Ele descarta imediatamente a sessão em memória e os estados de interface,
+ * e força a transição segura para a tela de autenticação/login.
+ */
 export class InstitutionalErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -28,22 +35,35 @@ export class InstitutionalErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[InstitutionalErrorBoundary] Falha capturada:', error, errorInfo)
+    console.error(
+      '[InstitutionalErrorBoundary] Falha capturada (SPEC-INIT-001): descartando sessão',
+      error,
+      errorInfo,
+    )
+    try {
+      // Descarta sessão em memória e remove rastros temporários
+      logoutAuth().catch(() => {})
+      sessionStorage.clear()
+    } catch {
+      // falha silenciosa
+    }
   }
 
-  private handleReset = () => {
-    this.setState({ hasError: false, error: null })
-    if (this.props.onReset) {
-      this.props.onReset()
+  private handleToLogin = () => {
+    try {
+      logoutAuth().catch(() => {})
+      sessionStorage.clear()
+    } catch {
+      // silencioso
     }
+    window.location.href = '/'
   }
 
   public render() {
     if (this.state.hasError) {
       const {
-        fallbackTitle = 'Instabilidade no Módulo',
-        fallbackDescription = 'Ocorreu uma falha inesperada durante a exibição deste conteúdo. Sua sessão permanece ativa e segura.',
-        onNavigateHome,
+        fallbackTitle = 'Falha de Execução no Módulo',
+        fallbackDescription = 'Ocorreu uma falha inesperada na aplicação. Conforme a política de integridade (SPEC-INIT-001), a sessão em memória foi descartada por segurança.',
         compact = false,
       } = this.props
 
@@ -58,12 +78,11 @@ export class InstitutionalErrorBoundary extends Component<Props, State> {
             <div className="flex items-center justify-center gap-2 pt-1">
               <Button
                 size="sm"
-                variant="outline"
-                onClick={this.handleReset}
-                className="text-xs border-slate-700 text-slate-200 hover:bg-slate-800 gap-1.5"
+                onClick={this.handleToLogin}
+                className="text-xs bg-rose-600 hover:bg-rose-500 text-white gap-1.5"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Recarregar Player
+                <LogIn className="w-3.5 h-3.5" />
+                Retornar ao Login
               </Button>
             </div>
           </div>
@@ -72,9 +91,9 @@ export class InstitutionalErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="p-6 max-w-2xl mx-auto my-8">
-          <Card className="bg-slate-900 border-slate-800 shadow-xl text-slate-200">
+          <Card className="bg-slate-900 border-rose-800/60 shadow-xl text-slate-200">
             <CardHeader className="text-center pb-3">
-              <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto mb-2">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto mb-2">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <CardTitle className="text-lg font-bold text-white">{fallbackTitle}</CardTitle>
@@ -90,22 +109,12 @@ export class InstitutionalErrorBoundary extends Component<Props, State> {
               )}
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <Button
-                  onClick={this.handleReset}
+                  onClick={this.handleToLogin}
                   className="bg-blue-600 hover:bg-blue-500 text-white text-xs gap-1.5"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Tentar Novamente
+                  <LogIn className="w-3.5 h-3.5" />
+                  Ir para Tela de Login
                 </Button>
-                {onNavigateHome && (
-                  <Button
-                    variant="outline"
-                    onClick={onNavigateHome}
-                    className="border-slate-700 text-slate-300 hover:bg-slate-800 text-xs gap-1.5"
-                  >
-                    <Home className="w-3.5 h-3.5" />
-                    Ir para Início
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>

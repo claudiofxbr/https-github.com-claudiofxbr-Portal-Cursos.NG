@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { ModuleKey } from '@/types/portal'
-import { PortalGateGuard } from '@/components/auth/PortalGateGuard'
 import { LoginModalScreen } from '@/components/auth/LoginModalScreen'
 import { PortalShell } from '@/components/layout/PortalShell'
 import { DashboardOverview } from '@/components/dashboard/DashboardOverview'
@@ -47,18 +46,22 @@ export default function Index() {
     }
   }
 
+  // Se não houver usuário logado, renderiza diretamente a LoginModalScreen
+  // (SPEC-INIT-001 Decisão 1: portão vira parte da tela de login, sem tela separada)
+  if (!currentUser) {
+    return <LoginModalScreen />
+  }
+
   // Se o usuário logado for do papel ALUNO, renderiza o PORTAL DO ALUNO completo e dedicado
-  // Protegido por ErrorBoundary institucional para evitar que exceções no player ou módulos desmontem a árvore e resetem o portão
-  if (currentUser && currentUser.role === 'aluno') {
+  // Protegido por ErrorBoundary institucional configurado para SPEC-INIT-001
+  if (currentUser.role === 'aluno') {
     return (
-      <PortalGateGuard>
-        <InstitutionalErrorBoundary
-          fallbackTitle="Instabilidade no Portal do Aluno"
-          fallbackDescription="Ocorreu uma falha inesperada na interface do Portal do Aluno. Sua sessão permanece ativa e você continua conectado."
-        >
-          <AlunoPortalMaster />
-        </InstitutionalErrorBoundary>
-      </PortalGateGuard>
+      <InstitutionalErrorBoundary
+        fallbackTitle="Instabilidade no Portal do Aluno"
+        fallbackDescription="Ocorreu uma falha inesperada na interface. Conforme a política de integridade, a sessão foi encerrada por segurança."
+      >
+        <AlunoPortalMaster />
+      </InstitutionalErrorBoundary>
     )
   }
 
@@ -66,67 +69,66 @@ export default function Index() {
   const safeActiveModule = canAccessModule(activeModule) ? activeModule : 'dashboard'
 
   return (
-    <PortalGateGuard>
-      {!currentUser ? (
-        <LoginModalScreen />
-      ) : (
-        <PortalShell
-          activeModule={safeActiveModule}
-          setActiveModule={(mod) => {
-            if (canAccessModule(mod)) {
-              setActiveModule(mod)
-            }
-          }}
-        >
-          {safeActiveModule === 'dashboard' && (
-            <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
-          )}
-          {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
-          {safeActiveModule === 'alunos' && (
-            <AlunosModule
-              initialStudentId={targetStudentId}
-              onClearInitialStudent={() => setTargetStudentId(null)}
-              onNavigateToFinanceiro={handleNavigateToFinanceiro}
-            />
-          )}
-          {safeActiveModule === 'matriculas' && (
-            <MatriculaModule
-              onNavigateToModule={(mod) => {
-                if (canAccessModule(mod)) {
-                  setActiveModule(mod)
-                }
-              }}
-            />
-          )}
-          {safeActiveModule === 'cursos' && <CursosModule />}
-          {safeActiveModule === 'turmas' && <TurmasModule />}
-          {safeActiveModule === 'ead' && <EADModule />}
-          {safeActiveModule === 'financeiro' && (
-            <FinanceiroModule
-              initialChargeId={targetChargeId}
-              initialStudentCpf={targetStudentCpf}
-              onClearInitialFilters={() => {
-                setTargetChargeId(null)
-                setTargetStudentCpf(null)
-              }}
-              onNavigateToAluno={handleNavigateToAlunos}
-            />
-          )}
-          {safeActiveModule === 'relatorios' && (
-            <RelatoriosModule onNavigateToStudent={handleNavigateToAlunos} />
-          )}
-          {safeActiveModule === 'diplomas' && <DiplomasCertificadosModule />}
-          {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
-          {safeActiveModule === 'manutencao' && <ManutencaoModule />}
-          {safeActiveModule === 'lgpd' && <LgpdModule />}
-          {safeActiveModule === 'diagnostico' && <DiagnosticoModule />}
-          {safeActiveModule === 'agentes' && <AgentesModule />}
-          {safeActiveModule === 'professor_area' && (
-            <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
-          )}
-          {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
-        </PortalShell>
-      )}
-    </PortalGateGuard>
+    <InstitutionalErrorBoundary
+      fallbackTitle="Instabilidade no Sistema"
+      fallbackDescription="Ocorreu uma falha inesperada na aplicação. O estado da sessão foi descartado por segurança."
+    >
+      <PortalShell
+        activeModule={safeActiveModule}
+        setActiveModule={(mod) => {
+          if (canAccessModule(mod)) {
+            setActiveModule(mod)
+          }
+        }}
+      >
+        {safeActiveModule === 'dashboard' && (
+          <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
+        )}
+        {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
+        {safeActiveModule === 'alunos' && (
+          <AlunosModule
+            initialStudentId={targetStudentId}
+            onClearInitialStudent={() => setTargetStudentId(null)}
+            onNavigateToFinanceiro={handleNavigateToFinanceiro}
+          />
+        )}
+        {safeActiveModule === 'matriculas' && (
+          <MatriculaModule
+            onNavigateToModule={(mod) => {
+              if (canAccessModule(mod)) {
+                setActiveModule(mod)
+              }
+            }}
+          />
+        )}
+        {safeActiveModule === 'cursos' && <CursosModule />}
+        {safeActiveModule === 'turmas' && <TurmasModule />}
+        {safeActiveModule === 'ead' && <EADModule />}
+        {safeActiveModule === 'financeiro' && (
+          <FinanceiroModule
+            initialChargeId={targetChargeId}
+            initialStudentCpf={targetStudentCpf}
+            onClearInitialFilters={() => {
+              setTargetChargeId(null)
+              setTargetStudentCpf(null)
+            }}
+            onNavigateToAluno={handleNavigateToAlunos}
+          />
+        )}
+        {safeActiveModule === 'relatorios' && (
+          <RelatoriosModule onNavigateToStudent={handleNavigateToAlunos} />
+        )}
+        {safeActiveModule === 'diplomas' && <DiplomasCertificadosModule />}
+        {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
+        {safeActiveModule === 'manutencao' && <ManutencaoModule />}
+        {safeActiveModule === 'lgpd' && <LgpdModule />}
+        {safeActiveModule === 'diagnostico' && <DiagnosticoModule />}
+        {safeActiveModule === 'agentes' && <AgentesModule />}
+        {safeActiveModule === 'professor_area' && (
+          <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
+        )}
+        {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
+      </PortalShell>
+    </InstitutionalErrorBoundary>
   )
 }

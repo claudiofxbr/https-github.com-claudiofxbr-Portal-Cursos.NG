@@ -69,13 +69,12 @@ export class EadCourseViewErrorBoundary extends React.Component<
               </div>
               <div className="space-y-1">
                 <CardTitle className="text-lg font-bold text-white">
-                  Não foi possível abrir a aula agora
+                  Instabilidade ao carregar a aula
                 </CardTitle>
                 <CardDescription className="text-sm text-amber-200/80 leading-relaxed">
                   {this.props.courseTitle
-                    ? `Tivemos um problema técnico ao carregar o curso "${this.props.courseTitle}".`
-                    : 'Tivemos um problema técnico ao carregar esta videoaula.'}{' '}
-                  Sua sessão está preservada e nenhum dado de progresso foi perdido.
+                    ? `Ocorreu uma falha ao renderizar os recursos do curso "${this.props.courseTitle}".`
+                    : 'Ocorreu uma falha ao renderizar os recursos desta videoaula.'}
                 </CardDescription>
               </div>
             </div>
@@ -83,9 +82,8 @@ export class EadCourseViewErrorBoundary extends React.Component<
           <CardContent className="p-6 pt-2 space-y-4">
             <div className="p-4 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300 space-y-2">
               <p>
-                Você continua logado no Portal do Aluno. Tente novamente ou volte para a lista de
-                cursos — se o problema persistir, registre um chamado na aba{' '}
-                <strong>Suporte</strong> informando o nome da aula.
+                Tente recarregar o player da aula ou retornar para a listagem de cursos. Se o
+                problema persistir, reinicie a sessão ou contate o suporte.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -96,7 +94,7 @@ export class EadCourseViewErrorBoundary extends React.Component<
                 className="text-xs border-slate-700 text-slate-300 hover:bg-slate-800 gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                Tentar novamente
+                Recarregar aula
               </Button>
               <Button
                 size="sm"

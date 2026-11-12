@@ -18,6 +18,12 @@ const App = () => (
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
+            {/*
+              SPEC-INIT-001 Decisão 2 do Usuário:
+              "O /reset-password fica como exceção documentada"
+              Esta rota permanece acessível pré-autenticação para que o usuário possa redefinir sua
+              senha com o token recebido por e-mail, sem exigir sessão ou portão prévio.
+            */}
             <Route path="/reset-password" element={<ResetPassword />} />
           </Route>
           <Route path="*" element={<NotFound />} />
