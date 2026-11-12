@@ -35,10 +35,10 @@ export class InstitutionalErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // LGPD (transparência): o log registra o evento sem despejar o objeto de
+    // erro/stack, que pode conter trechos de dados pessoais em memória.
     console.error(
       '[InstitutionalErrorBoundary] Falha capturada (SPEC-INIT-001): descartando sessão',
-      error,
-      errorInfo,
     )
     try {
       // Descarta sessão em memória e remove rastros temporários

@@ -148,10 +148,11 @@ export function MatriculaCheckoutStep({
   const detectedBrand = detectCardBrand(cardNumber)
   const brandInfo = CARD_BRANDS[detectedBrand]
 
-  // Gera chave fictícia de Pix para cópia
-  const pixCleanCpf = formData.cpf.replace(/\D/g, '')
-  const pixCode = `00020126580014br.gov.bcb.pix0136cob-portalcursos-std-${pixCleanCpf || 'demo'}520400005303986540${enrollmentFee.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304DEMO`
-  const pixQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_matricula_${pixCleanCpf || 'demo'}`
+  // Gera chave fictícia de Pix para cópia.
+  // LGPD (compartilhamento): nenhum dado pessoal (CPF) na string Pix nem na
+  // URL enviada ao serviço externo de QR Code.
+  const pixCode = `00020126580014br.gov.bcb.pix0136cob-portalcursos-std520400005303986540${enrollmentFee.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304DEMO`
+  const pixQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_matricula`
 
   const handleCopyPix = async () => {
     try {

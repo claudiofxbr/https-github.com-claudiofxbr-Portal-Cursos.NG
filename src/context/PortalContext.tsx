@@ -368,6 +368,45 @@ interface LockState {
 
 const UNLOCKED_LOCK: LockState = { attempts: 0, lockedUntil: 0 }
 
+// Chaves legadas de localStorage que já carregaram dados pessoais de sessão
+// (id, e-mail e papel do usuário) ou dados de alunos em filtros de relatório.
+// LGPD (minimização/ciclo de vida): removidas em todo bootstrap.
+const LEGACY_LOCAL_STORAGE_KEYS = [
+  STORAGE_KEYS.CURRENT_USER_ID,
+  STORAGE_KEYS.CURRENT_USER_EMAIL,
+  STORAGE_KEYS.CURRENT_USER_ROLE,
+  'portal_relatorios_freq_filters',
+  'portalcursos_biblioteca_historico_student',
+  'portalcursos_biblioteca_historico_period',
+  'portalcursos_biblioteca_historico_delay_only',
+  'portalcursos_biblioteca_historico_search',
+]
+
+// Chaves em sessionStorage que carregam estado da sessão (navegação do Portal
+// do Aluno, filtros com ID de aluno/termo de busca, lockout de reset). Saem no
+// logout para que nada do usuário anterior vaze para o próximo login na aba.
+const SESSION_STORAGE_KEYS_TO_CLEAR = [
+  'portalcursos.activeTab',
+  'portalcursos.activeEadCourseId',
+  'portalcursos_biblioteca_historico_student',
+  'portalcursos_biblioteca_historico_period',
+  'portalcursos_biblioteca_historico_delay_only',
+  'portalcursos_biblioteca_historico_search',
+  'portal_relatorios_freq_filters',
+  'portalcursos_reset_lock',
+]
+
+// Limpa chaves legadas de localStorage com dados pessoais. Idempotente.
+// Chaves de navegação em sessionStorage NÃO são tocadas aqui: elas precisam
+// sobreviver ao F5 (restauração de aba/aula).
+export function cleanupLegacyStorage(): void {
+  try {
+    LEGACY_LOCAL_STORAGE_KEYS.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    // falha de storage não derruba o boot
+  }
+}
+
 // Grava no localStorage sem derrubar o app (quota cheia, modo privado etc.)
 function persistJson(key: string, value: unknown): void {
   try {
@@ -411,20 +450,6 @@ function useLockExpiry(lockedUntil: number, onExpire: () => void) {
     const timer = window.setTimeout(() => onExpireRef.current(), lockedUntil - Date.now())
     return () => window.clearTimeout(timer)
   }, [lockedUntil])
-}
-
-// Carrega listas do localStorage com validação: dados corrompidos ou
-// manipulados manualmente não podem derrubar o app (JSON.parse lançando
-// exceção => tela branca) nem injetar estruturas malformadas no estado.
-function loadJsonState<T>(key: string, fallback: T[]): T[] {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as T[]) : fallback
-  } catch {
-    return fallback
-  }
 }
 
 export function PortalProvider({ children }: { children: React.ReactNode }) {
@@ -596,15 +621,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }, [isGateUnlocked])
 
   useEffect(() => {
-    // Garante que chaves legadas de sessão não persistam em localStorage
-    try {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
-    } catch {
-      // falha silenciosa
-    }
-  }, [currentUser])
+    // LGPD: remove em todo bootstrap chaves legadas que persistiram dados pessoais
+    cleanupLegacyStorage()
+  }, [])
 
   useEffect(() => {
     persistJson(STORAGE_KEYS.GATE_LOCK, gateLock)
@@ -669,6 +688,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       // Atualiza lastAccess no servidor de forma não bloqueante
       const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16)
       portalDb.updateAppUser(user.id, { lastAccess: nowStr }).catch(() => {})
+
+      // LGPD (correção/transparência): refetch dos dados ao trocar de sessão,
+      // garantindo que nenhum dado otimista da sessão anterior permaneça.
+      void bootFromDatabase()
       return true
     } catch (err) {
       console.warn('[PortalContext] Falha de autenticação real no servidor:', err)
@@ -686,13 +709,46 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     logoutAuth().catch(() => {})
     setCurrentUser(null)
+
+    // LGPD (ciclo de vida / direito de eliminação): reset COMPLETO do estado
+    // em memória do contexto — nenhum dado do usuário anterior pode restar
+    // visível para o próximo login na mesma aba.
+    setUsers(DEMO_ACCOUNTS)
+    setStudents(INITIAL_STUDENTS)
+    setCourses(INITIAL_COURSES)
+    setCharges(INITIAL_CHARGES)
+    setPriceTable(INITIAL_PRICE_TABLE)
+    setPriceAuditLogs(INITIAL_PRICE_AUDIT_LOGS)
+    setBillingExceptions(INITIAL_BILLING_EXCEPTIONS)
+    setTickets(INITIAL_TICKETS)
+    setLgpdRequests(INITIAL_LGPD_REQUESTS)
+    setExpenses(INITIAL_EXPENSES)
+    setGrades(INITIAL_GRADES)
+    setAttendance(INITIAL_ATTENDANCE)
+    setLessonProgress([])
+    setCourseMaterials([])
+    setCalendarEvents([])
+    setStudentNotifications([])
+    setStudentSupportTickets([])
+    setCertificates([])
+    setEadCourses([])
+    setEadLessons([])
+    setEadMaterials([])
+    setLibraryBooks([])
+    setLibraryLoans([])
+    setLibrarySettings(DEFAULT_LIBRARY_SETTINGS)
+    setClasses([])
+    setClassSchedules([])
+    setDiagnostic(INITIAL_DIAGNOSTIC)
+
+    // Chaves de sessão (navegação, filtros com dados do aluno, lockout de reset)
+    // e legados de localStorage.
     try {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID)
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_EMAIL)
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ROLE)
+      SESSION_STORAGE_KEYS_TO_CLEAR.forEach((k) => sessionStorage.removeItem(k))
     } catch {
       // silencioso
     }
+    cleanupLegacyStorage()
   }
 
   // Recuperação de senha com mensagem de sucesso genérica (não revela se o e-mail existe)
@@ -917,10 +973,14 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         receiptNumber: chargeReceipt,
         pixCode:
           chargeOptions?.pixCode ||
-          `00020126580014br.gov.bcb.pix0136cob-portalcursos-std-${newStudent.id}520400005303986540${chargeAmount.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304XXXX`,
+          // LGPD (compartilhamento): nenhum identificador pessoal (ID do
+          // aluno) na string Pix que vai para o serviço externo de QR Code
+          `00020126580014br.gov.bcb.pix0136cob-portalcursos-std520400005303986540${chargeAmount.toFixed(2)}5802BR5924PORTALCURSOS NG ENSINO6009SAO PAULO62070503***6304XXXX`,
         pixQrUrl:
           chargeOptions?.pixQrUrl ||
-          `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_${newStudent.id}`,
+          // LGPD (compartilhamento): nenhum identificador pessoal na URL
+          // enviada ao serviço externo de QR Code
+          `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_pix_matricula`,
         installments: chargeOptions?.installments,
         cardLast4: chargeOptions?.cardLast4,
         cardBrand: chargeOptions?.cardBrand,
@@ -1013,7 +1073,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const deleteStudent = async (studentId: string): Promise<boolean> => {
     // Apenas root e admin podem excluir alunos
     if (!currentUser || (currentUser.role !== 'root' && currentUser.role !== 'admin')) {
-      console.warn('[PortalContext] Tentativa não autorizada de excluir aluno:', currentUser?.role)
+      // LGPD: sem dados do usuário em logs
+      console.warn('[PortalContext] Tentativa não autorizada de excluir aluno.')
       return false
     }
 
@@ -2180,8 +2241,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       const normalizedStatus = (student.status || '').trim().toLowerCase()
       const isEligible = normalizedStatus === 'ativo' || normalizedStatus === 'matriculado'
       if (!isEligible) {
+        // LGPD: nenhum dado pessoal (nome/matrícula) em logs
         console.warn(
-          `[PortalContext] Aluno ${student.id} (${student.fullName}) com status "${student.status}" não está autorizado a registrar progresso de videoaulas.`,
+          `[PortalContext] Registro de progresso de videoaulas bloqueado: status da matrícula não autoriza.`,
         )
         return null
       }
@@ -2204,7 +2266,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         )
         if (!prevProgress || prevProgress.status !== 'concluido') {
           console.warn(
-            `[PortalContext] Conclusão bloqueada por pré-requisito: a aula anterior "${prevLesson.title}" ainda não foi concluída.`,
+            '[PortalContext] Conclusão bloqueada por pré-requisito: há aula anterior pendente de conclusão.',
           )
           return null
         }

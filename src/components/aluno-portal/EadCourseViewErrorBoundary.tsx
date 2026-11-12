@@ -46,8 +46,9 @@ export class EadCourseViewErrorBoundary extends React.Component<
     }
   }
 
-  componentDidCatch(error: unknown): void {
-    console.error('[EAD] Falha ao renderizar a aula do Portal do Aluno:', error)
+  componentDidCatch(_error: unknown): void {
+    // LGPD (transparência): sem despejo do objeto de erro no console —
+    // a mensagem pode conter dados pessoais (título da aula, ID do aluno).
   }
 
   handleRetry = (): void => {

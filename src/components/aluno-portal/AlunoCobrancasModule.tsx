@@ -214,7 +214,8 @@ export function AlunoCobrancasModule() {
   const currentPixQrUrl = selectedCharge
     ? selectedCharge.pixQrUrl && isTrustedPixQr(selectedCharge.pixQrUrl)
       ? selectedCharge.pixQrUrl
-      : `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_cobranca_${selectedCharge.code}`
+      : // LGPD (compartilhamento): payload sem identificador do aluno
+        `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=portalcursos_cobranca`
     : ''
 
   const currentPixCode =

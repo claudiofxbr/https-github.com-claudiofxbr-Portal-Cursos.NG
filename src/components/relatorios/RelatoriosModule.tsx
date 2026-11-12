@@ -130,15 +130,16 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
     searchTerm: '',
   })
 
-  // Filtros da aba de Frequência persistidos em localStorage
+  // LGPD (minimização): filtros podem conter termo de busca por nome do aluno —
+  // ficam em sessionStorage (terminam com a sessão), nunca em localStorage.
   const [frequenciaFilters, setFrequenciaFilters] = useState<FrequenciaFilterState>(() => {
     try {
-      const saved = localStorage.getItem('portal_relatorios_freq_filters')
+      const saved = sessionStorage.getItem('portal_relatorios_freq_filters')
       if (saved) {
         return JSON.parse(saved)
       }
-    } catch (e) {
-      console.warn('Erro ao carregar filtros de frequência do storage:', e)
+    } catch {
+      // storage indisponível ou JSON inválido — usa padrão
     }
     return {
       classId: 'all',
@@ -151,9 +152,9 @@ export const RelatoriosModule: React.FC<RelatoriosModuleProps> = ({ onNavigateTo
   const handleFrequenciaFiltersChange = (newFilters: FrequenciaFilterState) => {
     setFrequenciaFilters(newFilters)
     try {
-      localStorage.setItem('portal_relatorios_freq_filters', JSON.stringify(newFilters))
-    } catch (e) {
-      console.warn('Erro ao persistir filtros de frequência:', e)
+      sessionStorage.setItem('portal_relatorios_freq_filters', JSON.stringify(newFilters))
+    } catch {
+      // noop
     }
   }
 

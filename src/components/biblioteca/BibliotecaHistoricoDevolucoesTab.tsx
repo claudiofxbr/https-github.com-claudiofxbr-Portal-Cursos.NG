@@ -22,6 +22,9 @@ import {
 
 export type DevolucaoPeriodFilter = 'todos' | '30dias' | 'mes_atual' | 'mes_anterior' | 'ano_atual'
 
+// LGPD (minimização): filtros podem conter o ID do aluno e termo de busca por
+// nome/CPF — ficam em sessionStorage (encerram com a aba/sessão), nunca em
+// localStorage persistente.
 const STORAGE_KEY_STUDENT = 'portalcursos_biblioteca_historico_student'
 const STORAGE_KEY_PERIOD = 'portalcursos_biblioteca_historico_period'
 const STORAGE_KEY_DELAY = 'portalcursos_biblioteca_historico_delay_only'
@@ -30,10 +33,10 @@ const STORAGE_KEY_SEARCH = 'portalcursos_biblioteca_historico_search'
 export function BibliotecaHistoricoDevolucoesTab() {
   const { libraryLoans, students } = usePortal()
 
-  // Filtros persistidos em localStorage para sobreviver a recargas de página
+  // Filtros em sessionStorage: sobrevivem ao F5, mas não a sessões futuras
   const [searchTerm, setSearchTerm] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY_SEARCH) || ''
+      return sessionStorage.getItem(STORAGE_KEY_SEARCH) || ''
     } catch {
       return ''
     }
@@ -41,7 +44,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY_STUDENT) || 'todos'
+      return sessionStorage.getItem(STORAGE_KEY_STUDENT) || 'todos'
     } catch {
       return 'todos'
     }
@@ -49,7 +52,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
 
   const [periodFilter, setPeriodFilter] = useState<DevolucaoPeriodFilter>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_PERIOD)
+      const saved = sessionStorage.getItem(STORAGE_KEY_PERIOD)
       if (
         saved === 'todos' ||
         saved === '30dias' ||
@@ -67,7 +70,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
 
   const [onlyOverdueReturned, setOnlyOverdueReturned] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY_DELAY) === 'true'
+      return sessionStorage.getItem(STORAGE_KEY_DELAY) === 'true'
     } catch {
       return false
     }
@@ -76,7 +79,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
   // Efeitos para persistência automática
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_SEARCH, searchTerm)
+      sessionStorage.setItem(STORAGE_KEY_SEARCH, searchTerm)
     } catch {
       // noop
     }
@@ -84,7 +87,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_STUDENT, selectedStudentId)
+      sessionStorage.setItem(STORAGE_KEY_STUDENT, selectedStudentId)
     } catch {
       // noop
     }
@@ -92,7 +95,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_PERIOD, periodFilter)
+      sessionStorage.setItem(STORAGE_KEY_PERIOD, periodFilter)
     } catch {
       // noop
     }
@@ -100,7 +103,7 @@ export function BibliotecaHistoricoDevolucoesTab() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_DELAY, String(onlyOverdueReturned))
+      sessionStorage.setItem(STORAGE_KEY_DELAY, String(onlyOverdueReturned))
     } catch {
       // noop
     }

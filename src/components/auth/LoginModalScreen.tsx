@@ -44,7 +44,7 @@ const RESET_LOCKOUT_MS = 60_000 // 1 minuto de bloqueio após 3 envios
 
 function loadResetLock(): ResetLockState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_RESET_LOCK)
+    const raw = sessionStorage.getItem(STORAGE_KEY_RESET_LOCK)
     if (!raw) return { attempts: 0, lockedUntil: 0 }
     const parsed = JSON.parse(raw)
     const attempts = Number(parsed?.attempts) || 0
@@ -58,9 +58,11 @@ function loadResetLock(): ResetLockState {
   }
 }
 
+// LGPD (minimização): o lockout de reset de senha é estado anti-abuso da
+// sessão — sessionStorage basta, nada persiste além do F5.
 function persistResetLock(state: ResetLockState) {
   try {
-    localStorage.setItem(STORAGE_KEY_RESET_LOCK, JSON.stringify(state))
+    sessionStorage.setItem(STORAGE_KEY_RESET_LOCK, JSON.stringify(state))
   } catch {
     // silencioso
   }
