@@ -12,8 +12,8 @@ export function mapEnrollment(rec: AnyRec): Enrollment {
     courseId: str(rec.courseId),
     courseCode: str(rec.courseCode),
     courseName: str(rec.courseName),
-    courseLevel: str(rec.courseLevel) || undefined,
-    courseModality: str(rec.courseModality) || undefined,
+    courseLevel: (str(rec.courseLevel) || undefined) as Enrollment['courseLevel'],
+    courseModality: (str(rec.courseModality) || undefined) as Enrollment['courseModality'],
     workloadHours: num(rec.workloadHours, 0),
     period: str(rec.period) || undefined,
     requestedPeriod: str(rec.requestedPeriod) || undefined,
@@ -40,27 +40,30 @@ async function safeWrite<T>(run: () => Promise<T>, fallback: T): Promise<T> {
 
 export const enrollmentDb = {
   createEnrollment: (data: Omit<Enrollment, 'id' | 'created' | 'updated'>) =>
-    safeWrite(async () => {
-      const rec = await pb.collection(COLLECTIONS.courseEnrollments).create({
-        studentId: data.studentId,
-        studentName: data.studentName,
-        studentEmail: data.studentEmail || '',
-        courseId: data.courseId,
-        courseCode: data.courseCode,
-        courseName: data.courseName,
-        courseLevel: data.courseLevel || '',
-        courseModality: data.courseModality || '',
-        workloadHours: data.workloadHours,
-        period: data.period || '',
-        requestedPeriod: data.requestedPeriod || '',
-        status: data.status,
-        requestedAt: data.requestedAt,
-        notes: data.notes || '',
-        reviewedBy: data.reviewedBy || '',
-        reviewedAt: data.reviewedAt || '',
-      })
-      return mapEnrollment(rec as unknown as AnyRec)
-    }, null as Enrollment | null),
+    safeWrite(
+      async () => {
+        const rec = await pb.collection(COLLECTIONS.courseEnrollments).create({
+          studentId: data.studentId,
+          studentName: data.studentName,
+          studentEmail: data.studentEmail || '',
+          courseId: data.courseId,
+          courseCode: data.courseCode,
+          courseName: data.courseName,
+          courseLevel: data.courseLevel || '',
+          courseModality: data.courseModality || '',
+          workloadHours: data.workloadHours,
+          period: data.period || '',
+          requestedPeriod: data.requestedPeriod || '',
+          status: data.status,
+          requestedAt: data.requestedAt,
+          notes: data.notes || '',
+          reviewedBy: data.reviewedBy || '',
+          reviewedAt: data.reviewedAt || '',
+        })
+        return mapEnrollment(rec as unknown as AnyRec)
+      },
+      null as Enrollment | null,
+    ),
 
   listEnrollments: () =>
     safeWrite(async () => {

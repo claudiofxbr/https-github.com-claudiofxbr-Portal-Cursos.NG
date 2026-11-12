@@ -14,6 +14,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { GraduationCap, Clock, CalendarDays, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 interface CourseEnrollmentModalProps {
@@ -37,7 +44,12 @@ const MODALITY_LABELS: Record<Course['modality'], string> = {
 }
 
 /** Modal de inscrição em curso a partir da Biblioteca de Cursos. */
-export function CourseEnrollmentModal({ course, open, onOpenChange, onEnrolled }: CourseEnrollmentModalProps) {
+export function CourseEnrollmentModal({
+  course,
+  open,
+  onOpenChange,
+  onEnrolled,
+}: CourseEnrollmentModalProps) {
   const { currentUser, students, createCourseEnrollment } = usePortal()
 
   // Aluno vinculado ao usuário logado (quando o perfil é aluno)
@@ -49,7 +61,6 @@ export function CourseEnrollmentModal({ course, open, onOpenChange, onEnrolled }
     ) || null
 
   const isStudent = currentUser?.role === 'aluno'
-  const canEnroll = !!course && (isStudent ? !!linkedStudent : true)
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -59,17 +70,29 @@ export function CourseEnrollmentModal({ course, open, onOpenChange, onEnrolled }
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  // Perfis administrativos: escolha do aluno a ser inscrito
+  const [selectedStudentId, setSelectedStudentId] = useState('')
+  useEffect(() => {
+    if (open) setSelectedStudentId('')
+  }, [open])
+  const activeStudent = isStudent
+    ? linkedStudent
+    : students.find((s) => s.id === selectedStudentId) || null
+
+  const canEnroll = !!course && (isStudent ? !!linkedStudent : !!selectedStudentId)
+
   useEffect(() => {
     if (open) {
       setError(null)
       setSuccess(false)
       setSubmitting(false)
       setNotes('')
-      setName(linkedStudent?.fullName || currentUser?.name || '')
-      setEmail(linkedStudent?.email || currentUser?.email || '')
+      setName(activeStudent?.fullName || (isStudent ? '' : ''))
+      setEmail(activeStudent?.email || (isStudent ? currentUser?.email || '' : ''))
       setPeriod('')
     }
-  }, [open, course?.id, linkedStudent?.id, currentUser?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, course?.id, activeStudent?.id, isStudent])
 
   if (!course) return null
 
@@ -91,7 +114,7 @@ export function CourseEnrollmentModal({ course, open, onOpenChange, onEnrolled }
     setSubmitting(true)
     const result = await createCourseEnrollment({
       courseId: course.id,
-      studentId: linkedStudent?.id || '',
+      studentId: activeStudent?.id || '',
       requestedPeriod: period.trim() || undefined,
       notes: notes.trim() || undefined,
     })
@@ -149,9 +172,8 @@ export function CourseEnrollmentModal({ course, open, onOpenChange, onEnrolled }
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
                 <strong>Inscrição realizada com sucesso!</strong> Sua inscrição em{' '}
-                <strong>{course.name}</strong> foi registrada com status{' '}
-                <strong>Inscrita</strong>. Acompanhe o andamento em{' '}
-                <strong>Minhas inscrições</strong> no portal do aluno.
+                <strong>{course.name}</strong> foi registrada com status <strong>Inscrita</strong>.
+                Acompanhe o andamento em <strong>Minhas inscrições</strong> no portal do aluno.
               </AlertDescription>
             </Alert>
             <div className="flex justify-end">
@@ -184,6 +206,30 @@ export function CourseEnrollmentModal({ course, open, onOpenChange, onEnrolled }
 
             {/* Dados do aluno */}
             <div className="grid gap-2">
+              {!isStudent && (
+                <div className="grid gap-1.5">
+                  <Label>Aluno a inscrever *</Label>
+                  <Select
+                    value={selectedStudentId}
+                    onValueChange={setSelectedStudentId}
+                    disabled={submitting}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o aluno" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {students.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.fullName} — {s.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Perfil administrativo: selecione o cadastro de aluno a ser inscrito.
+                  </p>
+                </div>
+              )}
               <div className="grid gap-1.5">
                 <Label htmlFor="enrollment-name">Nome completo *</Label>
                 <Input

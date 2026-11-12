@@ -440,8 +440,8 @@ export function seedIfEmpty(): Promise<void> {
 
 export type AnyRec = Record<string, unknown>
 
-const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
-const num = (v: unknown, fallback = 0): number => {
+export const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
+export const num = (v: unknown, fallback = 0): number => {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
 }

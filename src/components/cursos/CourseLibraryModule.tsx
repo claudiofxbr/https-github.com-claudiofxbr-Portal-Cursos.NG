@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
-import { Course, CourseMaterial } from '@/types/portal'
+import { Course, CourseMaterial, ENROLLMENT_STATUS_LABELS } from '@/types/portal'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -27,7 +27,11 @@ import {
   LibraryBig,
   Award,
   Users,
+  UserPlus,
+  CheckCircle2,
+  ClipboardList,
 } from 'lucide-react'
+import { CourseEnrollmentModal } from './CourseEnrollmentModal'
 
 const LEVEL_LABELS: Record<Course['level'], string> = {
   graduacao: 'Graduação',
@@ -49,12 +53,47 @@ const MODALITY_LABELS: Record<Course['modality'], string> = {
   semipresencial: 'Semipresencial',
 }
 
+/** Status de inscrição considerados "inscrito" (impedem nova inscrição). */
+const ACTIVE_ENROLLMENT_STATUS = ['inscrita', 'em_analise', 'confirmada']
+
 export function CourseLibraryModule() {
-  const { courses, courseMaterials } = usePortal()
+  const { currentUser, students, courses, courseMaterials, courseEnrollments } = usePortal()
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState<string>('todos')
   const [typeFilter, setTypeFilter] = useState<string>('todos')
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const [enrollCourseId, setEnrollCourseId] = useState<string | null>(null)
+
+  // Aluno vinculado ao usuário logado (perfil aluno), no mesmo padrão do modal
+  const linkedStudent = useMemo(() => {
+    if (currentUser?.role !== 'aluno') return null
+    return (
+      students.find(
+        (s) =>
+          (currentUser?.studentId && s.id === currentUser.studentId) ||
+          (currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()),
+      ) || null
+    )
+  }, [currentUser, students])
+
+  const isStudent = currentUser?.role === 'aluno'
+
+  /** Inscrição ativa do usuário logado em um curso (quando aluno). */
+  const enrollmentFor = (courseId: string) =>
+    courseEnrollments.find(
+      (e) =>
+        e.courseId === courseId &&
+        (isStudent ? e.studentId === linkedStudent?.id : true) &&
+        ACTIVE_ENROLLMENT_STATUS.includes(e.status),
+    ) || null
+
+  // Inscrições do aluno logado, da mais recente para a mais antiga
+  const myEnrollments = useMemo(() => {
+    if (!isStudent) return []
+    return courseEnrollments
+      .filter((e) => e.studentId === linkedStudent?.id)
+      .sort((a, b) => (b.created || '').localeCompare(a.created || ''))
+  }, [isStudent, linkedStudent?.id, courseEnrollments])
 
   const filteredCourses = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -69,11 +108,12 @@ export function CourseLibraryModule() {
       const matchesType = typeFilter === 'todos' || c.type === typeFilter
       return matchesSearch && matchesLevel && matchesType
     })
-  }, [courses, search, levelFilter, typeFilter])
+  }, [search, levelFilter, typeFilter])
 
   const selectedCourse = selectedCourseId
     ? courses.find((c) => c.id === selectedCourseId) || null
     : null
+  const enrollCourse = enrollCourseId ? courses.find((c) => c.id === enrollCourseId) || null : null
 
   const courseMaterialsFor = (courseId: string): CourseMaterial[] =>
     courseMaterials.filter((m) => m.courseId === courseId)
@@ -109,6 +149,11 @@ export function CourseLibraryModule() {
   // ===== Tela de detalhe do curso =====
   if (selectedCourse) {
     const materials = courseMaterialsFor(selectedCourse.id)
+    const activeEnrollment = enrollmentFor(selectedCourse.id)
+    const remaining = selectedCourse.vacancies - selectedCourse.enrolledCount
+    const noVacancies = selectedCourse.vacancies > 0 && remaining <= 0
+    const canOpenEnrollment =
+      selectedCourse.status === 'ativo' && !noVacancies && (!isStudent || !!linkedStudent)
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
@@ -150,6 +195,18 @@ export function CourseLibraryModule() {
                   >
                     {selectedCourse.status === 'ativo' ? 'Ativo' : 'Em revisão'}
                   </Badge>
+                  {activeEnrollment && (
+                    <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] uppercase">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      {isStudent
+                        ? 'Inscrito'
+                        : `Inscrito: ${activeEnrollment.studentName}${
+                            activeEnrollment.status !== 'inscrita'
+                              ? ` (${ENROLLMENT_STATUS_LABELS[activeEnrollment.status]})`
+                              : ''
+                          }`}
+                    </Badge>
+                  )}
                 </div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   <LibraryBig className="w-5 h-5 text-blue-400" />
@@ -165,6 +222,39 @@ export function CourseLibraryModule() {
                   Conceito {selectedCourse.emecConcept}/5
                 </span>
               </div>
+            </div>
+
+            {/* Ação de inscrição */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+              <div className="text-xs text-slate-400">
+                {activeEnrollment ? (
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isStudent
+                      ? 'Você já está inscrito neste curso.'
+                      : `Inscrição de ${activeEnrollment.studentName} registrada neste curso.`}
+                  </span>
+                ) : selectedCourse.status !== 'ativo' ? (
+                  'Este curso está em revisão — inscrições indisponíveis no momento.'
+                ) : noVacancies ? (
+                  'Todas as vagas deste curso já foram preenchidas.'
+                ) : isStudent && !linkedStudent ? (
+                  'Não foi possível identificar seu vínculo de aluno — procure a secretaria.'
+                ) : (
+                  'Interessado? Garanta sua vaga com a inscrição no catálogo.'
+                )}
+              </div>
+              {!activeEnrollment && (
+                <Button
+                  size="sm"
+                  onClick={() => setEnrollCourseId(selectedCourse.id)}
+                  disabled={!canOpenEnrollment}
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  <UserPlus className="w-4 h-4 mr-1" />
+                  Inscrever-se
+                </Button>
+              )}
             </div>
 
             <div>
@@ -257,6 +347,15 @@ export function CourseLibraryModule() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Modal de inscrição já com o curso pré-selecionado */}
+        <CourseEnrollmentModal
+          course={enrollCourse}
+          open={!!enrollCourse}
+          onOpenChange={(open) => {
+            if (!open) setEnrollCourseId(null)
+          }}
+        />
       </div>
     )
   }
@@ -329,6 +428,7 @@ export function CourseLibraryModule() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredCourses.map((course) => {
             const materialCount = courseMaterialsFor(course.id).length
+            const hasEnrollment = !!enrollmentFor(course.id)
             return (
               <button
                 key={course.id}
@@ -346,6 +446,12 @@ export function CourseLibraryModule() {
                     >
                       {MODALITY_LABELS[course.modality]}
                     </Badge>
+                    {hasEnrollment && (
+                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] uppercase">
+                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                        Inscrito
+                      </Badge>
+                    )}
                   </div>
                   <span className="text-[10px] font-mono text-slate-500 shrink-0">
                     {course.code}
@@ -370,6 +476,56 @@ export function CourseLibraryModule() {
             )
           })}
         </div>
+      )}
+
+      {isStudent && (
+        <Card className="bg-slate-900/60 border-slate-800">
+          <CardContent className="p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-blue-400" />
+              Minhas inscrições
+              <Badge variant="outline" className="text-[10px] border-slate-700 text-slate-400">
+                {myEnrollments.length}
+              </Badge>
+            </h2>
+            {myEnrollments.length === 0 ? (
+              <p className="text-xs text-slate-500 p-3 rounded-lg border border-dashed border-slate-800">
+                Você ainda não se inscreveu em nenhum curso. Escolha um curso no catálogo acima e
+                clique em "Inscrever-se".
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {myEnrollments.map((e) => {
+                  const course = courses.find((c) => c.id === e.courseId)
+                  return (
+                    <div
+                      key={e.id}
+                      className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-slate-950/60 border border-slate-800"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">
+                          {e.courseName}
+                          {course ? <span className="text-slate-500"> • {course.code}</span> : null}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {e.workloadHours.toLocaleString('pt-BR')} h • Solicitada em{' '}
+                          {e.requestedAt.split('-').reverse().join('/')}
+                          {e.requestedPeriod ? ` • Período preferido: ${e.requestedPeriod}` : ''}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] border-emerald-500/40 text-emerald-400 shrink-0"
+                      >
+                        {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
+                      </Badge>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   )
