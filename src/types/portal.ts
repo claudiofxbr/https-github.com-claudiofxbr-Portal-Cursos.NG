@@ -610,7 +610,7 @@ export interface EnrollmentStatusEvent {
 export const ENROLLMENT_STATUS_LABELS: Record<EnrollmentStatus, string> = {
   inscrita: 'Inscrita',
   em_analise: 'Em análise',
-  confirmada: 'Confirmada',
+  confirmada: 'Aprovada',
   cancelada: 'Cancelada',
 }
 

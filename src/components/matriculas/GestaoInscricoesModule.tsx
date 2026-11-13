@@ -461,7 +461,7 @@ export function GestaoInscricoesModule({ embedded }: GestaoInscricoesModuleProps
       </Dialog>
 
       <p className="text-xs text-muted-foreground px-1">
-        Revisado por {currentUser?.name || '—'} · fluxo: inscrita → em análise → confirmada ou
+        Revisado por {currentUser?.name || '—'} · fluxo: inscrita → em análise → aprovada ou
         cancelada (com motivo obrigatório).
       </p>
     </div>
