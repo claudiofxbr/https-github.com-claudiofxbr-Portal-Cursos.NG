@@ -177,6 +177,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['aluno'],
   },
   {
+    key: 'pagbank',
+    label: 'Integração PagBank',
+    description:
+      'Cadastro e validação do token de API do PagBank (sandbox) — visível somente para root',
+    icon: 'KeyRound',
+    requiredRoles: ['root'],
+  },
+  {
     key: 'minhas_notas',
     label: 'Minhas Notas e Frequência',
     description: 'Boletim acadêmico, notas por disciplina, faltas e percentual de frequência',

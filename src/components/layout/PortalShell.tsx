@@ -38,6 +38,7 @@ import {
   Calendar,
   Bot,
   ClipboardList,
+  KeyRound,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -57,6 +58,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   LibraryBig,
   Calendar,
   Bot,
+  KeyRound,
 }
 
 interface PortalHeaderAndSidebarProps {

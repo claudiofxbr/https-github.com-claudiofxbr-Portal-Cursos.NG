@@ -43,6 +43,7 @@ export type ModuleKey =
   | 'lgpd'
   | 'diagnostico'
   | 'agentes'
+  | 'pagbank'
   | 'minhas_notas'
   | 'portal_aluno'
   | 'professor_area'
