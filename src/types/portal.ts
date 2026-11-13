@@ -35,6 +35,7 @@ export type ModuleKey =
   | 'ead'
   | 'biblioteca'
   | 'biblioteca_cursos'
+  | 'gestao_inscricoes'
   | 'financeiro'
   | 'relatorios'
   | 'usuarios'
@@ -597,6 +598,15 @@ export type LibraryLoanStatus = 'ativo' | 'devolvido' | 'atrasado'
 
 export type EnrollmentStatus = 'inscrita' | 'em_analise' | 'confirmada' | 'cancelada'
 
+/** Evento do histórico de mudanças de status de uma inscrição (course_enrollments.statusHistory). */
+export interface EnrollmentStatusEvent {
+  from: EnrollmentStatus | ''
+  to: EnrollmentStatus
+  by: string
+  at: string // ISO
+  note?: string
+}
+
 export const ENROLLMENT_STATUS_LABELS: Record<EnrollmentStatus, string> = {
   inscrita: 'Inscrita',
   em_analise: 'Em análise',
@@ -624,6 +634,10 @@ export interface Enrollment {
   notes?: string
   reviewedBy?: string
   reviewedAt?: string
+  /** Motivo obrigatório quando a inscrição é cancelada/recusada. */
+  rejectionReason?: string
+  /** Histórico cronológico de mudanças de status (gravado pela equipe). */
+  statusHistory?: EnrollmentStatusEvent[]
   created?: string
   updated?: string
 }

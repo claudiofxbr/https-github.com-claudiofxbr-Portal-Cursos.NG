@@ -1,6 +1,28 @@
-import { Enrollment } from '@/types/portal'
+import { Enrollment, EnrollmentStatusEvent } from '@/types/portal'
 import pb from '@/lib/pocketbase/client'
 import { COLLECTIONS, AnyRec, str, num } from '@/lib/portalDb'
+
+// Parse tolerante do histórico de status (json) gravado pela migração 0042
+function parseStatusHistory(raw: unknown): EnrollmentStatusEvent[] | undefined {
+  try {
+    if (!raw) return undefined
+    const arr: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (!Array.isArray(arr) || arr.length === 0) return undefined
+    const events = arr
+      .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+      .map((e) => ({
+        from: (typeof e.from === 'string' ? e.from : '') as EnrollmentStatusEvent['from'],
+        to: (typeof e.to === 'string' ? e.to : '') as EnrollmentStatusEvent['to'],
+        by: typeof e.by === 'string' ? e.by : '',
+        at: typeof e.at === 'string' ? e.at : '',
+        note: typeof e.note === 'string' && e.note ? e.note : undefined,
+      }))
+      .filter((e) => !!e.to)
+    return events.length > 0 ? events : undefined
+  } catch {
+    return undefined
+  }
+}
 
 // Mapeia um registro PocketBase da coleção course_enrollments para o tipo Enrollment
 export function mapEnrollment(rec: AnyRec): Enrollment {
@@ -22,6 +44,8 @@ export function mapEnrollment(rec: AnyRec): Enrollment {
     notes: str(rec.notes) || undefined,
     reviewedBy: str(rec.reviewedBy) || undefined,
     reviewedAt: str(rec.reviewedAt) || undefined,
+    rejectionReason: str(rec.rejectionReason) || undefined,
+    statusHistory: parseStatusHistory(rec.statusHistory),
     created: str(rec.created),
     updated: str(rec.updated),
   }
@@ -72,4 +96,33 @@ export const enrollmentDb = {
       })
       return recs.map((r) => mapEnrollment(r as unknown as AnyRec))
     }, [] as Enrollment[]),
+
+  // Atualização de status pela equipe (root/admin/secretaria/matrícula):
+  // grava status, motivo de recusa e o evento completo no histórico.
+  updateEnrollmentStatus: (
+    enrollmentId: string,
+    data: {
+      status: EnrollmentStatusEvent['to']
+      rejectionReason?: string
+      reviewedBy?: string
+      reviewedAt?: string
+      statusHistory?: EnrollmentStatusEvent[]
+    },
+  ) =>
+    safeWrite(
+      async () => {
+        const payload: Record<string, unknown> = {
+          status: data.status,
+          reviewedBy: data.reviewedBy || '',
+          reviewedAt: data.reviewedAt || '',
+          rejectionReason: data.rejectionReason || '',
+        }
+        if (data.statusHistory) {
+          payload.statusHistory = JSON.stringify(data.statusHistory)
+        }
+        const rec = await pb.collection(COLLECTIONS.courseEnrollments).update(enrollmentId, payload)
+        return mapEnrollment(rec as unknown as AnyRec)
+      },
+      null as Enrollment | null,
+    ),
 }

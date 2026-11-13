@@ -28,6 +28,7 @@ import {
   LibrarySettings,
   Enrollment,
   EnrollmentStatus,
+  EnrollmentStatusEvent,
   ClassItem,
   ClassSchedule,
   SystemDiagnostic,
@@ -64,6 +65,7 @@ import {
   parseVideoUrl,
   DEFAULT_LIBRARY_SETTINGS,
 } from '@/lib/portalDb'
+import { enrollmentDb } from '@/lib/enrollmentDb'
 import { calculateConsolidatedAttendance } from '@/lib/academicCalculations'
 
 interface PortalContextType {
@@ -251,6 +253,14 @@ interface PortalContextType {
     requestedPeriod?: string
     notes?: string
   }) => Promise<{ success: boolean; enrollment?: Enrollment; error?: string }>
+  /** Mudança de status pela equipe (root/admin/secretaria/matrícula). */
+  updateEnrollmentStatus: (
+    enrollmentId: string,
+    data: {
+      status: EnrollmentStatus
+      note?: string
+    },
+  ) => Promise<{ success: boolean; enrollment?: Enrollment; error?: string }>
 
   // Biblioteca (Acervo & Empréstimos)
   libraryBooks: LibraryBook[]
@@ -2984,6 +2994,81 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Mudança de status da inscrição pela equipe: grava o evento no histórico
+  // (statusHistory), o revisor (reviewedBy/reviewedAt) e o motivo quando
+  // cancelada/recusada (rejectionReason).
+  const updateEnrollmentStatus = async (
+    enrollmentId: string,
+    data: {
+      status: EnrollmentStatus
+      note?: string
+    },
+  ): Promise<{ success: boolean; enrollment?: Enrollment; error?: string }> => {
+    const current = courseEnrollments.find((e) => e.id === enrollmentId)
+    if (!current) {
+      return { success: false, error: 'Inscrição não encontrada.' }
+    }
+    if (data.status === current.status) {
+      return { success: false, error: 'A inscrição já está neste status.' }
+    }
+    if (
+      (data.status === 'cancelada' || current.status === 'confirmada') &&
+      (!data.note || !data.note.trim())
+    ) {
+      return {
+        success: false,
+        error:
+          'Informe o motivo da alteração (obrigatório ao cancelar ou revisar uma confirmação).',
+      }
+    }
+
+    const nowIso = new Date().toISOString()
+    const reviewer = currentUser ? `${currentUser.name}` : 'Equipe'
+    const event: EnrollmentStatusEvent = {
+      from: current.status,
+      to: data.status,
+      by: reviewer,
+      at: nowIso,
+      note: data.note?.trim() || undefined,
+    }
+    const nextHistory = [...(current.statusHistory || []), event]
+    const optimistic: Enrollment = {
+      ...current,
+      status: data.status,
+      reviewedBy: reviewer,
+      reviewedAt: nowIso,
+      rejectionReason:
+        data.status === 'cancelada'
+          ? data.note?.trim()
+          : data.status === 'confirmada'
+            ? undefined
+            : current.rejectionReason,
+      statusHistory: nextHistory,
+      updated: nowIso,
+    }
+
+    // Atualização otimista (padrão dos demais módulos)
+    setCourseEnrollments((prev) => prev.map((e) => (e.id === enrollmentId ? optimistic : e)))
+
+    const saved = await portalDb.updateEnrollmentStatus(enrollmentId, {
+      status: data.status,
+      rejectionReason: data.status === 'confirmada' ? '' : data.note?.trim(),
+      reviewedBy: reviewer,
+      reviewedAt: nowIso,
+      statusHistory: nextHistory,
+    })
+    if (saved) {
+      setCourseEnrollments((prev) => prev.map((e) => (e.id === enrollmentId ? saved : e)))
+      return { success: true, enrollment: saved }
+    }
+    // Escrita falhou (permissão/rede): estado otimista permanece e o usuário é avisado
+    return {
+      success: true,
+      enrollment: optimistic,
+      error: 'Não foi possível gravar no banco — a alteração vale apenas nesta sessão.',
+    }
+  }
+
   const createLibraryLoan = async (data: {
     bookId: string
     studentId: string
@@ -3499,6 +3584,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         updateLibraryBook,
         deleteLibraryBook,
         createCourseEnrollment,
+        updateEnrollmentStatus,
         courseEnrollments,
         createLibraryLoan,
         returnLibraryLoan,

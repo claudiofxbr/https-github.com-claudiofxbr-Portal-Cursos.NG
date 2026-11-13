@@ -513,12 +513,27 @@ export function CourseLibraryModule() {
                           {e.requestedPeriod ? ` • Período preferido: ${e.requestedPeriod}` : ''}
                         </p>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] border-emerald-500/40 text-emerald-400 shrink-0"
-                      >
-                        {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
-                      </Badge>
+                      <span className="flex flex-col items-end gap-1 shrink-0">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] shrink-0 ${
+                            e.status === 'confirmada'
+                              ? 'border-emerald-500/40 text-emerald-400'
+                              : e.status === 'cancelada'
+                                ? 'border-red-500/40 text-red-400'
+                                : e.status === 'em_analise'
+                                  ? 'border-amber-500/40 text-amber-400'
+                                  : 'border-slate-600 text-slate-300'
+                          }`}
+                        >
+                          {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
+                        </Badge>
+                        {e.status === 'cancelada' && e.rejectionReason ? (
+                          <span className="text-[10px] text-red-400 max-w-56 text-right">
+                            Motivo: {e.rejectionReason}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
                   )
                 })}

@@ -23,6 +23,7 @@ import { BibliotecaModule } from '@/components/biblioteca/BibliotecaModule'
 import { CourseLibraryModule } from '@/components/cursos/CourseLibraryModule'
 import { DiplomasCertificadosModule } from '@/components/diplomas/DiplomasCertificadosModule'
 import { TurmasModule } from '@/components/turmas/TurmasModule'
+import { GestaoInscricoesModule } from '@/components/matriculas/GestaoInscricoesModule'
 
 export default function Index() {
   const { currentUser, canAccessModule } = usePortal()
@@ -130,6 +131,7 @@ export default function Index() {
         )}
         {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
         {safeActiveModule === 'biblioteca_cursos' && <CourseLibraryModule />}
+        {safeActiveModule === 'gestao_inscricoes' && <GestaoInscricoesModule />}
       </PortalShell>
     </InstitutionalErrorBoundary>
   )

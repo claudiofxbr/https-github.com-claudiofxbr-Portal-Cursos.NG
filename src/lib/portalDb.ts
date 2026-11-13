@@ -35,7 +35,7 @@ import {
   DayOfWeek,
   ClassStatus,
 } from '@/types/portal'
-import { mapEnrollment } from '@/lib/enrollmentDb'
+import { mapEnrollment, enrollmentDb } from '@/lib/enrollmentDb'
 import {
   DEMO_ACCOUNTS,
   INITIAL_BILLING_EXCEPTIONS,
@@ -2778,6 +2778,7 @@ export const portalDb = {
       null as LibrarySettings | null,
     ),
 
+  updateEnrollmentStatus: enrollmentDb.updateEnrollmentStatus,
   createCourseEnrollment: (data: Omit<Enrollment, 'id' | 'created' | 'updated'>) =>
     safeWrite(
       async () => {

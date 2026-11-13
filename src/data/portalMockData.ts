@@ -94,6 +94,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin', 'secretaria'],
   },
   {
+    key: 'gestao_inscricoes',
+    label: 'Gestão de Inscrições',
+    description:
+      'Análise das inscrições da Biblioteca de Cursos: status, motivo de recusa e histórico de revisão',
+    icon: 'ClipboardList',
+    requiredRoles: ['root', 'admin', 'secretaria', 'matricula'],
+  },
+  {
     key: 'biblioteca_cursos',
     label: 'Biblioteca de Cursos',
     description:

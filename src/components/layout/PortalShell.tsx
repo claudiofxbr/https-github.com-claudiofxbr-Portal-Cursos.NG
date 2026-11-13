@@ -37,6 +37,7 @@ import {
   LibraryBig,
   Calendar,
   Bot,
+  ClipboardList,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
