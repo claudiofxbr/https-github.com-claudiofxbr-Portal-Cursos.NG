@@ -638,6 +638,41 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     bootFromDatabase()
   }, [bootFromDatabase])
 
+  // Renovação silenciosa do Access Token (SPEC-INIT-001, arquitetura de duas camadas):
+  // enquanto há usuário logado, renova o token em memória via /backend/v1/auth/refresh
+  // (cookie HttpOnly) em intervalos regulares. A rotação acontece no SERVIDOR
+  // (/backend/v1/auth/refresh em auth_session.pb.js) — aqui apenas lemos a resposta.
+  // Nada é gravado em localStorage/sessionStorage.
+  const sessionRenewalRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (sessionRenewalRef.current !== null) window.clearInterval(sessionRenewalRef.current)
+
+    if (!currentUser) {
+      sessionRenewalRef.current = null
+      return
+    }
+
+    sessionRenewalRef.current = window.setInterval(
+      () => {
+        refreshSessionSilently().then((result) => {
+          if (result && result.user) {
+            setCurrentUser(result.user)
+          }
+          // Se o refresh falhar (cookie expirado/revogado), mantém a sessão atual:
+          // o access token em memória continua válido e o próximo ciclo tenta de novo.
+        })
+      },
+      12 * 60 * 1000,
+    )
+
+    return () => {
+      if (sessionRenewalRef.current !== null) {
+        window.clearInterval(sessionRenewalRef.current)
+        sessionRenewalRef.current = null
+      }
+    }
+  }, [currentUser])
+
   // Persistência local mínima apenas para portão e locks (SPEC-INIT-001: dados de sessão NUNCA vão para storage)
   useEffect(() => {
     persistJson(STORAGE_KEYS.GATE, isGateUnlocked)

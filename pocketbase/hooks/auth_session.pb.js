@@ -11,6 +11,12 @@
  *    - POST /backend/v1/auth/login: valida email/senha contra collection users, cria sessão e retorna token + cookie
  *    - POST /backend/v1/auth/refresh: valida cookie/body, rotaciona refresh token, gera novo Access Token PocketBase
  *    - POST /backend/v1/auth/logout: revoga a sessão no banco e expira o cookie
+ *
+ * BUG CORRIGIDO (v0.0.88): o JSVM do PocketBase (goja) NÃO possui Record.createAuthToken —
+ * o método correto é Record.newAuthToken() (sem duração customizável; usa a duração do
+ * authToken da collection, padrão 14 dias). Antes, toda chamada de login lançava
+ * TypeError e devolvia 500 "Falha ao emitir token de acesso", que o frontend exibia
+ * como "Credenciais inválidas".
  */
 
 routerAdd('POST', '/backend/v1/auth/login', (e) => {
@@ -29,10 +35,28 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
   try {
     userRecord = app.findAuthRecordByEmail('users', email)
   } catch (_) {
+    // Log de diagnóstico sem dados sensíveis: diferencia "usuário não encontrado"
+    console.log('[AuthLogin] usuário não encontrado')
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
-  if (!userRecord || !userRecord.validatePassword(password)) {
+  if (!userRecord) {
+    console.log('[AuthLogin] usuário não encontrado')
+    return e.json(401, { error: 'Credenciais inválidas.' })
+  }
+
+  let passwordOk = false
+  try {
+    passwordOk = userRecord.validatePassword(password)
+  } catch (pwErr) {
+    // Log de diagnóstico sem dados sensíveis
+    console.log('[AuthLogin] erro ao validar senha:', pwErr)
+    passwordOk = false
+  }
+
+  if (!passwordOk) {
+    // Log de diagnóstico sem dados sensíveis: diferencia "senha inválida"
+    console.log('[AuthLogin] senha inválida')
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
@@ -41,20 +65,17 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     return e.json(403, { error: 'Usuário inativo ou bloqueado institucionalmente.' })
   }
 
-  // Gera o Access Token de curta duração do PocketBase (assinado pelo PocketBase para o registro)
-  // PocketBase v0.36 expõe createAuthToken no Record de auth
+  // Gera o Access Token do PocketBase (assinado pelo PocketBase para o registro).
+  // CORREÇÃO: o JSVM (goja) só expõe Record.newAuthToken() — createAuthToken não existe
+  // e lançava TypeError em TODA tentativa de login, mesmo com senha correta.
+  // A duração é a do authToken da collection users (14 dias no Skip Cloud); o
+  // frontend renova o token silenciosamente via /backend/v1/auth/refresh.
   let accessToken = ''
   try {
-    // 15 minutos = 900 segundos
-    accessToken = userRecord.createAuthToken(900)
+    accessToken = userRecord.newAuthToken()
   } catch (err) {
-    // Fallback caso createAuthToken não aceite argumento ou tenha outra assinatura
-    try {
-      accessToken = userRecord.createAuthToken()
-    } catch (err2) {
-      console.log('[AuthLogin] Erro ao gerar auth token:', err2)
-      return e.json(500, { error: 'Falha ao emitir token de acesso.' })
-    }
+    console.log('[AuthLogin] Erro ao gerar auth token:', err)
+    return e.json(500, { error: 'Falha ao emitir token de acesso.' })
   }
 
   // Gera Refresh Token criptograficamente seguro (64 caracteres aleatórios)
@@ -228,16 +249,13 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     return e.json(500, { error: 'Falha ao rotacionar sessão.' })
   }
 
-  // Gera novo Access Token
+  // Gera novo Access Token (mesma correção do login: newAuthToken é o método exposto pelo JSVM)
   let accessToken = ''
   try {
-    accessToken = userRecord.createAuthToken(900)
-  } catch (_) {
-    try {
-      accessToken = userRecord.createAuthToken()
-    } catch (err2) {
-      return e.json(500, { error: 'Falha ao renovar token de acesso.' })
-    }
+    accessToken = userRecord.newAuthToken()
+  } catch (err2) {
+    console.log('[AuthRefresh] Erro ao gerar auth token:', err2)
+    return e.json(500, { error: 'Falha ao renovar token de acesso.' })
   }
 
   // Atualiza cookie
