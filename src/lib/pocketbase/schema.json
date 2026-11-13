@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T22:28:31.272Z",
+  "generatedAt": "2026-11-13T11:49:25.152Z",
   "collections": [
     {
       "name": "users",
@@ -3115,6 +3115,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "statusHistory",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "rejectionReason",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
