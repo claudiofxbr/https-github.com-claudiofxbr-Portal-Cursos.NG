@@ -2,6 +2,7 @@
 // Toda leitura/escrita de dados do portal passa por aqui: o PortalContext
 // consome este módulo, e os módulos de UI continuam usando apenas o contexto.
 import pb from '@/lib/pocketbase/client'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import {
   UserAccount,
   Student,
@@ -284,6 +285,13 @@ let seedPromise: Promise<void> | null = null
 export function seedIfEmpty(): Promise<void> {
   if (!seedPromise) {
     seedPromise = (async () => {
+      // Sem sessão autenticada (conta de serviço ou usuário real) todo create
+      // do seed falharia com 400/403 e poluiria os logs do backend: encerra
+      // silenciosamente. O seed é reexecutado no próximo load autenticado.
+      if (!pb.authStore.isValid || !pb.authStore.record) {
+        return
+      }
+
       const seed = async <T extends { id: string }>(
         collection: string,
         rows: T[],
@@ -304,8 +312,17 @@ export function seedIfEmpty(): Promise<void> {
         }
       }
 
-      await Promise.all([
-        seed(COLLECTIONS.appUsers, DEMO_ACCOUNTS, (u) => ({
+      // app_users é espelho legado dos usuários demo: só semeia se a auth
+      // collection `users` ainda não tiver contas (evita duplicar e-mails,
+      // 400 de índice único e a tempestade de erros nos logs).
+      const seedLegacyAppUsers = async () => {
+        try {
+          const authUsers = await pb.collection('users').getList(1, 1)
+          if ((authUsers?.totalItems ?? 0) > 0) return
+        } catch {
+          // Sem leitura de users: mantém tentativa no espelho legado.
+        }
+        await seed(COLLECTIONS.appUsers, DEMO_ACCOUNTS, (u) => ({
           name: u.name,
           email: u.email,
           role: u.role,
@@ -317,7 +334,11 @@ export function seedIfEmpty(): Promise<void> {
           avatar: u.avatar,
           createdAt: u.createdAt,
           lastAccess: u.lastAccess,
-        })),
+        }))
+      }
+
+      await Promise.all([
+        seedLegacyAppUsers(),
         seed(COLLECTIONS.students, INITIAL_STUDENTS, (s) => ({
           fullName: s.fullName,
           cpf: s.cpf,
@@ -1674,7 +1695,13 @@ export const portalDb = {
           }
           const authRec = await pb.collection('users').create(authPayload)
           return mapAuthUser(authRec as unknown as AnyRec)
-        } catch (authErr) {
+        } catch (authErr: unknown) {
+          const fieldErrors = extractFieldErrors(authErr)
+          if (Object.keys(fieldErrors).length > 0) {
+            // Erro de validação (e-mail duplicado, senha fraca etc.): não adianta
+            // tentar o espelho legado — relança para a UI exibir o motivo.
+            throw authErr
+          }
           console.warn(
             '[portalDb] Erro ao criar usuário na auth collection users, tentando app_users:',
             authErr,

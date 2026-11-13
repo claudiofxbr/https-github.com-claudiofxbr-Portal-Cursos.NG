@@ -117,7 +117,7 @@ export function LoginModalScreen() {
   const [regName, setRegName] = useState('')
   const [regEmail, setRegEmail] = useState('')
   const [regPassword, setRegPassword] = useState('')
-  const [regRole, setRegRole] = useState<UserRole>('secretaria')
+  const [regRole, setRegRole] = useState<UserRole>('secretaria') // 'root' não é ofertado no cadastro público
   const [regDept, setRegDept] = useState('')
   const [regSuccess, setRegSuccess] = useState(false)
   const [regError, setRegError] = useState<string | null>(null)
@@ -945,7 +945,6 @@ export function LoginModalScreen() {
                                 <option value="coordenador">Coordenador de Curso</option>
                                 <option value="professor">Professor(a)</option>
                                 <option value="aluno">Aluno(a)</option>
-                                <option value="root">Super Root</option>
                               </select>
                             </div>
 
