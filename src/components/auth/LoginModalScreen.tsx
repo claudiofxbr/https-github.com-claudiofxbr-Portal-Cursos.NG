@@ -796,12 +796,13 @@ export function LoginModalScreen() {
                             className="bg-slate-900 border-slate-700 text-white focus-visible:ring-blue-500 text-sm"
                             required
                           />
-                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
                             <span>
-                              Demo:{' '}
+                              Demo (contas @portalcursos.ng): senha{' '}
                               <span className="font-mono text-amber-300 font-semibold">
                                 {DEMO_USER_PASSWORD}
-                              </span>
+                              </span>{' '}
+                              · Contas próprias: use a senha do seu cadastro
                             </span>
                             <button
                               type="button"
