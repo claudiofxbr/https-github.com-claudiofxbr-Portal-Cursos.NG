@@ -24,6 +24,11 @@
  * com URL relativa falhava sempre (unsupported protocol scheme).
  *
  * NOTA JSVM: toda a lógica fica INLINE nos callbacks (pool de VMs separado).
+ *
+ * v0.0.97 AUDITORIA: cada evento de sessão grava um registro em auth_audit
+ * (eventType, userId, email, reason, ip, userAgent). A gravação é embrulhada em
+ * try/catch silencioso — falha de auditoria NUNCA interrompe o fluxo de login.
+ * Nada sensível é persistido: sem senha, sem token, sem hash de token.
  */
 
 routerAdd('POST', '/backend/v1/auth/login', (e) => {
@@ -42,8 +47,21 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     .trim()
     .toLowerCase()
 
+  const auditIp = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '').slice(0, 50)
+  const auditUa = String(headers['user-agent'] || headers['User-Agent'] || '').slice(0, 250)
+
   if (!nativeToken) {
     console.log('[AuthLogin] login recusado: cabeçalho Authorization ausente')
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'login_failed')
+      auditRec.set('email', email)
+      auditRec.set('reason', 'token nativo ausente (login sem validação prévia)')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
@@ -53,16 +71,46 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     userRecord = app.findAuthRecordByToken(nativeToken, 'auth')
   } catch (tokenErr) {
     console.log('[AuthLogin] login recusado: token nativo não reconhecido. erro=' + tokenErr)
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'login_failed')
+      auditRec.set('email', email)
+      auditRec.set('reason', 'senha inválida ou usuário inexistente (token nativo não conferido)')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
   if (!userRecord || userRecord.collection().name !== 'users') {
     console.log('[AuthLogin] login recusado: token não pertence à coleção users')
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'login_failed')
+      auditRec.set('email', email)
+      auditRec.set('reason', 'usuário não encontrado (token de coleção desconhecida)')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
   if (email && userRecord.email().toLowerCase() !== email) {
     console.log('[AuthLogin] login recusado: e-mail do corpo não confere com o token nativo')
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'login_failed')
+      auditRec.set('email', email)
+      auditRec.set('reason', 'e-mail informado não confere com o da sessão validada')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
@@ -70,6 +118,17 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
 
   const userStatus = userRecord.getString('status')
   if (userStatus === 'bloqueado' || userStatus === 'inativo') {
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'blocked_attempt')
+      auditRec.set('userId', userRecord.id)
+      auditRec.set('email', userRecord.email())
+      auditRec.set('reason', 'status da conta: ' + userStatus)
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(403, { error: 'Usuário inativo ou bloqueado institucionalmente.' })
   }
 
@@ -101,6 +160,17 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
       'ipAddress',
       String(headers['x-forwarded-for'] || headers['x-real-ip'] || '').slice(0, 50),
     )
+
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'login_success')
+      auditRec.set('userId', userRecord.id)
+      auditRec.set('email', userRecord.email())
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
 
     app.save(sessionRec)
   } catch (saveErr) {
@@ -167,6 +237,10 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     return e.json(401, { error: 'Sessão expirada ou não fornecida. Faça login.' })
   }
 
+  // v0.0.97: dados de auditoria coletados uma única vez neste callback
+  const auditIp = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '').slice(0, 50)
+  const auditUa = String(headers['user-agent'] || headers['User-Agent'] || '').slice(0, 250)
+
   const tokenHash = $security.sha256(refreshToken)
 
   let sessionRecord
@@ -191,6 +265,15 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     e.response
       .header()
       .set('Set-Cookie', 'pc_refresh_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None')
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'refresh')
+      auditRec.set('reason', 'refresh token inválido, revogado ou inexistente')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Sessão inválida ou expirada.' })
   }
 
@@ -205,6 +288,17 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     e.response
       .header()
       .set('Set-Cookie', 'pc_refresh_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None')
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'refresh')
+      auditRec.set('userId', sessionRecord.getString('userId'))
+      auditRec.set('email', sessionRecord.getString('userEmail'))
+      auditRec.set('reason', 'refresh token expirado')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Sessão expirada. Faça login novamente.' })
   }
 
@@ -224,6 +318,17 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     try {
       app.save(sessionRecord)
     } catch (_) {}
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'refresh')
+      auditRec.set('userId', userId)
+      auditRec.set('email', sessionRecord.getString('userEmail'))
+      auditRec.set('reason', 'usuário da sessão não encontrado')
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
+    } catch (_) {}
     return e.json(401, { error: 'Usuário não encontrado.' })
   }
 
@@ -232,6 +337,17 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     sessionRecord.set('revoked', true)
     try {
       app.save(sessionRecord)
+    } catch (_) {}
+    try {
+      const auditCol = $app.findCollectionByNameOrId('auth_audit')
+      const auditRec = new Record(auditCol)
+      auditRec.set('eventType', 'blocked_attempt')
+      auditRec.set('userId', userId)
+      auditRec.set('email', sessionRecord.getString('userEmail'))
+      auditRec.set('reason', 'refresh com conta ' + userStatus)
+      auditRec.set('ip', auditIp)
+      auditRec.set('userAgent', auditUa)
+      $app.save(auditRec)
     } catch (_) {}
     return e.json(403, { error: 'Usuário bloqueado ou inativo.' })
   }
@@ -250,6 +366,17 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     console.log('[AuthRefresh] Erro ao rotacionar refresh token:', err)
     return e.json(500, { error: 'Falha ao rotacionar sessão.' })
   }
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('auth_audit')
+    const auditRec = new Record(auditCol)
+    auditRec.set('eventType', 'refresh')
+    auditRec.set('userId', userRecord.id)
+    auditRec.set('email', userRecord.email())
+    auditRec.set('ip', auditIp)
+    auditRec.set('userAgent', auditUa)
+    $app.save(auditRec)
+  } catch (_) {}
 
   // Gera novo Access Token (newAuthToken é o método exposto pelo JSVM)
   let accessToken = ''
@@ -313,6 +440,10 @@ routerAdd('POST', '/backend/v1/auth/logout', (e) => {
   const tokenFromBody = String(body.refreshToken || '').trim()
   const refreshToken = tokenFromCookie || tokenFromBody
 
+  // v0.0.97: coleta os dados de auditoria antes de qualquer retorno
+  const auditIp = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '').slice(0, 50)
+  const auditUa = String(headers['user-agent'] || headers['User-Agent'] || '').slice(0, 250)
+
   if (refreshToken) {
     const tokenHash = $security.sha256(refreshToken)
     try {
@@ -328,6 +459,16 @@ routerAdd('POST', '/backend/v1/auth/logout', (e) => {
         const sessionRec = list[0]
         sessionRec.set('revoked', true)
         app.save(sessionRec)
+        try {
+          const auditCol = $app.findCollectionByNameOrId('auth_audit')
+          const auditRec = new Record(auditCol)
+          auditRec.set('eventType', 'logout')
+          auditRec.set('userId', sessionRec.getString('userId'))
+          auditRec.set('email', sessionRec.getString('userEmail'))
+          auditRec.set('ip', auditIp)
+          auditRec.set('userAgent', auditUa)
+          $app.save(auditRec)
+        } catch (_) {}
       }
     } catch (err) {
       console.log('[AuthLogout] Erro ao revogar sessão:', err)
@@ -340,4 +481,177 @@ routerAdd('POST', '/backend/v1/auth/logout', (e) => {
     .set('Set-Cookie', 'pc_refresh_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None')
 
   return e.json(200, { success: true })
+})
+
+// v0.0.97 — Leitura de auditoria: GET /backend/v1/auth/audit — somente root/admin.
+// Query params: page (>=1), perPage (<=100), eventType, email, days (1|7|30).
+// Devolve { items, totalItems, page, perPage }. A collection auth_audit é
+// superuser-only; a leitura pelos admins passa exclusivamente por esta rota.
+routerAdd('GET', '/backend/v1/auth/audit', (e) => {
+  const app = $app
+
+  const reqInfo = e.requestInfo()
+  const headers = reqInfo.headers || {}
+  const q = reqInfo.query || {}
+
+  // --- autenticação: token nativo (mesmo mecanismo do login/refresh) ---
+  const authHeader = String(headers['authorization'] || headers['Authorization'] || '')
+  const nativeToken = authHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!nativeToken) {
+    return e.json(401, { error: 'Não autenticado.' })
+  }
+
+  let viewer
+  try {
+    viewer = app.findAuthRecordByToken(nativeToken, 'auth')
+  } catch (tokenErr) {
+    return e.json(401, { error: 'Sessão inválida ou expirada.' })
+  }
+  if (!viewer || viewer.collection().name !== 'users') {
+    return e.json(401, { error: 'Sessão inválida ou expirada.' })
+  }
+
+  // --- autorização: apenas perfis root e admin ---
+  const viewerRole = String(viewer.getString('role') || '').toLowerCase()
+  if (viewerRole !== 'root' && viewerRole !== 'admin') {
+    return e.json(403, { error: 'Acesso restrito aos perfis root e admin.' })
+  }
+
+  // --- filtros ---
+  let page = parseInt(String(q.page || '1'), 10)
+  if (isNaN(page) || page < 1) page = 1
+  let perPage = parseInt(String(q.perPage || '25'), 10)
+  if (isNaN(perPage) || perPage < 1) perPage = 25
+  if (perPage > 100) perPage = 100
+
+  const eventType = String(q.eventType || '').trim()
+  const VALID_EVENTS = {
+    login_success: true,
+    login_failed: true,
+    refresh: true,
+    logout: true,
+    blocked_attempt: true,
+  }
+
+  const filters = []
+  const bind = {}
+
+  if (eventType && VALID_EVENTS[eventType]) {
+    filters.push('eventType = {:eventType}')
+    bind.eventType = eventType
+  }
+
+  const emailQuery = String(q.email || '').trim()
+  if (emailQuery) {
+    filters.push('email ~ {:email}')
+    bind.email = emailQuery
+  }
+
+  const days = parseInt(String(q.days || '30'), 10)
+  const daysValid = days === 1 || days === 7 || days === 30 || days === 90 || days === 365
+  if (daysValid && days > 0) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ')
+    filters.push('created >= {:since}')
+    bind.since = since
+  }
+
+  const filterExpr = filters.length > 0 ? filters.join(' && ') : ''
+
+  try {
+    const items = app.findRecordsByFilter(
+      'auth_audit',
+      filterExpr,
+      '-created',
+      perPage,
+      (page - 1) * perPage,
+      bind,
+    )
+    const total = app.countRecordsByFilter('auth_audit', filterExpr, bind)
+
+    const mapped = []
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i]
+      mapped.push({
+        id: r.id,
+        eventType: r.getString('eventType'),
+        userId: r.getString('userId'),
+        email: r.getString('email'),
+        reason: r.getString('reason'),
+        ip: r.getString('ip'),
+        userAgent: r.getString('userAgent'),
+        created: r.getString('created'),
+      })
+    }
+
+    return e.json(200, {
+      items: mapped,
+      totalItems: total,
+      page: page,
+      perPage: perPage,
+    })
+  } catch (queryErr) {
+    console.log('[AuthAudit] Erro ao consultar auth_audit:', queryErr)
+    return e.json(500, { error: 'Falha ao consultar eventos de auditoria.' })
+  }
+})
+
+// v0.0.97 — Resumo da auditoria: GET /backend/v1/auth/audit/summary — root/admin.
+// Devolve { loginsOk24h, falhas24h, sessoesAtivas }. Sessões ativas = registros
+// de auth_sessions não revogados e não expirados.
+routerAdd('GET', '/backend/v1/auth/audit/summary', (e) => {
+  const app = $app
+
+  const reqInfo = e.requestInfo()
+  const headers = reqInfo.headers || {}
+
+  const authHeader = String(headers['authorization'] || headers['Authorization'] || '')
+  const nativeToken = authHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!nativeToken) {
+    return e.json(401, { error: 'Não autenticado.' })
+  }
+
+  let viewer
+  try {
+    viewer = app.findAuthRecordByToken(nativeToken, 'auth')
+  } catch (tokenErr) {
+    return e.json(401, { error: 'Sessão inválida ou expirada.' })
+  }
+  if (!viewer || viewer.collection().name !== 'users') {
+    return e.json(401, { error: 'Sessão inválida ou expirada.' })
+  }
+
+  const viewerRole = String(viewer.getString('role') || '').toLowerCase()
+  if (viewerRole !== 'root' && viewerRole !== 'admin') {
+    return e.json(403, { error: 'Acesso restrito aos perfis root e admin.' })
+  }
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ')
+  const now = new Date().toISOString().replace('T', ' ')
+
+  try {
+    const loginsOk24h = app.countRecordsByFilter(
+      'auth_audit',
+      "eventType = 'login_success' && created >= {:since}",
+      { since: since },
+    )
+    const falhas24h = app.countRecordsByFilter(
+      'auth_audit',
+      "(eventType = 'login_failed' || eventType = 'blocked_attempt') && created >= {:since}",
+      { since: since },
+    )
+    const sessoesAtivas = app.countRecordsByFilter(
+      'auth_sessions',
+      'revoked = false && expiresAt > {:now}',
+      { now: now },
+    )
+
+    return e.json(200, {
+      loginsOk24h: loginsOk24h,
+      falhas24h: falhas24h,
+      sessoesAtivas: sessoesAtivas,
+    })
+  } catch (sumErr) {
+    console.log('[AuthAudit] Erro ao calcular resumo:', sumErr)
+    return e.json(500, { error: 'Falha ao calcular resumo da auditoria.' })
+  }
 })

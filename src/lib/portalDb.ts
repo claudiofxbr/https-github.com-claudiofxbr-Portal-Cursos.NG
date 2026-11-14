@@ -1,3 +1,61 @@
+// ------------------- Auditoria de Autenticação (v0.0.97) -------------------
+
+export interface AuthAuditEvent {
+  id: string
+  eventType: 'login_success' | 'login_failed' | 'refresh' | 'logout' | 'blocked_attempt'
+  userId: string
+  email: string
+  reason: string
+  ip: string
+  userAgent: string
+  created: string
+}
+
+export interface AuthAuditPage {
+  items: AuthAuditEvent[]
+  totalItems: number
+  page: number
+  perPage: number
+}
+
+export interface AuthAuditFilter {
+  eventType?: AuthAuditEvent['eventType'] | ''
+  email?: string
+  days?: 1 | 7 | 30
+  page?: number
+  perPage?: number
+}
+
+// Busca os eventos de auditoria pela rota customizada do backend
+// (GET /backend/v1/auth/audit — restrita no hook a perfis root/admin;
+// o cliente pb envia o token nativo em memória automaticamente).
+export async function fetchAuthAudit(filter: AuthAuditFilter = {}): Promise<AuthAuditPage> {
+  const params = new URLSearchParams()
+  if (filter.eventType) params.set('eventType', filter.eventType)
+  if (filter.email) params.set('email', filter.email.trim())
+  if (filter.days) params.set('days', String(filter.days))
+  params.set('page', String(filter.page || 1))
+  params.set('perPage', String(filter.perPage || 25))
+
+  const qs = params.toString()
+  const resp = await pb.send(`/backend/v1/auth/audit${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+  })
+  return resp as AuthAuditPage
+}
+
+// Cartões de resumo: logins OK (24h), falhas (24h) e sessões ativas.
+// Vai pela rota customizada do backend (root/admin) porque as collections
+// auth_audit/auth_sessions não têm regras de API públicas.
+export async function fetchAuthAuditSummary(): Promise<{
+  loginsOk24h: number
+  falhas24h: number
+  sessoesAtivas: number
+}> {
+  const resp = await pb.send('/backend/v1/auth/audit/summary', { method: 'GET' })
+  return resp as { loginsOk24h: number; falhas24h: number; sessoesAtivas: number }
+}
+
 // Camada de acesso ao PocketBase (Skip Cloud) para o PortalCursos.NG.
 // Toda leitura/escrita de dados do portal passa por aqui: o PortalContext
 // consome este módulo, e os módulos de UI continuam usando apenas o contexto.

@@ -170,6 +170,13 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin'],
   },
   {
+    key: 'auditoria_auth',
+    label: 'Auditoria de Autenticação',
+    description: 'Trilha de auditoria de logins, falhas, refreshes e logouts de toda a plataforma',
+    icon: 'ShieldCheck',
+    requiredRoles: ['root', 'admin'],
+  },
+  {
     key: 'portal_aluno',
     label: 'Portal do Aluno',
     description: 'Ambiente virtual com cursos, aulas, materiais, calendário e suporte',

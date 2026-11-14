@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T14:37:42.611Z",
+  "generatedAt": "2026-11-14T15:09:26.935Z",
   "collections": [
     {
       "name": "users",
@@ -3179,6 +3179,74 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "auth_audit",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "eventType",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["login_success", "login_failed", "refresh", "logout", "blocked_attempt"]
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ip",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "userAgent",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_auth_audit_event ON auth_audit (eventType, created)",
+        "CREATE INDEX idx_auth_audit_email ON auth_audit (email)"
+      ]
     }
   ]
 }
