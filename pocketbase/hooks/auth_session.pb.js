@@ -17,6 +17,13 @@
  * authToken da collection, padrão 14 dias). Antes, toda chamada de login lançava
  * TypeError e devolvia 500 "Falha ao emitir token de acesso", que o frontend exibia
  * como "Credenciais inválidas".
+ *
+ * BUG CORRIGIDO (v0.0.90): o JSVM do Skip Cloud NÃO expõe o global `app` — o objeto
+ * correto é `$app` (padrão usado pelos demais hooks deste projeto, ex.:
+ * agent_cycle_oneoff.pb.js e library_overdue.pb.js). Antes, `app.findAuthRecordByEmail`
+ * lançava ReferenceError capturado pelo catch(_) do lookup, que logava
+ * "[AuthLogin] usuário não encontrado" para QUALQUER e-mail, mesmo com o registro
+ * existindo e a senha válida (prova: /api/collections/users/auth-with-password → 200).
  */
 
 routerAdd('POST', '/backend/v1/auth/login', (e) => {
@@ -27,6 +34,10 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     .toLowerCase()
   const password = String(body.password || '')
 
+  // v0.0.90: no JSVM do Skip Cloud o global correto é $app (a variável `app`
+  // sozinha não existe e lançava ReferenceError, mascarado pelo catch abaixo).
+  const app = $app
+
   if (!email || !password) {
     return e.json(400, { error: 'E-mail e senha são obrigatórios.' })
   }
@@ -34,14 +45,41 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
   let userRecord
   try {
     userRecord = app.findAuthRecordByEmail('users', email)
-  } catch (_) {
-    // Log de diagnóstico sem dados sensíveis: diferencia "usuário não encontrado"
-    console.log('[AuthLogin] usuário não encontrado')
-    return e.json(401, { error: 'Credenciais inválidas.' })
+  } catch (lookupErr) {
+    // Diagnóstico detalhado: nomeia a coleção/campo consultado e o tipo de erro
+    // (ReferenceError de runtime x "no rows" de registro inexistente).
+    console.log(
+      "[AuthLogin] lookup falhou: coleção='users' campo='email' valor='" +
+        email +
+        "' método='findAuthRecordByEmail' erro=" +
+        lookupErr,
+    )
+    // Fallback de robustez: mesmo filtro, via findRecordsByFilter (evita falso
+    // negativo caso findAuthRecordByEmail não esteja disponível neste runtime).
+    try {
+      const matches = app.findRecordsByFilter('users', 'email = {:email}', '', 1, 0, {
+        email: email,
+      })
+      if (matches && matches.length > 0) {
+        userRecord = matches[0]
+        console.log(
+          "[AuthLogin] lookup recuperado via filtro 'email = {:email}' na coleção 'users'",
+        )
+      }
+    } catch (filterErr) {
+      console.log(
+        "[AuthLogin] lookup fallback falhou: coleção='users' filtro='email = {:email}' erro=" +
+          filterErr,
+      )
+    }
   }
 
   if (!userRecord) {
-    console.log('[AuthLogin] usuário não encontrado')
+    console.log(
+      "[AuthLogin] usuário não encontrado: coleção='users' campo='email' valor='" +
+        email +
+        "' (nenhum registro correspondeu; conferir coleção, visibilidade e formato do e-mail)",
+    )
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
@@ -146,6 +184,9 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
 })
 
 routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
+  // v0.0.90: mesmo padrão do login — $app é o global correto no JSVM do Skip Cloud
+  const app = $app
+
   const reqInfo = e.requestInfo()
   const body = reqInfo.body || {}
   const headers = reqInfo.headers || {}
@@ -217,7 +258,13 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
   let userRecord
   try {
     userRecord = app.findRecordById('users', userId)
-  } catch (_) {
+  } catch (userErr) {
+    console.log(
+      "[AuthRefresh] usuário não encontrado: coleção='users' via findRecordById id=" +
+        userId +
+        ' erro=' +
+        userErr,
+    )
     sessionRecord.set('revoked', true)
     try {
       app.save(sessionRecord)
@@ -288,6 +335,9 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
 })
 
 routerAdd('POST', '/backend/v1/auth/logout', (e) => {
+  // v0.0.90: mesmo padrão do login — $app é o global correto no JSVM do Skip Cloud
+  const app = $app
+
   const reqInfo = e.requestInfo()
   const body = reqInfo.body || {}
   const headers = reqInfo.headers || {}
