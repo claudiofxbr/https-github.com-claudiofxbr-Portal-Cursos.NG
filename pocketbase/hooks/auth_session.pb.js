@@ -32,13 +32,21 @@
  * (07:09:21 e 07:20:43), com carga completa de dados em seguida. O hash é
  * válido — a divergência era a validação dentro do hook. Correção: o handler
  * DELEGA a verificação de credenciais ao mecanismo NATIVO do PocketBase (o
- * mesmo runtime de /api/collections/users/auth-with-password), via $http.send
- * POST interno /api/collections/users/auth-with-password com as credenciais
- * recebidas na requisição. Nada de comparação manual de hash no JSVM: 200
- * nativo ⇒ senha correta; 400 ⇒ senha inválida. O log granular registra etapa
- * a etapa (usuário encontrado ou não, resultado da validação nativa) sem
- * vazar senha ou hash. Requer o settings "passwordAuth.enabled" da collection
- * users (ativo por padrão e já provado pelos 200 nativos de produção).
+ * mesmo runtime de /api/collections/users/auth-with-password).
+ *
+ * v0.0.92: uma DIVERGÊNCIA FINAL derrubou o login em produção. O
+ * $http.send loopback usava URL RELATIVA "/api/collections/users/auth-with-password"
+ * e, neste runtime, a baseURL interna do cliente HTTP não está configurada, então
+ * a chamada falhava SEMPRE com: GoError: Post "...": unsupported protocol scheme ""
+ * (prova em list_logs hooks de 2026-11-14, POST /backend/v1/auth/login → 503
+ * "Serviço de autenticação temporariamente indisponível").
+ *
+ * FIX v0.0.92 (abordagem preferida): ELIMINAR a chamada HTTP do caminho de
+ * login — a senha é validada DIRETAMENTE com a API nativa do PocketBase no
+ * JSVM: app.findAuthRecordByEmail('users', email) + record.validatePassword(senha).
+ * Isso remove por completo a dependência de URL absoluta (não há mais $http.send).
+ * O log granular é mantido, diferenciando usuário não encontrado × senha inválida ×
+ * erro técnico, sem vazar senha ou hash.
  */
 
 routerAdd('POST', '/backend/v1/auth/login', (e) => {
@@ -98,61 +106,25 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
-  // ---- v0.0.91: validação de senha DELEGADA ao mecanismo nativo ----
+  // ---- v0.0.92: validação de senha DIRETA com a API nativa do PocketBase ----
   //
-  // O hash no banco é válido (prova: /api/collections/users/auth-with-password
-  // → 200 no mesmo período em que este hook devolvia 401 "senha inválida").
-  // Para eliminar qualquer divergência entre hook e runtime, o handler pergunta
-  // ao MECANISMO NATIVO (o mesmo de /api/collections/users/auth-with-password),
-  // via chamada interna $http.send ao próprio servidor (loopback):
-  //   200 nativo ⇒ senha correta;  400 nativo ⇒ senha inválida.
-  // Nunca comparar hash manualmente nem re-hash. Sem vazar senha ou hash nos
-  // logs — apenas o e-mail (dado já registrado em auth_sessions) e o resultado.
-  // IMPORTANTE: a lógica fica INLINE no callback — o JSVM executa callbacks
-  // num pool de VMs separado, onde declarações top-level do arquivo não são
-  // visíveis (QA v0.0.91: "Hook scoping error").
+  // O $http.send loopback foi ELIMINADO: url relativa sem protocolo/host
+  // ("unsupported protocol scheme ''") sempre caía em 503 nesta runtime. Agora
+  // a senha é verificada in-process, pelo mesmo runtime nativo que o hash usa:
+  //   validatePassword(senha)  ⇒  true (correta)  |  false (inválida).
+  // Sem rede, sem URL absoluta, sem divergência de runtime. Lógica INLINE no
+  // callback (pool de VMs separado no JSVM). Nada de senha/hash nos logs.
   let passwordOk = false
   let validation = ''
   try {
-    // Delegação: o runtime nativo é a ÚNICA fonte de verdade sobre a senha
-    // (mesmo bcrypt, mesmas regras). 200 ⇒ correta; 400 ⇒ inválida; outro
-    // status ⇒ não dá para afirmar, e o login é recusado sem acusar senha.
-    const baseUrl = String($app.settings().meta.appUrl || '').replace(/\/$/, '')
-    const native = $http.send({
-      url: baseUrl + '/api/collections/users/auth-with-password',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identity: email, password: password }),
-      timeout: 15,
-    })
-    validation = 'nativo:' + native.statusCode
-    if (native.statusCode === 200) {
-      passwordOk = true
-    } else if (native.statusCode === 400) {
-      passwordOk = false
-      console.log(
-        "[AuthLogin] senha inválida (validação nativa rejeitou): coleção='users' e-mail='" +
-          email +
-          "' resultado=" +
-          validation,
-      )
-    } else {
-      // Estado inesperado do mecanismo nativo (405, 5xx etc.): não há como
-      // confirmar a senha com segurança — NÃO loga como "senha inválida".
-      console.log(
-        "[AuthLogin] validação nativa respondeu estado inesperado: e-mail='" +
-          email +
-          "' resultado=" +
-          validation,
-      )
-      return e.json(503, {
-        error: 'Serviço de autenticação temporariamente indisponível. Tente novamente.',
-      })
-    }
+    // API nativa (JSVM): true ⇒ senha correta; false ⇒ senha inválida.
+    passwordOk = userRecord.validatePassword(password)
+    validation = 'validatePassword:' + (passwordOk ? 'ok' : 'rejeitada')
   } catch (pwErr) {
-    // Falha de rede/loopback na delegação: não há como afirmar "senha inválida".
+    // Erro técnico na própria validação (runtime, hash corrompido, etc.):
+    // NÃO há como afirmar "senha inválida" — recusa sem acusar a senha, 503.
     console.log(
-      "[AuthLogin] validação nativa não pôde correr: e-mail='" + email + "' erro=" + pwErr,
+      "[AuthLogin] erro técnico na validação da senha: e-mail='" + email + "' erro=" + pwErr,
     )
     return e.json(503, {
       error: 'Serviço de autenticação temporariamente indisponível. Tente novamente.',
@@ -173,7 +145,7 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
       "[AuthLogin] login recusado: e-mail='" +
         email +
         "' motivo='" +
-        (validation || 'validação nativa indisponível') +
+        (validation || 'senha rejeitada pela validação nativa') +
         "'",
     )
     return e.json(401, { error: 'Credenciais inválidas.' })
