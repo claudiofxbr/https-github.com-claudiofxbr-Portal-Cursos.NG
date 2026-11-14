@@ -5,168 +5,72 @@
  *
  * 1. Access Token: JWT de curta duração do PocketBase mantido SOMENTE em memória no frontend.
  * 2. Refresh Token: token criptográfico opaco salvo na collection auth_sessions com hash SHA-256
- *    e enviado via Cookie HttpOnly, Secure, SameSite=None/Lax com caminho /.
- *    Também aceito/enviado no corpo da requisição/resposta para clientes que não suportem cookies.
+ *    e enviado via Cookie HttpOnly, Secure, SameSite=None com caminho /.
  * 3. Rotas:
- *    - POST /backend/v1/auth/login: valida email/senha contra collection users, cria sessão e retorna token + cookie
- *    - POST /backend/v1/auth/refresh: valida cookie/body, rotaciona refresh token, gera novo Access Token PocketBase
- *    - POST /backend/v1/auth/logout: revoga a sessão no banco e expira o cookie
+ *    - POST /backend/v1/auth/login: registra a sessão de um login JÁ VALIDADO pelo PocketBase
+ *      nativo (POST /api/collections/users/auth-with-password) e devolve token + cookie.
+ *    - POST /backend/v1/auth/refresh: valida cookie/body, rotaciona refresh token, gera novo Access Token.
+ *    - POST /backend/v1/auth/logout: revoga a sessão no banco e expira o cookie.
  *
- * BUG CORRIGIDO (v0.0.88): o JSVM do PocketBase (goja) NÃO possui Record.createAuthToken —
- * o método correto é Record.newAuthToken() (sem duração customizável; usa a duração do
- * authToken da collection, padrão 14 dias). Antes, toda chamada de login lançava
- * TypeError e devolvia 500 "Falha ao emitir token de acesso", que o frontend exibia
- * como "Credenciais inválidas".
+ * DECISÃO v0.0.95: o hook de login NÃO valida mais a senha. Por quatro bugs seguidos a
+ * revalidação da senha dentro do JSVM divergia do login nativo (native 200, hook
+ * "validatePassword:rejeitada"). Agora a senha é validada SOMENTE pelo mecanismo nativo
+ * (auth-with-password, já comprovado em produção). O hook recebe o token nativo no
+ * cabeçalho Authorization e o confere in-process com $app.findAuthRecordByToken — sem
+ * senha, sem HTTP interno, sem hash.
  *
- * BUG CORRIGIDO (v0.0.90): o JSVM do Skip Cloud NÃO expõe o global `app` — o objeto
- * correto é `$app` (padrão usado pelos demais hooks deste projeto, ex.:
- * agent_cycle_oneoff.pb.js e library_overdue.pb.js). Antes, `app.findAuthRecordByEmail`
- * lançava ReferenceError capturado pelo catch(_) do lookup, que logava
- * "[AuthLogin] usuário não encontrado" para QUALQUER e-mail, mesmo com o registro
- * existindo e a senha válida (prova: /api/collections/users/auth-with-password → 200).
+ * Histórico (resumo): v0.0.88 newAuthToken (createAuthToken não existe no JSVM);
+ * v0.0.90 `const app = $app` (o global `app` não existe no Skip Cloud); v0.0.92 $http.send
+ * com URL relativa falhava sempre (unsupported protocol scheme).
  *
- * BUG CORRIGIDO (v0.0.91): "senha inválida" com hash válido no banco. Evidência
- * de produção (2026-11-14): POST /backend/v1/auth/login → 401 "[AuthLogin] senha
- * inválida" para claudio.xavier@gmail.com às 07:21:18 e 07:37:02, e NO MESMO
- * período o login nativo POST /api/collections/users/auth-with-password → 200
- * (07:09:21 e 07:20:43), com carga completa de dados em seguida. O hash é
- * válido — a divergência era a validação dentro do hook. Correção: o handler
- * DELEGA a verificação de credenciais ao mecanismo NATIVO do PocketBase (o
- * mesmo runtime de /api/collections/users/auth-with-password).
- *
- * v0.0.92: uma DIVERGÊNCIA FINAL derrubou o login em produção. O
- * $http.send loopback usava URL RELATIVA "/api/collections/users/auth-with-password"
- * e, neste runtime, a baseURL interna do cliente HTTP não está configurada, então
- * a chamada falhava SEMPRE com: GoError: Post "...": unsupported protocol scheme ""
- * (prova em list_logs hooks de 2026-11-14, POST /backend/v1/auth/login → 503
- * "Serviço de autenticação temporariamente indisponível").
- *
- * FIX v0.0.92 (abordagem preferida): ELIMINAR a chamada HTTP do caminho de
- * login — a senha é validada DIRETAMENTE com a API nativa do PocketBase no
- * JSVM: app.findAuthRecordByEmail('users', email) + record.validatePassword(senha).
- * Isso remove por completo a dependência de URL absoluta (não há mais $http.send).
- * O log granular é mantido, diferenciando usuário não encontrado × senha inválida ×
- * erro técnico, sem vazar senha ou hash.
+ * NOTA JSVM: toda a lógica fica INLINE nos callbacks (pool de VMs separado).
  */
 
 routerAdd('POST', '/backend/v1/auth/login', (e) => {
   const reqInfo = e.requestInfo()
   const body = reqInfo.body || {}
+  const headers = reqInfo.headers || {}
+
+  // v0.0.90: no JSVM do Skip Cloud o global correto é $app.
+  const app = $app
+
+  // Token nativo emitido por auth-with-password, enviado no cabeçalho Authorization
+  // (aceita com ou sem o prefixo "Bearer ").
+  const rawAuth = String(headers['authorization'] || headers['Authorization'] || '').trim()
+  const nativeToken = rawAuth.replace(/^Bearer\s+/i, '').trim()
   const email = String(body.email || '')
     .trim()
     .toLowerCase()
-  const password = String(body.password || '')
 
-  // v0.0.90: no JSVM do Skip Cloud o global correto é $app (a variável `app`
-  // sozinha não existe e lançava ReferenceError, mascarado pelo catch abaixo).
-  const app = $app
-
-  if (!email || !password) {
-    return e.json(400, { error: 'E-mail e senha são obrigatórios.' })
+  if (!nativeToken) {
+    console.log('[AuthLogin] login recusado: cabeçalho Authorization ausente')
+    return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
   let userRecord
   try {
-    userRecord = app.findAuthRecordByEmail('users', email)
-  } catch (lookupErr) {
-    // Diagnóstico detalhado: nomeia a coleção/campo consultado e o tipo de erro
-    // (ReferenceError de runtime x "no rows" de registro inexistente).
-    console.log(
-      "[AuthLogin] lookup falhou: coleção='users' campo='email' valor='" +
-        email +
-        "' método='findAuthRecordByEmail' erro=" +
-        lookupErr,
-    )
-    // Fallback de robustez: mesmo filtro, via findRecordsByFilter (evita falso
-    // negativo caso findAuthRecordByEmail não esteja disponível neste runtime).
-    try {
-      const matches = app.findRecordsByFilter('users', 'email = {:email}', '', 1, 0, {
-        email: email,
-      })
-      if (matches && matches.length > 0) {
-        userRecord = matches[0]
-        console.log(
-          "[AuthLogin] lookup recuperado via filtro 'email = {:email}' na coleção 'users'",
-        )
-      }
-    } catch (filterErr) {
-      console.log(
-        "[AuthLogin] lookup fallback falhou: coleção='users' filtro='email = {:email}' erro=" +
-          filterErr,
-      )
-    }
-  }
-
-  if (!userRecord) {
-    console.log(
-      "[AuthLogin] usuário não encontrado: coleção='users' campo='email' valor='" +
-        email +
-        "' (nenhum registro correspondeu; conferir coleção, visibilidade e formato do e-mail)",
-    )
+    // Verificação in-process do token nativo (assinatura e expiração conferidas pelo PocketBase).
+    userRecord = app.findAuthRecordByToken(nativeToken, 'auth')
+  } catch (tokenErr) {
+    console.log('[AuthLogin] login recusado: token nativo não reconhecido. erro=' + tokenErr)
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
-  // ---- v0.0.92: validação de senha DIRETA com a API nativa do PocketBase ----
-  //
-  // O $http.send loopback foi ELIMINADO: url relativa sem protocolo/host
-  // ("unsupported protocol scheme ''") sempre caía em 503 nesta runtime. Agora
-  // a senha é verificada in-process, pelo mesmo runtime nativo que o hash usa:
-  //   validatePassword(senha)  ⇒  true (correta)  |  false (inválida).
-  // Sem rede, sem URL absoluta, sem divergência de runtime. Lógica INLINE no
-  // callback (pool de VMs separado no JSVM). Nada de senha/hash nos logs.
-  let passwordOk = false
-  let validation = ''
-  try {
-    // API nativa (JSVM): true ⇒ senha correta; false ⇒ senha inválida.
-    passwordOk = userRecord.validatePassword(password)
-    validation = 'validatePassword:' + (passwordOk ? 'ok' : 'rejeitada')
-  } catch (pwErr) {
-    // Erro técnico na própria validação (runtime, hash corrompido, etc.):
-    // NÃO há como afirmar "senha inválida" — recusa sem acusar a senha, 503.
-    console.log(
-      "[AuthLogin] erro técnico na validação da senha: e-mail='" + email + "' erro=" + pwErr,
-    )
-    return e.json(503, {
-      error: 'Serviço de autenticação temporariamente indisponível. Tente novamente.',
-    })
-  }
-
-  console.log(
-    "[AuthLogin] resultado da validação de senha: e-mail='" +
-      email +
-      "' método='" +
-      validation +
-      "' passwordOk=" +
-      passwordOk,
-  )
-
-  if (!passwordOk) {
-    console.log(
-      "[AuthLogin] login recusado: e-mail='" +
-        email +
-        "' motivo='" +
-        (validation || 'senha rejeitada pela validação nativa') +
-        "'",
-    )
+  if (!userRecord || userRecord.collection().name !== 'users') {
+    console.log('[AuthLogin] login recusado: token não pertence à coleção users')
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
+
+  if (email && userRecord.email().toLowerCase() !== email) {
+    console.log('[AuthLogin] login recusado: e-mail do corpo não confere com o token nativo')
+    return e.json(401, { error: 'Credenciais inválidas.' })
+  }
+
+  console.log("[AuthLogin] token nativo conferido: e-mail='" + userRecord.email() + "'")
 
   const userStatus = userRecord.getString('status')
   if (userStatus === 'bloqueado' || userStatus === 'inativo') {
     return e.json(403, { error: 'Usuário inativo ou bloqueado institucionalmente.' })
-  }
-
-  // Gera o Access Token do PocketBase (assinado pelo PocketBase para o registro).
-  // CORREÇÃO: o JSVM (goja) só expõe Record.newAuthToken() — createAuthToken não existe
-  // e lançava TypeError em TODA tentativa de login, mesmo com senha correta.
-  // A duração é a do authToken da collection users (14 dias no Skip Cloud); o
-  // frontend renova o token silenciosamente via /backend/v1/auth/refresh.
-  let accessToken = ''
-  try {
-    accessToken = userRecord.newAuthToken()
-  } catch (err) {
-    console.log('[AuthLogin] Erro ao gerar auth token:', err)
-    return e.json(500, { error: 'Falha ao emitir token de acesso.' })
   }
 
   // Gera Refresh Token criptograficamente seguro (64 caracteres aleatórios)
@@ -189,7 +93,6 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     sessionRec.set('expiresAt', expiresAtIso)
     sessionRec.set('revoked', false)
 
-    const headers = reqInfo.headers || {}
     sessionRec.set(
       'userAgent',
       String(headers['user-agent'] || headers['User-Agent'] || '').slice(0, 250),
@@ -205,7 +108,6 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     return e.json(500, { error: 'Falha ao persistir sessão.' })
   }
 
-  // Define cookie HttpOnly para o refresh token
   // Cookie: pc_refresh_token=<token>; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=None
   const cookieVal =
     'pc_refresh_token=' +
@@ -215,7 +117,7 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
   e.response.header().set('Set-Cookie', cookieVal)
 
   return e.json(200, {
-    token: accessToken,
+    token: nativeToken,
     refreshToken: refreshToken,
     record: {
       id: userRecord.id,
@@ -349,7 +251,7 @@ routerAdd('POST', '/backend/v1/auth/refresh', (e) => {
     return e.json(500, { error: 'Falha ao rotacionar sessão.' })
   }
 
-  // Gera novo Access Token (mesma correção do login: newAuthToken é o método exposto pelo JSVM)
+  // Gera novo Access Token (newAuthToken é o método exposto pelo JSVM)
   let accessToken = ''
   try {
     accessToken = userRecord.newAuthToken()

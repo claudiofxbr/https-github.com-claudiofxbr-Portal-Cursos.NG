@@ -142,16 +142,33 @@ export async function loginWithPassword(
   password: string,
 ): Promise<{ user: UserAccount; token: string }> {
   serviceAuthPromise = null
+  const normalizedEmail = email.trim().toLowerCase()
 
+  // 1) Validação de senha pelo mecanismo NATIVO do PocketBase (única fonte de verdade).
+  //    Um e-mail/senha inválidos param aqui com erro 400.
+  try {
+    await pb.collection('users').authWithPassword(normalizedEmail, password)
+  } catch (_err) {
+    pb.authStore.clear()
+    throw new Error('Credenciais inválidas.')
+  }
+
+  // 2) Registra a sessão de duas camadas no backend, apresentando o token nativo
+  //    recém-emitido (o hook confere o token in-process, sem revalidar a senha).
+  const nativeToken = pb.authStore.token
   const baseUrl = pb.baseUrl.replace(/\/$/, '')
   const resp = await fetch(`${baseUrl}/backend/v1/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${nativeToken}`,
+    },
     credentials: 'include',
-    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    body: JSON.stringify({ email: normalizedEmail }),
   })
 
   if (!resp.ok) {
+    pb.authStore.clear()
     const errBody = await resp.json().catch(() => ({}))
     throw new Error(errBody.error || 'Credenciais inválidas.')
   }
