@@ -24,6 +24,21 @@
  * lançava ReferenceError capturado pelo catch(_) do lookup, que logava
  * "[AuthLogin] usuário não encontrado" para QUALQUER e-mail, mesmo com o registro
  * existindo e a senha válida (prova: /api/collections/users/auth-with-password → 200).
+ *
+ * BUG CORRIGIDO (v0.0.91): "senha inválida" com hash válido no banco. Evidência
+ * de produção (2026-11-14): POST /backend/v1/auth/login → 401 "[AuthLogin] senha
+ * inválida" para claudio.xavier@gmail.com às 07:21:18 e 07:37:02, e NO MESMO
+ * período o login nativo POST /api/collections/users/auth-with-password → 200
+ * (07:09:21 e 07:20:43), com carga completa de dados em seguida. O hash é
+ * válido — a divergência era a validação dentro do hook. Correção: o handler
+ * DELEGA a verificação de credenciais ao mecanismo NATIVO do PocketBase (o
+ * mesmo runtime de /api/collections/users/auth-with-password), via $http.send
+ * POST interno /api/collections/users/auth-with-password com as credenciais
+ * recebidas na requisição. Nada de comparação manual de hash no JSVM: 200
+ * nativo ⇒ senha correta; 400 ⇒ senha inválida. O log granular registra etapa
+ * a etapa (usuário encontrado ou não, resultado da validação nativa) sem
+ * vazar senha ou hash. Requer o settings "passwordAuth.enabled" da collection
+ * users (ativo por padrão e já provado pelos 200 nativos de produção).
  */
 
 routerAdd('POST', '/backend/v1/auth/login', (e) => {
@@ -83,18 +98,84 @@ routerAdd('POST', '/backend/v1/auth/login', (e) => {
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
+  // ---- v0.0.91: validação de senha DELEGADA ao mecanismo nativo ----
+  //
+  // O hash no banco é válido (prova: /api/collections/users/auth-with-password
+  // → 200 no mesmo período em que este hook devolvia 401 "senha inválida").
+  // Para eliminar qualquer divergência entre hook e runtime, o handler pergunta
+  // ao MECANISMO NATIVO (o mesmo de /api/collections/users/auth-with-password),
+  // via chamada interna $http.send ao próprio servidor (loopback):
+  //   200 nativo ⇒ senha correta;  400 nativo ⇒ senha inválida.
+  // Nunca comparar hash manualmente nem re-hash. Sem vazar senha ou hash nos
+  // logs — apenas o e-mail (dado já registrado em auth_sessions) e o resultado.
+  // IMPORTANTE: a lógica fica INLINE no callback — o JSVM executa callbacks
+  // num pool de VMs separado, onde declarações top-level do arquivo não são
+  // visíveis (QA v0.0.91: "Hook scoping error").
   let passwordOk = false
+  let validation = ''
   try {
-    passwordOk = userRecord.validatePassword(password)
+    // Delegação: o runtime nativo é a ÚNICA fonte de verdade sobre a senha
+    // (mesmo bcrypt, mesmas regras). 200 ⇒ correta; 400 ⇒ inválida; outro
+    // status ⇒ não dá para afirmar, e o login é recusado sem acusar senha.
+    const baseUrl = String($app.settings().meta.appUrl || '').replace(/\/$/, '')
+    const native = $http.send({
+      url: baseUrl + '/api/collections/users/auth-with-password',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: email, password: password }),
+      timeout: 15,
+    })
+    validation = 'nativo:' + native.statusCode
+    if (native.statusCode === 200) {
+      passwordOk = true
+    } else if (native.statusCode === 400) {
+      passwordOk = false
+      console.log(
+        "[AuthLogin] senha inválida (validação nativa rejeitou): coleção='users' e-mail='" +
+          email +
+          "' resultado=" +
+          validation,
+      )
+    } else {
+      // Estado inesperado do mecanismo nativo (405, 5xx etc.): não há como
+      // confirmar a senha com segurança — NÃO loga como "senha inválida".
+      console.log(
+        "[AuthLogin] validação nativa respondeu estado inesperado: e-mail='" +
+          email +
+          "' resultado=" +
+          validation,
+      )
+      return e.json(503, {
+        error: 'Serviço de autenticação temporariamente indisponível. Tente novamente.',
+      })
+    }
   } catch (pwErr) {
-    // Log de diagnóstico sem dados sensíveis
-    console.log('[AuthLogin] erro ao validar senha:', pwErr)
-    passwordOk = false
+    // Falha de rede/loopback na delegação: não há como afirmar "senha inválida".
+    console.log(
+      "[AuthLogin] validação nativa não pôde correr: e-mail='" + email + "' erro=" + pwErr,
+    )
+    return e.json(503, {
+      error: 'Serviço de autenticação temporariamente indisponível. Tente novamente.',
+    })
   }
 
+  console.log(
+    "[AuthLogin] resultado da validação de senha: e-mail='" +
+      email +
+      "' método='" +
+      validation +
+      "' passwordOk=" +
+      passwordOk,
+  )
+
   if (!passwordOk) {
-    // Log de diagnóstico sem dados sensíveis: diferencia "senha inválida"
-    console.log('[AuthLogin] senha inválida')
+    console.log(
+      "[AuthLogin] login recusado: e-mail='" +
+        email +
+        "' motivo='" +
+        (validation || 'validação nativa indisponível') +
+        "'",
+    )
     return e.json(401, { error: 'Credenciais inválidas.' })
   }
 
