@@ -1,48 +1,39 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * CORS com credenciais para o PortalCursos.NG (correção pós-v0.0.88)
+ * CORS com credenciais para as rotas /backend/v1/auth/* do PortalCursos.NG.
  *
  * PROBLEMA: o frontend (https://aplicativo-de-analise-pdf-7c892--preview.goskip.app
- * e https://aplicativo-de-analise-pdf-7c892.goskip.app) chama as rotas
- * /backend/v1/auth/* com fetch credentials: 'include' (necessário para o cookie
- * HttpOnly do refresh token). O middleware CORS PADRÃO do PocketBase (id "pbCors",
- * registrado pelo apis.Serve com AllowOrigins: ["*"] ANTES dos hooks OnServe)
- * respondia "Access-Control-Allow-Origin: *", e navegadores recusam wildcard
- * quando o modo de credenciais é "include". O preflight OPTIONS falhava, o fetch
- * morria com "Failed to fetch" e a UI exibia "Credenciais inválidas" —
- * mesmo com email/senha corretos.
+ * e https://aplicativo-de-analise-pdf-7c892.goskip.app) chama /backend/v1/auth/*
+ * com fetch credentials:'include' (cookie HttpOnly do refresh token). O middleware
+ * CORS padrão do PocketBase (pbCors, AllowOrigins ["*"]) respondia
+ * "Access-Control-Allow-Origin: *" e os navegadores recusam wildcard quando o modo
+ * de credenciais é "include" — o preflight falhava, o fetch morria com
+ * "Failed to fetch" e a UI exibia "Credenciais inválidas" mesmo com senha correta.
  *
- * SOLUÇÃO (3 camadas de defesa):
- *  1. Middleware global "portal_cors_session" com prioridade -2000 (o pbCors é
- *     -1041; prioridade menor executa antes): valida a origem por sufixo
- *     ".goskip.app" (preview + produção) e localhost para dev; para origens
- *     permitidas ecoa o PRÓPRIO valor de Origin (nunca "*") com
- *     "Access-Control-Allow-Credentials: true" e "Vary: Origin"; responde o
- *     preflight OPTIONS com 204 + Access-Control-Allow-Methods/Headers.
- *  2. Para requisições reais (não-preflight) remove o header Origin da
- *     requisição logo após usá-lo — sem Origin, o pbCors ignora a requisição
- *     e NÃO sobrescreve "Access-Control-Allow-Origin" com "*".
- *  3. No onServe, remove o middleware pbCors do router (higiene; se não
- *     estiver disponível no JSVM, as camadas 1 e 2 já bastam).
+ * SOLUÇÃO: middleware GLOBAL via routerUse() registrado no NÍVEL SUPERIOR do
+ * arquivo (executa uma vez no carregamento; é o mecanismo correto no runtime —
+ * onServe não existe no JSVM e rotas duplicadas colidem na inicialização).
+ * A prioridade -2000 executa ANTES do pbCors (DefaultCorsMiddlewarePriority =
+ * ActivityLogger - 1, ~-1040). Para origens permitidas o middleware ecoa o valor
+ * EXATO do header Origin (nunca "*"), define Access-Control-Allow-Credentials: true
+ * e responde o preflight OPTIONS com 204 + Allow-Methods/Allow-Headers.
+ * Para requisições reais, remove o header Origin da requisição logo após validá-lo,
+ * impedindo que o pbCors sobrescreva o cabeçalho com o wildcard. Se o pbCors ainda
+ * assim definir "*" (ex.: del de header indisponível), um middleware de prioridade
+ * 9999 restaura o eco correto usando a origem validada gravada em e.set().
  *
- * NÃO altera a arquitetura de sessão: access token em memória, refresh em
- * cookie HttpOnly (Set-Cookie segue sendo definido pelos handlers em
- * auth_session.pb.js; os cabeçalhos CORS aqui não removem Set-Cookie),
- * rotação no servidor e collection auth_sessions permanecem intactos.
- *
- * NOTA JSVM: toda a lógica fica INLINE nos callbacks (declarações de topo não
- * são visíveis dentro dos callbacks no pool de VMs separado).
+ * NOTA JSVM: toda a lógica fica INLINE nos callbacks — declarações de topo não
+ * são visíveis dentro dos callbacks no pool de VMs separado.
  */
 
-// Prioridade menor executa antes; pbCors é -1041.
+// Prioridade menor executa antes; pbCors é ~-1040.
 const PORTAL_CORS_PRIORITY = -2000
 const PORTAL_CORS_ID = 'portal_cors_session'
+const PORTAL_CORS_FIXUP_PRIORITY = 9999
+const PORTAL_CORS_FIXUP_ID = 'portal_cors_fixup'
 
-// Registra o middleware de eco de origem. try/catch no NÍVEL DE ARQUIVO:
-// se `new Middleware`/`routerUse` não existir nesta build do JSVM, logamos e
-// seguimos sem derrubar o carregamento dos demais hooks (login continua
-// funcionando pela rota nativa).
+// ------------------- MIDDLEWARE PRINCIPAL (antes do pbCors) -------------------
 try {
   routerUse(
     new Middleware(
@@ -99,7 +90,7 @@ try {
 
           resHeader.set(
             'Access-Control-Allow-Methods',
-            reqMethod ? reqMethod.toUpperCase() : 'GET,HEAD,PUT,PATCH,POST,DELETE',
+            reqMethod ? reqMethod.toUpperCase() : 'GET, HEAD, POST, OPTIONS',
           )
           resHeader.set('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization')
 
@@ -107,12 +98,12 @@ try {
           try {
             return e.noContent(204)
           } catch (_) {
-            return e.json(200, '')
+            return e.json(204, '')
           }
         }
 
-        // Requisição real: remove o Origin da requisição para que o pbCors (se
-        // ainda registrado) não sobrescreva o cabeçalho com "*".
+        // Requisição real: remove o Origin da requisição para que o pbCors (que
+        // ignora requisições sem Origin) não sobrescreva o cabeçalho com "*".
         try {
           e.request.header.del('Origin')
         } catch (_) {}
@@ -127,30 +118,15 @@ try {
   console.log('[PortalCors] middleware de eco de origem não registrado:', regErr)
 }
 
-// Higiene: remove o middleware CORS padrão do PocketBase (best-effort).
-try {
-  onServe((e) => {
-    try {
-      e.router.unbind('pbCors')
-    } catch (err) {
-      console.log('[PortalCors] unbind de pbCors indisponível neste JSVM:', err)
-    }
-    return e.next()
-  })
-} catch (serveErr) {
-  console.log('[PortalCors] onServe de higiene não registrado:', serveErr)
-}
-
-// Rede de segurança: middleware de prioridade MÁXIMA (executa por último,
-// DEPOIS do pbCors). Se por qualquer motivo o pbCors ainda sobrescreveu
-// Access-Control-Allow-Origin com "*" (ex.: del de header indisponível no
-// JSVM), restaura o eco correto da origem com credenciais — os navegadores
-// recusam wildcard quando credentials mode é "include".
+// ---------------- REDE DE SEGURANÇA (executa DEPOIS do pbCors) ----------------
+// Se por qualquer motivo o pbCors ainda sobrescreveu Access-Control-Allow-Origin
+// com "*" (ex.: del de header indisponível no JSVM), restaura o eco correto da
+// origem com credenciais — navegadores recusam wildcard com credentials "include".
 try {
   routerUse(
     new Middleware(
       (e) => {
-        // Deixa a cadeia inteira rodar (rota + pbCors) e só entao corrige os
+        // Deixa a cadeia inteira rodar (rota + pbCors) e então corrige os
         // headers da resposta, quando já estão definidos.
         const chainResult = e.next()
 
@@ -162,8 +138,7 @@ try {
         if (acao !== '*') {
           return chainResult
         }
-        // Descobre a origem que o portal já validou salvando-a no request store
-        // pelo middleware de prioridade -2000 (chave 'portal_cors_origin').
+        // Origem que o middleware principal validou e gravou no request store.
         let validated = ''
         try {
           validated = String(e.get('portal_cors_origin') || '')
@@ -178,8 +153,8 @@ try {
         } catch (_) {}
         return chainResult
       },
-      9999,
-      'portal_cors_fixup',
+      PORTAL_CORS_FIXUP_PRIORITY,
+      PORTAL_CORS_FIXUP_ID,
     ),
   )
 } catch (fixErr) {
