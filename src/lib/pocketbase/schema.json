@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T15:09:26.935Z",
+  "generatedAt": "2026-11-15T12:48:41.754Z",
   "collections": [
     {
       "name": "users",
@@ -3246,6 +3246,93 @@
       "indexes": [
         "CREATE INDEX idx_auth_audit_event ON auth_audit (eventType, created)",
         "CREATE INDEX idx_auth_audit_email ON auth_audit (email)"
+      ]
+    },
+    {
+      "name": "data_audit",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "action",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["create", "update", "delete"]
+        },
+        {
+          "name": "collName",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recordRef",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recordLabel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "actorId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "actorEmail",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "actorName",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "src",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "changesJson",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_data_audit_coll ON data_audit (collName, created)",
+        "CREATE INDEX idx_data_audit_action ON data_audit (action, created)",
+        "CREATE INDEX idx_data_audit_actor ON data_audit (actorEmail)"
       ]
     }
   ]

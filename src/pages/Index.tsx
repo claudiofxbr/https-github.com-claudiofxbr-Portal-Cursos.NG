@@ -13,6 +13,7 @@ import { LgpdModule } from '@/components/lgpd/LgpdModule'
 import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
 import { AgentesModule } from '@/components/agentes/AgentesModule'
 import { AuthAuditModule } from '@/components/auditoria/AuthAuditModule'
+import { DataAuditModule } from '@/components/auditoria/DataAuditModule'
 import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
 import { AlunoMinhasNotasModule } from '@/components/alunos/AlunoMinhasNotasModule'
@@ -130,6 +131,9 @@ export default function Index() {
         {safeActiveModule === 'agentes' && <AgentesModule />}
         {safeActiveModule === 'auditoria_auth' && (
           <AuthAuditModule canAccess={canAccessModule('auditoria_auth')} />
+        )}
+        {safeActiveModule === 'auditoria_dados' && (
+          <DataAuditModule canAccess={canAccessModule('auditoria_dados')} />
         )}
         {safeActiveModule === 'professor_area' && (
           <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />

@@ -44,6 +44,7 @@ export type ModuleKey =
   | 'diagnostico'
   | 'agentes'
   | 'auditoria_auth'
+  | 'auditoria_dados'
   | 'pagbank'
   | 'minhas_notas'
   | 'portal_aluno'

@@ -39,6 +39,7 @@ import {
   Bot,
   ClipboardList,
   KeyRound,
+  History,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -59,6 +60,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Calendar,
   Bot,
   KeyRound,
+  History,
 }
 
 interface PortalHeaderAndSidebarProps {

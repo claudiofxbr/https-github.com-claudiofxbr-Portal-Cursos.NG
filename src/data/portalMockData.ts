@@ -177,6 +177,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin'],
   },
   {
+    key: 'auditoria_dados',
+    label: 'Log de Alterações',
+    description:
+      'Trilha de auditoria de dados: criação, alteração e exclusão de registros de negócio',
+    icon: 'History',
+    requiredRoles: ['root', 'admin'],
+  },
+  {
     key: 'portal_aluno',
     label: 'Portal do Aluno',
     description: 'Ambiente virtual com cursos, aulas, materiais, calendário e suporte',

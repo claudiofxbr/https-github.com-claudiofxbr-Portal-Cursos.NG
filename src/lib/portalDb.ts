@@ -56,6 +56,79 @@ export async function fetchAuthAuditSummary(): Promise<{
   return resp as { loginsOk24h: number; falhas24h: number; sessoesAtivas: number }
 }
 
+// ------------------- Log de Alterações de Dados (v0.0.99) -------------------
+
+export type DataAuditAction = 'create' | 'update' | 'delete'
+
+export interface DataAuditChange {
+  field: string
+  from?: string
+  to?: string
+}
+
+export interface DataAuditEvent {
+  id: string
+  action: DataAuditAction
+  collectionName: string
+  recordId: string
+  recordLabel: string
+  actorId: string
+  actorEmail: string
+  actorName: string
+  src: string
+  changes: DataAuditChange[]
+  created: string
+}
+
+export interface DataAuditPage {
+  items: DataAuditEvent[]
+  totalItems: number
+  page: number
+  perPage: number
+}
+
+export interface DataAuditFilter {
+  action?: DataAuditAction | ''
+  collectionName?: string
+  actor?: string
+  days?: 1 | 7 | 30
+  page?: number
+  perPage?: number
+}
+
+export interface DataAuditSummary {
+  alteracoes24h: number
+  usuariosAtivos: number
+  colecaoMaisAlterada: string
+  colecaoMaisAlteradaCount: number
+}
+
+// Log de alterações de dados: leitura EXCLUSIVAMENTE pela rota customizada
+// GET /backend/v1/data/audit (collection data_audit é superuser-only; a rota
+// valida o perfil root/admin via token nativo no hook data_audit.pb.js).
+export async function fetchDataAudit(filter: DataAuditFilter = {}): Promise<DataAuditPage> {
+  const params = new URLSearchParams()
+  if (filter.action) params.set('action', filter.action)
+  if (filter.collectionName) params.set('collectionName', filter.collectionName.trim())
+  if (filter.actor) params.set('actor', filter.actor.trim())
+  if (filter.days) params.set('days', String(filter.days))
+  params.set('page', String(filter.page || 1))
+  params.set('perPage', String(filter.perPage || 25))
+
+  const qs = params.toString()
+  const resp = await pb.send(`/backend/v1/data/audit${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+  })
+  return resp as DataAuditPage
+}
+
+// Cartões de resumo do log de alterações: total nas últimas 24h,
+// nº de usuários que alteraram dados e coleção mais alterada.
+export async function fetchDataAuditSummary(): Promise<DataAuditSummary> {
+  const resp = await pb.send('/backend/v1/data/audit/summary', { method: 'GET' })
+  return resp as DataAuditSummary
+}
+
 // Camada de acesso ao PocketBase (Skip Cloud) para o PortalCursos.NG.
 // Toda leitura/escrita de dados do portal passa por aqui: o PortalContext
 // consome este módulo, e os módulos de UI continuam usando apenas o contexto.
