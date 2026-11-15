@@ -102,6 +102,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin', 'secretaria', 'matricula'],
   },
   {
+    key: 'relatorio_matriculas',
+    label: 'Relatório de Matrículas por Curso',
+    description:
+      'Total de matrículas por curso (presencial e EAD) com quebra por status e filtros de nível',
+    icon: 'BarChart3',
+    requiredRoles: ['root', 'admin', 'secretaria', 'academico', 'matricula', 'coordenador'],
+  },
+  {
     key: 'biblioteca_cursos',
     label: 'Biblioteca de Cursos',
     description:

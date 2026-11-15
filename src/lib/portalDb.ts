@@ -129,6 +129,51 @@ export async function fetchDataAuditSummary(): Promise<DataAuditSummary> {
   return resp as DataAuditSummary
 }
 
+// ------------------- Relatório de Matrículas por Curso (v0.0.100) -------------------
+
+export interface EnrollmentsByCourseItem {
+  id: string
+  kind: 'presencial' | 'ead'
+  name: string
+  code: string
+  level: string // graduacao | pos_graduacao | extensao | ead
+  total: number
+  byStatus: Record<string, number>
+}
+
+export interface EnrollmentsByCourseSummary {
+  totalMatriculas: number
+  totalCursos: number
+  topCursoName: string
+  topCursoTotal: number
+  mediaPorCurso: number
+}
+
+export interface EnrollmentsByCourseResponse {
+  items: EnrollmentsByCourseItem[]
+  statuses: string[]
+  summary: EnrollmentsByCourseSummary
+  generatedAt: string
+}
+
+// Relatório de matrículas por curso: leitura EXCLUSIVAMENTE pela rota
+// customizada GET /backend/v1/reports/enrollments-by-course (o hook valida o
+// token nativo e permite apenas root/admin/secretaria/academico/matricula/
+// coordenador — 403 "Acesso negado" para os demais perfis).
+export async function fetchEnrollmentsByCourse(
+  filter: { level?: string; status?: string } = {},
+): Promise<EnrollmentsByCourseResponse> {
+  const params = new URLSearchParams()
+  if (filter.level) params.set('level', filter.level)
+  if (filter.status) params.set('status', filter.status)
+
+  const qs = params.toString()
+  const resp = await pb.send(`/backend/v1/reports/enrollments-by-course${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+  })
+  return resp as EnrollmentsByCourseResponse
+}
+
 // Camada de acesso ao PocketBase (Skip Cloud) para o PortalCursos.NG.
 // Toda leitura/escrita de dados do portal passa por aqui: o PortalContext
 // consome este módulo, e os módulos de UI continuam usando apenas o contexto.
