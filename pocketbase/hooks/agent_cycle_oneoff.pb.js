@@ -1,177 +1,168 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * HOOK ONE-OFF — FASE FINAL do ciclo de agentes (ordem estrita):
+ * DESPACHANTE DO CICLO DE AGENTES (reativado na v0.0.102, idempotente).
  *
- *   1. Solucionador: valida e testa cada solução "proposto" (registra
- *      validationResult + testResult na MESMA solução, status "validado"),
- *      conferindo o estado real pós-aplicação da migração 0039.
- *   2. Operação (este hook, com privilégio root/admin de plataforma): marca
- *      como "resolvido" cada finding cujas soluções (não rejeitadas) estão
- *      todas validadas com validação e teste — a correção correspondente já
- *      foi APLICADA pela migração 0039 (remapeamento de IDs legados).
- *      (O Analisador é proibido pelo próprio prompt de fechar findings e o
- *      Solucionador não tem permissão de update neles; sem este passo o
- *      ciclo nunca fecharia — o Gerenciador só encerra com zero abertos.)
- *   3. Gerenciador: revisa o ciclo e aplica a regra literal — só grava
- *      eventType "encerrado" em agent_cycle_log com zero findings
- *      abertos/em_analise/encaminhados e toda solução validada com
- *      validationResult e testResult preenchidos.
+ * Ciclo: Analisador (findings) → Solucionador (uma solução por vez) → Gerenciador
+ * (controle de sequência e encerramento). Especialização: login/autenticação
+ * e saúde do banco (ver migração 0050).
  *
- * Guarda idempotente: quando o ciclo já está encerrado e íntegro, a
- * execução é no-op e o arquivo pode ser removido.
+ * GUARDAS NO CÓDIGO (não apenas no prompt):
+ *  1. Só avalia a solução PENDENTE MAIS ANTIGA por execução: propostas
+ *     "proposto" ou "validado" sem testResult. Nenhuma nova proposta é criada
+ *     aqui (não acumula não validadas).
+ *  2. Uma solução só pode ser considerada aprovada se tiver validationResult
+ *     E testResult registrados; sem isso, permanece pendente.
+ *  3. Um finding só vira "resolvido" quando todas as suas soluções não
+ *     rejeitadas estão validadas com validationResult e testResult.
+ *  4. Idempotência: se não há pendências nem findings abertos e o ciclo já
+ *     tem evento "encerrado" como último evento, a execução é no-op. O
+ *     Gerenciador só é acionado quando o estado mudou desde o último evento.
+ *  5. Gerenciador só encerra sem pendências (regra literal no prompt e aqui:
+ *     o evento "encerrado" só é gravado se não houver pendências).
+ *
+ * Falhas de qualquer etapa são registradas no console e não derrubam o ciclo.
  */
 
-cronAdd('agent_cycle_final', '*/2 * * * *', () => {
+cronAdd('agent_cycle_final', '0 */6 * * *', () => {
   const app = $app
 
-  // ---------- Estado do ciclo ----------
-  let openFindings = []
+  // ---------- Estado atual ----------
+  let findings = []
+  let solutions = []
   try {
-    openFindings = app.findRecordsByFilter(
+    findings = app.findRecordsByFilter(
       'agent_findings',
       'status != "resolvido"',
       '-created',
-      50,
+      200,
       0,
     )
-  } catch (err) {
-    console.log('[final] FALHA ao listar findings:', err)
-    return
-  }
-
-  let solutions = []
-  try {
     solutions = app.findRecordsByFilter(
       'agent_solutions',
       'status != "rejeitado"',
-      '-created',
-      100,
+      'created',
+      500,
       0,
     )
   } catch (err) {
-    console.log('[final] FALHA ao listar soluções:', err)
+    console.log('[ciclo] FALHA ao ler agent_findings/agent_solutions:', err)
     return
   }
 
-  const pending = solutions.filter(
-    (s) =>
-      s.getString('status') === 'proposto' ||
-      (s.getString('status') === 'validado' && !s.getString('testResult')),
-  )
+  // Pendentes: proposta sem validação, ou validada sem teste registrado.
+  const pending = solutions.filter((s) => {
+    const st = s.getString('status')
+    return st === 'proposto' || (st === 'validado' && !s.getString('testResult'))
+  })
 
-  let closedLogged = false
+  // Último evento do ciclo (para idempotência).
+  let lastEvent = ''
   try {
-    closedLogged =
-      app.findRecordsByFilter('agent_cycle_log', 'eventType = "encerrado"', '-created', 1, 0)
-        .length > 0
-  } catch (_) {}
+    const last = app.findRecordsByFilter('agent_cycle_log', 'id != ""', '-created', 1, 0)
+    lastEvent = last.length > 0 ? last[0].getString('eventType') : ''
+  } catch (err) {
+    console.log('[ciclo] aviso ao ler agent_cycle_log:', err)
+  }
 
-  if (pending.length === 0 && openFindings.length === 0 && closedLogged) {
-    console.log('[final] Ciclo já encerrado e íntegro — no-op (hook pode ser removido).')
+  if (pending.length === 0 && findings.length === 0 && lastEvent === 'encerrado') {
+    console.log('[ciclo] Ciclo encerrado e íntegro — no-op (idempotente).')
     return
   }
 
-  // ---------- user_id real (root) para as conversas dos agentes ----------
+  // ---------- Usuário root para as conversas dos agentes ----------
   let userId = ''
   try {
     const u = app.findFirstRecordByFilter('users', 'email = "root@portalcursos.ng"')
     userId = u ? u.id : ''
   } catch (err) {
-    console.log('[final] FALHA ao localizar usuário root:', err)
+    console.log('[ciclo] FALHA ao localizar usuário root:', err)
     return
   }
   if (!userId) {
-    console.log('[final] FALHA: usuário root não encontrado.')
+    console.log('[ciclo] FALHA: usuário root não encontrado.')
     return
   }
 
-  // ---------- FASE 1 — Solucionador: validar + testar cada solução pendente ----------
-  for (const s of pending) {
+  // ---------- ETAPA 1 — Solucionador: UMA solução pendente por execução ----------
+  // pending vem ordenado por created ascendente (mais antiga primeiro).
+  if (pending.length > 0) {
+    const s = pending[0]
     const sid = s.id
     const fid = s.getString('findingId')
-
     const msg = [
-      'TAREFA: concluir a validação e o teste da sua solução registrada em agent_solutions (registro ID ' +
+      'TAREFA: avaliar UMA solução pendente, individualmente, em agent_solutions (registro ID ' +
         sid +
         ', findingId ' +
         fid +
-        '), pois a correção de dados correspondente já foi APLICADA em produção pela migração 0039_reference_backfill (remapeamento de identificadores legados preservando integridade referencial: charges.studentId de "std-001".."std-004" para IDs reais de students via CPF; courseId de students/grades/attendance de chaves "crs-*" para IDs reais de courses; attendance.classId preenchido com a turma do curso; grades/attendance.teacherId com o coordenador do curso).',
+        ').',
       '',
-      'PROTOCOLO (nesta ordem, SEMPRE no registro ID ' + sid + ' — não crie outra solução):',
-      '1. VALIDAÇÃO: consulte o estado real e atual do banco (collections students, courses, charges, grades, attendance, classes) e confirme que o remapeamento descrito na proposta foi aplicado. Registre o resultado em validationResult, citando as queries de verificação e os números encontrados (ex.: nenhuma cobrança com studentId fora de students.id; nenhum courseId legado "crs-*").',
-      '2. TESTE: registre em testResult o teste da correção em estado pós-0039 (método, o que foi testado e resultado obtido — somente leitura, sem mutação).',
-      '3. STATUS: atualize o status do registro ID ' +
-        sid +
-        ' para "validado" se validação e teste confirmarem a correção; se o registro for duplicata de outra solução do mesmo problema, marque status "rejeitado" com validationResult explicando a duplicação.',
+      'PROTOCOLO (somente este registro; não crie outra proposta):',
+      '1. Leia o finding ' +
+        fid +
+        ' em agent_findings e o estado real das collections citadas (somente leitura).',
+      '2. Registre em validationResult o que foi verificado, a leitura usada e o resultado.',
+      '3. Registre em testResult o método de teste, o resultado esperado e o obtido (somente leitura).',
+      '4. Atualize o status para "validado" somente se validação e teste confirmarem a correção; caso contrário, "rejeitado" com o motivo.',
       '',
-      'REGRAS: nunca altere dados de produção (a correção já está aplicada); validação e teste são consultas de leitura; escreva em português.',
+      'REGRAS: nunca altere agent_findings, dados de produção, rotas de login ou hooks de autenticação; escreva em português.',
     ].join('\n')
-
     try {
-      const resp = $ai.agent('solucionador-portalcursos').chat({
-        user_id: userId,
-        message: msg,
-      })
-      console.log('[final] Solucionador (' + sid + '): ' + String(resp.content || '').slice(0, 400))
+      const resp = $ai.agent('solucionador-portalcursos').chat({ user_id: userId, message: msg })
+      console.log('[ciclo] Solucionador (' + sid + '): ' + String(resp.content || '').slice(0, 400))
     } catch (err) {
-      console.log('[final] FALHA no Solucionador para ' + sid + ':', err)
+      console.log('[ciclo] FALHA no Solucionador para ' + sid + ':', err)
     }
   }
 
-  // ---------- FASE 2 — Operação: fechar findings com correção aplicada e validada ----------
+  // ---------- ETAPA 2 — Fechar findings com todas as soluções validadas e testadas ----------
   try {
-    const freshSolutions = app.findRecordsByFilter(
+    const fresh = app.findRecordsByFilter(
       'agent_solutions',
       'status != "rejeitado"',
-      '-created',
-      100,
+      'created',
+      500,
       0,
     )
     const byFinding = {}
-    for (const so of freshSolutions) {
+    for (const so of fresh) {
       const fid = so.getString('findingId')
       if (!byFinding[fid]) byFinding[fid] = []
       byFinding[fid].push(so)
     }
-    for (const f of openFindings) {
-      const fid = f.id
-      const sols = byFinding[fid] || []
+    for (const f of findings) {
+      const sols = byFinding[f.id] || []
       if (sols.length === 0) continue
-      const allValidated = sols.every(
+      const approved = sols.every(
         (so) =>
           so.getString('status') === 'validado' &&
           so.getString('validationResult') &&
           so.getString('testResult'),
       )
-      if (!allValidated) continue
-      const rec = app.findRecordById('agent_findings', fid)
-      rec.set('status', 'resolvido')
-      app.save(rec)
+      if (!approved) continue
+      f.set('status', 'resolvido')
+      app.save(f)
       console.log(
-        '[final] Finding ' +
-          fid +
-          ' marcado como resolvido (correção aplicada pela 0039 e validada/testada pelo Solucionador).',
+        '[ciclo] Finding ' + f.id + ' resolvido (todas as soluções validadas e testadas).',
       )
     }
   } catch (err) {
-    console.log('[final] FALHA ao fechar findings resolvidos:', err)
+    console.log('[ciclo] FALHA ao fechar findings:', err)
   }
 
-  // ---------- FASE 3 — Gerenciador: revisa e decide o encerramento ----------
+  // ---------- ETAPA 3 — Gerenciador: controle de sequência e encerramento ----------
   try {
     const resp = $ai.agent('gerenciador-portalcursos').chat({
       user_id: userId,
       message: [
-        'TAREFA: revisar o ciclo de agentes nesta etapa final e decidir o estado do ciclo.',
+        'TAREFA: revisar o estado do ciclo e registrar o evento coerente em agent_cycle_log.',
         '',
-        'Contexto: as soluções do Solucionador estão com validação e teste registrados em agent_solutions (status "validado"); as correções de dados descritas nelas foram APLICADAS pela migração 0039_reference_backfill (remapeamento de IDs legados preservando integridade referencial, validado pós-execução: zero cobranças órfãs, zero referências legadas, nenhum classId/teacherId vazio); os findings cujas soluções foram validadas e testadas foram marcados como "resolvido" pela operação.',
-        '',
-        'PROTOCOLO: verifique o estado real de agent_findings e agent_solutions e registre o evento coerente em agent_cycle_log, aplicando a SUA regra literal de encerramento: encerrar o ciclo SOMENTE se não existir finding com status aberto, em_analise ou encaminhado E toda solução validada/aplicada estiver com validationResult e testResult preenchidos. Se ainda houver pendências, registre "impedimento" e mantenha o ciclo aberto (resultado válido).',
+        'PROTOCOLO: leia agent_findings e agent_solutions. Registre "impedimento" listando os IDs de soluções em "proposto" ou "validado" sem testResult, e de findings não resolvidos sem solução. Registre "encerrado" SOMENTE se não houver findings aberto/em_analise/encaminhado e nenhuma solução pendente sem validationResult e testResult. Não repita evento idêntico ao último registrado.',
+        'Registre também, para a solução testada nesta execução, se o teste foi aprovado, reprovado ou está incompleto.',
       ].join('\n'),
     })
-    console.log('[final] Gerenciador respondeu: ' + String(resp.content || '').slice(0, 500))
+    console.log('[ciclo] Gerenciador respondeu: ' + String(resp.content || '').slice(0, 500))
   } catch (err) {
-    console.log('[final] FALHA no Gerenciador:', err)
+    console.log('[ciclo] FALHA no Gerenciador:', err)
   }
 })
