@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { UserAccount, UserRole } from '@/types/portal'
+import { ChangePasswordDialog } from './ChangePasswordDialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -92,6 +93,10 @@ export function UsuariosEquipeModule() {
   const [newDept, setNewDept] = useState('')
   const [newPhone, setNewPhone] = useState('')
   const [newCpf, setNewCpf] = useState('')
+
+  // Alterar senha
+  const [passwordModalUser, setPasswordModalUser] = useState<UserAccount | null>(null)
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
 
   const isRootOrAdmin = currentUser?.role === 'root' || currentUser?.role === 'admin'
 
@@ -271,19 +276,36 @@ export function UsuariosEquipeModule() {
                 </div>
 
                 {/* Ações */}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                  <span className="text-[10px] text-slate-500">{user.roleTitle}</span>
-                  {isRootOrAdmin && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleOpenRoleChange(user)}
-                      className="h-7 text-xs border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
-                    >
-                      <KeyRound className="w-3 h-3 mr-1" />
-                      Alterar Papel
-                    </Button>
-                  )}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                  <span className="text-[10px] text-slate-500 truncate">{user.roleTitle}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Botão de alterar senha: própria senha sempre; de outros, só root/admin */}
+                    {(isCurrentUser || isRootOrAdmin) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPasswordModalUser(user)
+                          setPasswordModalOpen(true)
+                        }}
+                        className="h-7 text-xs border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
+                      >
+                        <KeyRound className="w-3 h-3 mr-1" />
+                        {isCurrentUser ? 'Minha senha' : 'Alterar senha'}
+                      </Button>
+                    )}
+                    {isRootOrAdmin && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenRoleChange(user)}
+                        className="h-7 text-xs border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
+                      >
+                        <ShieldCheck className="w-3 h-3 mr-1" />
+                        Alterar Papel
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -454,6 +476,14 @@ export function UsuariosEquipeModule() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* MODAL ALTERAR SENHA / SESSÕES */}
+      <ChangePasswordDialog
+        user={passwordModalUser}
+        currentUser={currentUser}
+        open={passwordModalOpen}
+        onOpenChange={setPasswordModalOpen}
+      />
     </div>
   )
 }

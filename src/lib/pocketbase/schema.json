@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-16T12:29:59.745Z",
+  "generatedAt": "2026-11-16T12:56:31.359Z",
   "collections": [
     {
       "name": "users",
@@ -3220,7 +3220,16 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["login_success", "login_failed", "refresh", "logout", "blocked_attempt"]
+          "selectValues": [
+            "login_success",
+            "login_failed",
+            "refresh",
+            "logout",
+            "blocked_attempt",
+            "password_changed",
+            "password_reset_by_admin",
+            "sessions_revoked"
+          ]
         },
         {
           "name": "userId",

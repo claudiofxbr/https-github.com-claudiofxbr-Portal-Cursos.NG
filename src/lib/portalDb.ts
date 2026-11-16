@@ -239,6 +239,7 @@ export async function fetchEnrollmentsByCourse(
 // consome este módulo, e os módulos de UI continuam usando apenas o contexto.
 import pb from '@/lib/pocketbase/client'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { ClientResponseError } from 'pocketbase'
 import {
   UserAccount,
   Student,
@@ -498,6 +499,98 @@ export async function confirmPasswordReset(
   } catch (err) {
     console.warn('[portalDb] confirmPasswordReset:', err)
     return { success: false, error: err }
+  }
+}
+
+// ------------------- Gestão de Senhas e Sessões (v0.0.105) -------------------
+
+export interface UserSessionInfo {
+  id: string
+  created: string
+  expiresAt: string
+  ipAddress: string
+  userAgent: string
+}
+
+export interface ChangePasswordResult {
+  success: boolean
+  message: string
+}
+
+// Política de complexidade de senha — espelhada no hook users_password.pb.js.
+// Ambos os lados validam: o cliente dá feedback imediato, o backend decide.
+export function validatePasswordComplexity(password: string): string | null {
+  if (!password) return 'A nova senha é obrigatória.'
+  if (password.length < 8) return 'A senha deve ter pelo menos 8 caracteres.'
+  if (!/[A-Z]/.test(password)) return 'A senha deve conter ao menos 1 letra maiúscula.'
+  if (!/[a-z]/.test(password)) return 'A senha deve conter ao menos 1 letra minúscula.'
+  if (!/[0-9]/.test(password)) return 'A senha deve conter ao menos 1 número.'
+  if (!/[^A-Za-z0-9]/.test(password)) return 'A senha deve conter ao menos 1 símbolo.'
+  return null
+}
+
+// Altera a senha via rota customizada do backend:
+// - própria senha: exige currentPassword (validada no servidor);
+// - reset administrativo (root/admin em outro usuário): sem senha atual.
+// Nunca devolve nem registra a senha em nenhum log.
+export async function changeUserPassword(params: {
+  targetUserId: string
+  currentPassword?: string
+  newPassword: string
+  confirmPassword: string
+}): Promise<ChangePasswordResult> {
+  try {
+    const resp = await pb.send('/backend/v1/users/password', {
+      method: 'POST',
+      body: {
+        targetUserId: params.targetUserId,
+        currentPassword: params.currentPassword || '',
+        newPassword: params.newPassword,
+        confirmPassword: params.confirmPassword,
+      },
+    })
+    return resp as ChangePasswordResult
+  } catch (err) {
+    throw new Error(extractBackendMessage(err, 'Não foi possível alterar a senha.'))
+  }
+}
+
+// Extrai a mensagem da API customizada (respostas usam { error: '...' }).
+function extractBackendMessage(err: unknown, fallback: string): string {
+  if (err instanceof ClientResponseError) {
+    const resp = err.response as { message?: unknown; error?: unknown } | undefined
+    if (resp && typeof resp.error === 'string' && resp.error) return resp.error
+    if (resp && typeof resp.message === 'string' && resp.message) return resp.message
+    if (typeof err.message === 'string' && err.message) return err.message
+  }
+  return err instanceof Error && err.message ? err.message : fallback
+}
+
+// Lista as sessões ativas (não revogadas) do usuário alvo.
+export async function fetchUserActiveSessions(userId: string): Promise<UserSessionInfo[]> {
+  try {
+    const resp = (await pb.send(`/backend/v1/users/sessions?userId=${encodeURIComponent(userId)}`, {
+      method: 'GET',
+    })) as { items?: UserSessionInfo[] }
+    return resp?.items || []
+  } catch (err) {
+    throw new Error(extractBackendMessage(err, 'Não foi possível consultar as sessões ativas.'))
+  }
+}
+
+// Revoga TODAS as sessões ativas do usuário (força novo login).
+// "Remover" no contexto de senha — nunca exclui o usuário.
+export async function revokeUserSessions(
+  userId: string,
+): Promise<{ success: boolean; revoked: number; message: string }> {
+  try {
+    const resp = await pb.send('/backend/v1/users/sessions/revoke', {
+      method: 'POST',
+      body: { targetUserId: userId },
+    })
+    return resp as { success: boolean; revoked: number; message: string }
+  } catch (err) {
+    throw new Error(extractBackendMessage(err, 'Não foi possível revogar as sessões.'))
   }
 }
 
