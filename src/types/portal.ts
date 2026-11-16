@@ -158,6 +158,14 @@ export interface Charge {
   installments?: number
   cardLast4?: string
   cardBrand?: string
+  /** Id do pedido externo criado no PagBank sandbox (ORDE_...). */
+  pagbankOrderId?: string
+  /** Status devolvido pela API do PagBank (AUTHORIZED|PAID|IN_ANALYSIS|DECLINED|CANCELED|WAITING). */
+  pagbankChargeStatus?: string
+  /** Id da charge externa no PagBank (CHN_...), quando presente. */
+  pagbankChargeId?: string
+  /** Data/hora (ISO) em que o pedido foi criado no sandbox. */
+  pagbankCreatedAt?: string
 }
 
 export interface PriceTableItem {

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-16T11:43:50.103Z",
+  "generatedAt": "2026-11-16T12:03:35.724Z",
   "collections": [
     {
       "name": "users",
@@ -671,6 +671,30 @@
         },
         {
           "name": "cardBrand",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pagbankOrderId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pagbankChargeStatus",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pagbankChargeId",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pagbankCreatedAt",
           "type": "text",
           "required": false,
           "system": false

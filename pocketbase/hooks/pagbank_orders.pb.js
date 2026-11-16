@@ -3,8 +3,9 @@
 /**
  * Integração PagBank — criação e consulta de pedidos no SANDBOX real.
  *
- * Endpoints (todos autenticados por token nativo PocketBase, padrão das rotas
- * de auditoria/relatório):
+ * Endpoints (autenticados por token nativo PocketBase, padrão das rotas
+ * de auditoria data_audit.pb.js — token do header authorization, perfis
+ * root/admin/financeiro/professor/recepcionista):
  *   POST /backend/v1/pagbank/orders?chargeId=<id>&method=pix|cartao
  *         → cria o pedido no sandbox e grava ids/status/QR na cobrança interna
  *   GET  /backend/v1/pagbank/orders?chargeId=<id>
@@ -16,13 +17,16 @@
  * Sem nenhuma das fontes → 503 "Integração PagBank não configurada
  * (token do sandbox ausente)" — nunca mascarado como erro genérico.
  *
+ * A resposta ao frontend devolve SOMENTE orderId/status/QR — nunca o token
+ * nem o corpo completo do PagBank.
+ *
  * NOTAS JSVM (Skip Cloud):
  *  - callbacks de routerAdd rodam em pool de VMs separado: TODA a lógica é
  *    INLINE no callback (declarações de topo não são visíveis).
  *  - usar `const app = $app` (não existe global `app`).
  *  - NÃO existe app.countRecordsByFilter — usar findRecordsByFilter.
  *  - $http.send com URL ABSOLUTA (https://sandbox.api.pagseguro.com/...):
- *    URL relativa lança 'unsupported protocol scheme'.
+ *    URL relativa lança 'unsupported protocol scheme' (503 em massa no passado).
  */
 
 // ---------------------------------------------------------------------------
@@ -48,6 +52,12 @@ routerAdd('POST', '/backend/v1/pagbank/orders', (e) => {
   }
   if (!viewer || viewer.collection().name !== 'users') {
     return e.json(401, { error: 'Sessão inválida ou expirada.' })
+  }
+
+  // --- autorização: perfis operacionais (aluno nunca cria pedido) ---
+  const viewerRole = String(viewer.getString('role') || '').toLowerCase()
+  if (viewerRole === 'aluno') {
+    return e.json(403, { error: 'Acesso negado.' })
   }
 
   // --- parâmetros ---
@@ -79,23 +89,23 @@ routerAdd('POST', '/backend/v1/pagbank/orders', (e) => {
   }
 
   // --- token: env → cofre interno; sem token → 503 específico ---
-  let token = ''
+  let pagToken = ''
   try {
-    token = String($os.getenv('PAGBANK_SANDBOX_TOKEN') || '').trim()
+    pagToken = String($os.getenv('PAGBANK_SANDBOX_TOKEN') || '').trim()
   } catch (envErr) {
-    token = ''
+    pagToken = ''
   }
-  if (!token) {
+  if (!pagToken) {
     try {
       const vault = app.findRecordsByFilter('_pagbank_config', '', '-updated', 1, 0)
       if (vault.length > 0) {
-        token = String(vault[0].getString('token') || '').trim()
+        pagToken = String(vault[0].getString('token') || '').trim()
       }
     } catch (vaultErr) {
-      token = ''
+      pagToken = ''
     }
   }
-  if (!token) {
+  if (!pagToken) {
     console.log(
       '[PagBankOrders] 503: token do sandbox ausente (env PAGBANK_SANDBOX_TOKEN e cofre vazios).',
     )
@@ -157,7 +167,7 @@ routerAdd('POST', '/backend/v1/pagbank/orders', (e) => {
       url: 'https://sandbox.api.pagseguro.com/orders',
       method: 'POST',
       headers: {
-        Authorization: 'Bearer ' + token,
+        Authorization: 'Bearer ' + pagToken,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
@@ -308,6 +318,11 @@ routerAdd('GET', '/backend/v1/pagbank/orders', (e) => {
     return e.json(401, { error: 'Sessão inválida ou expirada.' })
   }
 
+  const viewerRole = String(viewer.getString('role') || '').toLowerCase()
+  if (viewerRole === 'aluno') {
+    return e.json(403, { error: 'Acesso negado.' })
+  }
+
   const chargeId = String(q.chargeId || '').trim()
   if (!chargeId) {
     return e.json(400, { error: 'Informe o id da cobrança (chargeId).' })
@@ -330,23 +345,23 @@ routerAdd('GET', '/backend/v1/pagbank/orders', (e) => {
   }
 
   // --- token: env → cofre interno; sem token → 503 específico ---
-  let token = ''
+  let pagToken = ''
   try {
-    token = String($os.getenv('PAGBANK_SANDBOX_TOKEN') || '').trim()
+    pagToken = String($os.getenv('PAGBANK_SANDBOX_TOKEN') || '').trim()
   } catch (envErr) {
-    token = ''
+    pagToken = ''
   }
-  if (!token) {
+  if (!pagToken) {
     try {
       const vault = app.findRecordsByFilter('_pagbank_config', '', '-updated', 1, 0)
       if (vault.length > 0) {
-        token = String(vault[0].getString('token') || '').trim()
+        pagToken = String(vault[0].getString('token') || '').trim()
       }
     } catch (vaultErr) {
-      token = ''
+      pagToken = ''
     }
   }
-  if (!token) {
+  if (!pagToken) {
     console.log(
       '[PagBankOrders] 503: token do sandbox ausente (env PAGBANK_SANDBOX_TOKEN e cofre vazios).',
     )
@@ -363,7 +378,7 @@ routerAdd('GET', '/backend/v1/pagbank/orders', (e) => {
       url: 'https://sandbox.api.pagseguro.com/orders/' + extOrderId,
       method: 'GET',
       headers: {
-        Authorization: 'Bearer ' + token,
+        Authorization: 'Bearer ' + pagToken,
         Accept: 'application/json',
       },
       timeout: 20,

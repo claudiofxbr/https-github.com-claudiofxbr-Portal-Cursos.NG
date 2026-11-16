@@ -129,6 +129,66 @@ export async function fetchDataAuditSummary(): Promise<DataAuditSummary> {
   return resp as DataAuditSummary
 }
 
+// ----------------------- PagBank sandbox (v0.0.102) ------------------------
+
+export interface PagbankOrderResult {
+  ok?: boolean
+  mode?: 'sandbox' | 'demo'
+  integrationConfigured?: boolean
+  /** Mensagem específica da integração (503/502) para exibir na tela. */
+  error?: string
+  charge?: {
+    orderId: string
+    chargeId: string
+    status: string
+    qrCodeText?: string
+    qrCodeImageUrl?: string
+    expiresAt?: string
+  }
+}
+
+export interface PagbankStatusResult {
+  ok?: boolean
+  orderId?: string
+  /** Status bruto da API (AUTHORIZED|PAID|IN_ANALYSIS|DECLINED|CANCELED|WAITING). */
+  externalStatus?: string
+  /** Tradução amigável do status. */
+  statusLabel?: string
+  paid?: boolean
+  internalStatus?: string
+  /** Mensagem específica da integração (503/502) para exibir na tela. */
+  error?: string
+}
+
+/**
+ * Cria um pedido REAL no sandbox do PagBank para a cobrança informada
+ * (rota customizada POST /backend/v1/pagbank/orders — o token do sandbox
+ * fica somente no backend: env PAGBANK_SANDBOX_TOKEN ou cofre _pagbank_config).
+ * Sem token configurado o backend responde 503 com `integrationConfigured: false`
+ * — o chamador deve cair no modo demonstração atual.
+ */
+export async function createPagbankOrder(chargeId: string, method: 'pix' | 'cartao') {
+  const resp = await pb.send('/backend/v1/pagbank/orders', {
+    method: 'POST',
+    body: { chargeId, method },
+  })
+  return resp as PagbankOrderResult
+}
+
+/**
+ * Consulta o status atual do pedido no sandbox (GET /backend/v1/pagbank/orders
+ * com chargeId) e sincroniza a cobrança interna quando o pagamento liquida.
+ */
+export async function fetchPagbankOrderStatus(chargeId: string) {
+  const resp = await pb.send(
+    `/backend/v1/pagbank/orders?chargeId=${encodeURIComponent(chargeId)}`,
+    {
+      method: 'GET',
+    },
+  )
+  return resp as PagbankStatusResult
+}
+
 // ------------------- Relatório de Matrículas por Curso (v0.0.100) -------------------
 
 export interface EnrollmentsByCourseItem {
@@ -742,6 +802,10 @@ function mapCharge(rec: AnyRec): Charge {
     installments: num(rec.installments) > 0 ? num(rec.installments) : undefined,
     cardLast4: str(rec.cardLast4) || undefined,
     cardBrand: str(rec.cardBrand) || undefined,
+    pagbankOrderId: str(rec.pagbankOrderId) || undefined,
+    pagbankChargeStatus: str(rec.pagbankChargeStatus) || undefined,
+    pagbankChargeId: str(rec.pagbankChargeId) || undefined,
+    pagbankCreatedAt: str(rec.pagbankCreatedAt) || undefined,
   }
 }
 
@@ -2010,6 +2074,8 @@ export const portalDb = {
           installments: charge.installments || 1,
           cardLast4: charge.cardLast4 || '',
           cardBrand: charge.cardBrand || '',
+          pagbankOrderId: charge.pagbankOrderId || '',
+          pagbankChargeStatus: charge.pagbankChargeStatus || '',
         }
         if (charge.id && charge.id.length >= 15) {
           payload.id = charge.id
@@ -2031,6 +2097,14 @@ export const portalDb = {
         if (updates.installments !== undefined) payload.installments = updates.installments
         if (updates.cardLast4 !== undefined) payload.cardLast4 = updates.cardLast4
         if (updates.cardBrand !== undefined) payload.cardBrand = updates.cardBrand
+        if (updates.pixCode !== undefined) payload.pixCode = updates.pixCode
+        if (updates.pixQrUrl !== undefined) payload.pixQrUrl = updates.pixQrUrl
+        if (updates.pagbankOrderId !== undefined) payload.pagbankOrderId = updates.pagbankOrderId
+        if (updates.pagbankChargeStatus !== undefined)
+          payload.pagbankChargeStatus = updates.pagbankChargeStatus
+        if (updates.pagbankChargeId !== undefined) payload.pagbankChargeId = updates.pagbankChargeId
+        if (updates.pagbankCreatedAt !== undefined)
+          payload.pagbankCreatedAt = updates.pagbankCreatedAt
         try {
           const rec = await pb.collection(COLLECTIONS.charges).update(chargeId, payload)
           return mapCharge(rec as unknown as AnyRec)

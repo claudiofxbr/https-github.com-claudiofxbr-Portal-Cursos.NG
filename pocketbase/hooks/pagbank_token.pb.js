@@ -40,6 +40,7 @@ routerAdd(
     let last4 = ''
     let updatedAt = ''
     try {
+      const app = $app
       const recs = app.findRecordsByFilter('_pagbank_config', '', '-updated', 1, 0)
       if (recs.length > 0) {
         const token = recs[0].getString('token')
@@ -89,6 +90,7 @@ routerAdd(
     const last4 = token.slice(-4)
 
     try {
+      const app = $app
       let rec
       const existing = app.findRecordsByFilter('_pagbank_config', '', '-updated', 1, 0)
       if (existing.length > 0) {
@@ -128,6 +130,7 @@ routerAdd(
     }
 
     try {
+      const app = $app
       const recs = app.findRecordsByFilter('_pagbank_config', '', '-updated', 50, 0)
       for (const rec of recs) {
         app.delete(rec)
@@ -156,6 +159,7 @@ routerAdd(
 
     let token = ''
     try {
+      const app = $app
       const recs = app.findRecordsByFilter('_pagbank_config', '', '-updated', 1, 0)
       if (recs.length > 0) token = recs[0].getString('token')
     } catch (_) {}
