@@ -8,7 +8,8 @@
  *   POST /backend/v1/pagbank/token   → grava o token no cofre interno
  *   POST /backend/v1/pagbank/remove  → apaga o token do cofre
  *   POST /backend/v1/pagbank/test    → chama a API sandbox do PagBank com o
- *                                      token salvo e devolve ok/message genérica
+ *                                      token salvo (POST /orders PIX mínimo) e
+ *                                      devolve ok/message
  *
  * Garantias de segurança:
  *  - O token NUNCA é retornado por nenhum endpoint, nem em mensagens de erro.
@@ -172,14 +173,34 @@ routerAdd(
     }
 
     try {
-      // Chamada leve de validação na API sandbox do PagBank (listagem de pedidos).
+      // Validação real: cria um pedido PIX mínimo no sandbox (sem cobrança real).
+      // O GET /orders exige charge_id e rejeita qualquer outro parâmetro com 400
+      // (error 40002), por isso NÃO serve como teste de conexão.
       const resp = $http.send({
-        url: 'https://sandbox.api.pagseguro.com/orders?limit=1',
-        method: 'GET',
+        url: 'https://sandbox.api.pagseguro.com/orders',
+        method: 'POST',
         headers: {
           Authorization: 'Bearer ' + token,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          reference_id: 'portalcursos-conn-test',
+          items: [
+            {
+              name: 'Teste de conexão PortalCursos',
+              quantity: 1,
+              unit_amount: 100,
+            },
+          ],
+          charges: [
+            {
+              reference_id: 'portalcursos-conn-test',
+              description: 'Pedido de teste de conexão (sandbox, sem cobrança real)',
+              amount: { value: 100 },
+              payment_method: { type: 'PIX', capture: false },
+            },
+          ],
+        }),
         timeout: 15,
       })
 
@@ -187,7 +208,8 @@ routerAdd(
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         return e.json(200, {
           ok: true,
-          message: 'Conexão estabelecida: o token foi aceito pela API sandbox do PagBank.',
+          message:
+            'Conexão estabelecida: o token foi aceito pela API sandbox do PagBank (pedido de teste criado).',
         })
       }
       if (resp.statusCode === 401 || resp.statusCode === 403) {
@@ -195,6 +217,31 @@ routerAdd(
           ok: false,
           message:
             'O PagBank rejeitou o token (não autorizado). Verifique o token e tente de novo.',
+        })
+      }
+      // 400: o PagBank devolve error_messages[] com a descrição do erro —
+      // repassamos apenas essa descrição textual (nunca o token/corpo completo).
+      if (resp.statusCode === 400) {
+        let detail = ''
+        try {
+          const parsed = resp.json
+          const msgs = parsed && parsed.error_messages
+          if (msgs && msgs.length > 0 && msgs[0] && msgs[0].description) {
+            detail = String(msgs[0].description)
+          }
+        } catch (_) {
+          // corpo ilegível: mantém mensagem genérica
+        }
+        if (detail) {
+          return e.json(200, {
+            ok: false,
+            message: 'O PagBank rejeitou a requisição de teste: ' + detail,
+          })
+        }
+        return e.json(200, {
+          ok: false,
+          message:
+            'O PagBank rejeitou a requisição de teste (status 400). Revise o token e o ambiente.',
         })
       }
       return e.json(200, {
