@@ -197,7 +197,7 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     label: 'Portal do Aluno',
     description: 'Ambiente virtual com cursos, aulas, materiais, calendário e suporte',
     icon: 'GraduationCap',
-    requiredRoles: ['aluno'],
+    requiredRoles: ['aluno', 'root'],
   },
   {
     key: 'pagbank',

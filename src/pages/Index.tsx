@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { ModuleKey } from '@/types/portal'
+import { Button } from '@/components/ui/button'
+import { Eye, LayoutDashboard } from 'lucide-react'
 import { LoginModalScreen } from '@/components/auth/LoginModalScreen'
 import { PortalShell } from '@/components/layout/PortalShell'
 import { DashboardOverview } from '@/components/dashboard/DashboardOverview'
@@ -73,80 +75,112 @@ export default function Index() {
 
   // Se o módulo ativo não for acessível pelo perfil atual, volta para dashboard
   const safeActiveModule = canAccessModule(activeModule) ? activeModule : 'dashboard'
+  // Modo de visualização: perfis administrativos (root/admin) podem abrir o Portal do Aluno.
+  // O papel 'aluno' já retornou acima com o portal dedicado — aqui só chegam perfis de equipe.
+  const isStaffPreviewing = safeActiveModule === 'portal_aluno'
 
   return (
     <InstitutionalErrorBoundary
       fallbackTitle="Instabilidade no Sistema"
       fallbackDescription="Ocorreu uma falha inesperada na aplicação. O estado da sessão foi descartado por segurança."
     >
-      <PortalShell
-        activeModule={safeActiveModule}
-        setActiveModule={(mod) => {
-          if (canAccessModule(mod)) {
-            setActiveModule(mod)
-          }
-        }}
-      >
-        {safeActiveModule === 'dashboard' && (
-          <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
-        )}
-        {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
-        {safeActiveModule === 'alunos' && (
-          <AlunosModule
-            initialStudentId={targetStudentId}
-            onClearInitialStudent={() => setTargetStudentId(null)}
-            onNavigateToFinanceiro={handleNavigateToFinanceiro}
-          />
-        )}
-        {safeActiveModule === 'matriculas' && (
-          <MatriculaModule
-            onNavigateToModule={(mod) => {
-              if (canAccessModule(mod)) {
-                setActiveModule(mod)
-              }
-            }}
-          />
-        )}
-        {safeActiveModule === 'cursos' && <CursosModule />}
-        {safeActiveModule === 'turmas' && <TurmasModule />}
-        {safeActiveModule === 'ead' && <EADModule />}
-        {safeActiveModule === 'financeiro' && (
-          <FinanceiroModule
-            initialChargeId={targetChargeId}
-            initialStudentCpf={targetStudentCpf}
-            onClearInitialFilters={() => {
-              setTargetChargeId(null)
-              setTargetStudentCpf(null)
-            }}
-            onNavigateToAluno={handleNavigateToAlunos}
-          />
-        )}
-        {safeActiveModule === 'relatorios' && (
-          <RelatoriosModule onNavigateToStudent={handleNavigateToAlunos} />
-        )}
-        {safeActiveModule === 'diplomas' && <DiplomasCertificadosModule />}
-        {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
-        {safeActiveModule === 'manutencao' && <ManutencaoModule />}
-        {safeActiveModule === 'lgpd' && <LgpdModule />}
-        {safeActiveModule === 'diagnostico' && <DiagnosticoModule />}
-        {safeActiveModule === 'agentes' && <AgentesModule />}
-        {safeActiveModule === 'auditoria_auth' && (
-          <AuthAuditModule canAccess={canAccessModule('auditoria_auth')} />
-        )}
-        {safeActiveModule === 'auditoria_dados' && (
-          <DataAuditModule canAccess={canAccessModule('auditoria_dados')} />
-        )}
-        {safeActiveModule === 'relatorio_matriculas' && (
-          <EnrollmentsByCourseModule canAccess={canAccessModule('relatorio_matriculas')} />
-        )}
-        {safeActiveModule === 'professor_area' && (
-          <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
-        )}
-        {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
-        {safeActiveModule === 'biblioteca_cursos' && <CourseLibraryModule />}
-        {safeActiveModule === 'gestao_inscricoes' && <GestaoInscricoesModule />}
-        {safeActiveModule === 'pagbank' && <PagBankIntegrationModule />}
-      </PortalShell>
+      {isStaffPreviewing ? (
+        <div className="min-h-screen bg-slate-950 text-slate-100">
+          <div className="sticky top-0 z-40 bg-amber-950/90 border-b border-amber-500/30 backdrop-blur-md">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-12 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 min-w-0">
+                <Eye className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-semibold text-amber-200">
+                  Modo de visualização — Portal do Aluno
+                </span>
+                <span className="hidden sm:inline text-[11px] text-amber-200/70 truncate">
+                  Você está vendo o ambiente como a equipe de suporte enxerga. Ações continuam
+                  vinculadas à sua sessão ({currentUser.email}).
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveModule('dashboard')}
+                className="h-7 text-[11px] border-amber-500/40 text-amber-200 hover:bg-amber-900/40 hover:text-amber-100 shrink-0"
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 mr-1.5" />
+                Voltar ao Painel
+              </Button>
+            </div>
+          </div>
+          <AlunoPortalMaster />
+        </div>
+      ) : (
+        <PortalShell
+          activeModule={safeActiveModule}
+          setActiveModule={(mod) => {
+            if (canAccessModule(mod)) {
+              setActiveModule(mod)
+            }
+          }}
+        >
+          {safeActiveModule === 'dashboard' && (
+            <DashboardOverview onNavigate={(mod) => setActiveModule(mod)} />
+          )}
+          {safeActiveModule === 'minhas_notas' && <AlunoMinhasNotasModule />}
+          {safeActiveModule === 'alunos' && (
+            <AlunosModule
+              initialStudentId={targetStudentId}
+              onClearInitialStudent={() => setTargetStudentId(null)}
+              onNavigateToFinanceiro={handleNavigateToFinanceiro}
+            />
+          )}
+          {safeActiveModule === 'matriculas' && (
+            <MatriculaModule
+              onNavigateToModule={(mod) => {
+                if (canAccessModule(mod)) {
+                  setActiveModule(mod)
+                }
+              }}
+            />
+          )}
+          {safeActiveModule === 'cursos' && <CursosModule />}
+          {safeActiveModule === 'turmas' && <TurmasModule />}
+          {safeActiveModule === 'ead' && <EADModule />}
+          {safeActiveModule === 'financeiro' && (
+            <FinanceiroModule
+              initialChargeId={targetChargeId}
+              initialStudentCpf={targetStudentCpf}
+              onClearInitialFilters={() => {
+                setTargetChargeId(null)
+                setTargetStudentCpf(null)
+              }}
+              onNavigateToAluno={handleNavigateToAlunos}
+            />
+          )}
+          {safeActiveModule === 'relatorios' && (
+            <RelatoriosModule onNavigateToStudent={handleNavigateToAlunos} />
+          )}
+          {safeActiveModule === 'diplomas' && <DiplomasCertificadosModule />}
+          {safeActiveModule === 'usuarios' && <UsuariosEquipeModule />}
+          {safeActiveModule === 'manutencao' && <ManutencaoModule />}
+          {safeActiveModule === 'lgpd' && <LgpdModule />}
+          {safeActiveModule === 'diagnostico' && <DiagnosticoModule />}
+          {safeActiveModule === 'agentes' && <AgentesModule />}
+          {safeActiveModule === 'auditoria_auth' && (
+            <AuthAuditModule canAccess={canAccessModule('auditoria_auth')} />
+          )}
+          {safeActiveModule === 'auditoria_dados' && (
+            <DataAuditModule canAccess={canAccessModule('auditoria_dados')} />
+          )}
+          {safeActiveModule === 'relatorio_matriculas' && (
+            <EnrollmentsByCourseModule canAccess={canAccessModule('relatorio_matriculas')} />
+          )}
+          {safeActiveModule === 'professor_area' && (
+            <ProfessorAreaModule onNavigateToStudent={handleNavigateToAlunos} />
+          )}
+          {safeActiveModule === 'biblioteca' && <BibliotecaModule />}
+          {safeActiveModule === 'biblioteca_cursos' && <CourseLibraryModule />}
+          {safeActiveModule === 'gestao_inscricoes' && <GestaoInscricoesModule />}
+          {safeActiveModule === 'pagbank' && <PagBankIntegrationModule />}
+        </PortalShell>
+      )}
     </InstitutionalErrorBoundary>
   )
 }
