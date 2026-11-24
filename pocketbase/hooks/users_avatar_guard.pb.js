@@ -16,6 +16,10 @@
  *
  * REGRAS JSVM (memória do projeto): `const app = $app` dentro do callback;
  * toda a lógica inline no callback.
+ *
+ * NOTA (v0.0.113): `ForbiddenError` é um erro global válido no JSVM do
+ * PocketBase (documentação oficial) e é usado aqui para responder 403 —
+ * mesmo mecanismo de erros lançados dos hooks onRecord*Request.
  */
 onRecordUpdateRequest((e) => {
   const app = $app

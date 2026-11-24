@@ -1,5 +1,11 @@
 import pb from '@/lib/pocketbase/client'
 
+/** Nome do arquivo no campo `avatar` (ou '' quando não há foto). */
+export async function fetchUserAvatarFilename(userId: string): Promise<string> {
+  const rec = await pb.collection('users').getOne(userId, { fields: 'avatar' })
+  return String(rec?.avatar || '')
+}
+
 /**
  * Inclui, troca ou remove (file = null) a foto do usuário no campo `avatar`
  * da collection `users`. As regras de quem pode alterar são aplicadas pela

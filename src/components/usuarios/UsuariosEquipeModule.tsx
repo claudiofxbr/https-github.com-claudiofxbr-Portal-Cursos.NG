@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { resolveUserAvatarUrl } from '@/lib/portalDb'
 import {
   Users,
   UserPlus,
@@ -79,7 +80,7 @@ const ROLE_OPTIONS: { role: UserRole; label: string; desc: string }[] = [
 ]
 
 export function UsuariosEquipeModule() {
-  const { users, updateUserRole, createUser, currentUser } = usePortal()
+  const { users, updateUserRole, setUserAvatar, createUser, currentUser } = usePortal()
   const { toast } = useToast()
 
   const [search, setSearch] = useState('')
@@ -508,6 +509,10 @@ export function UsuariosEquipeModule() {
         isSelf={editModalUser?.id === currentUser?.id}
         onSaved={(updated) => {
           const who = updated?.name || editModalUser?.name || 'usuário'
+          if (updated && updated.avatar !== undefined) {
+            // Reflete a foto salva no card e no usuário logado (sem recarregar).
+            setUserAvatar(updated.id, resolveUserAvatarUrl(updated.id, updated.avatar))
+          }
           toast({
             title: 'Dados atualizados',
             description: `As alterações em ${who} já aparecem na Auditoria do Aplicativo.`,

@@ -326,6 +326,7 @@ routerAdd('POST', '/backend/v1/users/update', (e) => {
       department: department,
       phone: phone,
       cpf: cpf,
+      avatar: String(target.getString('avatar') || ''),
     },
   })
 })

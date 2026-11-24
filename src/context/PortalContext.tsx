@@ -84,6 +84,8 @@ interface PortalContextType {
   logout: () => void
   users: UserAccount[]
   updateUserRole: (userId: string, newRole: UserRole) => void
+  /** Reflete no estado a foto (avatar) salva para um usuário (e para o logado). */
+  setUserAvatar: (userId: string, avatarUrl: string) => void
   createUser: (
     user: Omit<UserAccount, 'id' | 'createdAt'>,
     password?: string,
@@ -861,6 +863,13 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         error: err?.message || 'Falha ao redefinir a senha no servidor.',
       }
     }
+  }
+
+  // Reflete no estado a foto (avatar) salva para um usuário — e, quando é o
+  // usuário logado, também no currentUser (PortalShell, portal do aluno etc.).
+  const setUserAvatar = (userId: string, avatarUrl: string) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, avatar: avatarUrl } : u)))
+    setCurrentUser((prev) => (prev && prev.id === userId ? { ...prev, avatar: avatarUrl } : null))
   }
 
   const updateUserRole = (userId: string, newRole: UserRole) => {
@@ -3533,6 +3542,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         logout,
         users,
         updateUserRole,
+        setUserAvatar,
         createUser,
         requestPasswordResetEmail,
         confirmPasswordResetWithToken,

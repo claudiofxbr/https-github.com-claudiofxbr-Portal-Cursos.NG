@@ -25,7 +25,7 @@ import { Loader2, UserCog, Info, ShieldAlert, ShieldCheck, ImagePlus, Trash2 } f
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { updateAppUser, type UpdateUserResult } from '@/lib/portalDb'
-import { updateUserAvatar } from '@/lib/usuarioAvatar'
+import { updateUserAvatar, fetchUserAvatarFilename } from '@/lib/usuarioAvatar'
 
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024
@@ -208,7 +208,27 @@ export function EditUserDialog({
         status: showRoleStatus ? values.status : '',
       })
       setSavedEmail(values.email.trim())
-      onSaved(resp.user || null)
+      // Foto alterada nesta sessão? Reobtém o nome do arquivo salvo (a resposta
+      // da rota users/update não cobre o upload direto via SDK).
+      let savedAvatar: string | undefined
+      if (photoFile || photoRemoved) {
+        savedAvatar = await fetchUserAvatarFilename(user.id)
+      }
+      const finalUser = {
+        ...(resp.user || {
+          id: user.id,
+          name: values.name.trim(),
+          email: values.email.trim(),
+          role: user.role,
+          status: user.status,
+          roleTitle: user.roleTitle,
+          department: user.department,
+          phone: user.phone,
+          cpf: user.cpf,
+        }),
+        avatar: savedAvatar,
+      }
+      onSaved(finalUser)
       setTimeout(() => onOpenChange(false), 1200)
     } catch (err) {
       const e = err as Error & { field?: string }

@@ -146,6 +146,8 @@ export interface UpdateUserResult {
     department: string
     phone: string
     cpf: string
+    /** Nome do arquivo da foto (`avatar`) — vazio quando removida. */
+    avatar?: string
   }
 }
 
@@ -397,6 +399,15 @@ export function pbFileUrl(collection: string, recordId: string, filename: string
   const base = pb.baseUrl.replace(/\/$/, '')
   if (!filename) return ''
   return `${base}/api/files/${collection}/${recordId}/${encodeURIComponent(filename)}`
+}
+
+// Resolvedor de foto do usuário: aceita URL pronta (legado) ou o NOME do
+// arquivo no campo `avatar` da collection `users` (constrói a URL pública).
+export function resolveUserAvatarUrl(recordId: string, avatarValue: string | undefined): string {
+  const v = (avatarValue || '').trim()
+  if (!v) return ''
+  if (/^https?:\/\//i.test(v)) return v
+  return pbFileUrl('users', recordId, v)
 }
 
 async function safeList<T>(run: () => Promise<T[]>, fallback: T[]): Promise<T[]> {
