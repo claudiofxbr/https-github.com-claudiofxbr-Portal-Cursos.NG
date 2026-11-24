@@ -16,6 +16,7 @@ import { DiagnosticoModule } from '@/components/diagnostico/DiagnosticoModule'
 import { AgentesModule } from '@/components/agentes/AgentesModule'
 import { AuthAuditModule } from '@/components/auditoria/AuthAuditModule'
 import { DataAuditModule } from '@/components/auditoria/DataAuditModule'
+import { AppAuditModule } from '@/components/auditoria/AppAuditModule'
 import { EnrollmentsByCourseModule } from '@/components/relatorios/EnrollmentsByCourseModule'
 import { RelatoriosModule } from '@/components/relatorios/RelatoriosModule'
 import { AlunosModule } from '@/components/alunos/AlunosModule'
@@ -168,6 +169,9 @@ export default function Index() {
           )}
           {safeActiveModule === 'auditoria_dados' && (
             <DataAuditModule canAccess={canAccessModule('auditoria_dados')} />
+          )}
+          {safeActiveModule === 'auditoria_app' && (
+            <AppAuditModule canAccess={canAccessModule('auditoria_app')} />
           )}
           {safeActiveModule === 'relatorio_matriculas' && (
             <EnrollmentsByCourseModule canAccess={canAccessModule('relatorio_matriculas')} />

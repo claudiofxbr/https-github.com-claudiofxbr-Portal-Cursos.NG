@@ -45,6 +45,7 @@ export type ModuleKey =
   | 'agentes'
   | 'auditoria_auth'
   | 'auditoria_dados'
+  | 'auditoria_app'
   | 'relatorio_matriculas'
   | 'pagbank'
   | 'minhas_notas'

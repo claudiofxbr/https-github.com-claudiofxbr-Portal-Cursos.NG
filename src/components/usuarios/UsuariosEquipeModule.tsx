@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { usePortal } from '@/context/PortalContext'
 import { UserAccount, UserRole } from '@/types/portal'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
+import { EditUserDialog } from './EditUserDialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ import {
   Phone,
   Calendar,
   KeyRound,
+  UserCog,
   ShieldAlert,
 } from 'lucide-react'
 
@@ -98,7 +100,12 @@ export function UsuariosEquipeModule() {
   const [passwordModalUser, setPasswordModalUser] = useState<UserAccount | null>(null)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
 
+  // Alterar dados (edição completa)
+  const [editModalUser, setEditModalUser] = useState<UserAccount | null>(null)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+
   const isRootOrAdmin = currentUser?.role === 'root' || currentUser?.role === 'admin'
+  const isRoot = currentUser?.role === 'root'
 
   const filteredUsers = users.filter(
     (u) =>
@@ -279,6 +286,19 @@ export function UsuariosEquipeModule() {
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
                   <span className="text-[10px] text-slate-500 truncate">{user.roleTitle}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Botão Alterar: edição completa (self sempre; terceiros root/admin — regras finais no backend) */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditModalUser(user)
+                        setEditModalOpen(true)
+                      }}
+                      className="h-7 text-xs border-blue-700/60 bg-blue-950/40 hover:bg-blue-900/60 text-blue-200"
+                    >
+                      <UserCog className="w-3 h-3 mr-1" />
+                      Alterar
+                    </Button>
                     {/* Botão de alterar senha: própria senha sempre; de outros, só root/admin */}
                     {(isCurrentUser || isRootOrAdmin) && (
                       <Button
@@ -476,6 +496,22 @@ export function UsuariosEquipeModule() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* MODAL ALTERAR DADOS (edição completa) */}
+      <EditUserDialog
+        user={editModalUser}
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        canEditRoleStatus={isRoot}
+        isSelf={editModalUser?.id === currentUser?.id}
+        onSaved={(updated) => {
+          const who = updated?.name || editModalUser?.name || 'usuário'
+          toast({
+            title: 'Dados atualizados',
+            description: `As alterações em ${who} já aparecem na Auditoria do Aplicativo.`,
+          })
+        }}
+      />
 
       {/* MODAL ALTERAR SENHA / SESSÕES */}
       <ChangePasswordDialog

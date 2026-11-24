@@ -129,6 +129,69 @@ export async function fetchDataAuditSummary(): Promise<DataAuditSummary> {
   return resp as DataAuditSummary
 }
 
+// ---------------- Edição completa de usuário (v0.0.106) --------------------
+
+export interface UpdateUserResult {
+  success: boolean
+  emailChanged?: boolean
+  revokedSessions?: number
+  message: string
+  user?: {
+    id: string
+    name: string
+    email: string
+    role: string
+    status: string
+    roleTitle: string
+    department: string
+    phone: string
+    cpf: string
+  }
+}
+
+// Edita TODOS os dados editáveis do usuário (exceto senha — fluxo próprio em
+// changeUserPassword) pela rota customizada POST /backend/v1/users/update.
+// Regras no backend: self edita só o próprio cadastro; admin edita terceiros
+// (exceto root); root edita qualquer um e é o único que muda papel/status de
+// terceiros. Ninguém altera o próprio papel/status. E-mail trocado revoga as
+// sessões do alvo (novo login com o novo e-mail). A rota grava a alteração em
+// data_audit (aparece na Auditoria do Aplicativo).
+export async function updateAppUser(params: {
+  targetUserId: string
+  name: string
+  email: string
+  roleTitle?: string
+  department?: string
+  phone?: string
+  cpf?: string
+  role?: string
+  status?: string
+}): Promise<UpdateUserResult> {
+  try {
+    const resp = await pb.send('/backend/v1/users/update', {
+      method: 'POST',
+      body: {
+        targetUserId: params.targetUserId,
+        name: params.name,
+        email: params.email,
+        roleTitle: params.roleTitle || '',
+        department: params.department || '',
+        phone: params.phone || '',
+        cpf: params.cpf || '',
+        role: params.role || '',
+        status: params.status || '',
+      },
+    })
+    return resp as UpdateUserResult
+  } catch (err) {
+    const field = extractFieldErrors(err)
+    const msg = extractBackendMessage(err, 'Não foi possível salvar os dados do usuário.')
+    const e = new Error(msg) as Error & { field?: string }
+    if (field && Object.keys(field).length > 0) e.field = Object.keys(field)[0]
+    throw e
+  }
+}
+
 // ----------------------- PagBank sandbox (v0.0.102) ------------------------
 
 export interface PagbankOrderResult {

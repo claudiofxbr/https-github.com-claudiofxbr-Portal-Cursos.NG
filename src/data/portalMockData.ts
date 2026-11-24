@@ -193,6 +193,14 @@ export const MODULE_PERMISSIONS: ModulePermission[] = [
     requiredRoles: ['root', 'admin'],
   },
   {
+    key: 'auditoria_app',
+    label: 'Auditoria do Aplicativo',
+    description:
+      'Visão unificada de TODAS as alterações: dados (campo a campo) e eventos de autenticação, com autor e trilha imutável',
+    icon: 'History',
+    requiredRoles: ['root', 'admin'],
+  },
+  {
     key: 'portal_aluno',
     label: 'Portal do Aluno',
     description: 'Ambiente virtual com cursos, aulas, materiais, calendário e suporte',
