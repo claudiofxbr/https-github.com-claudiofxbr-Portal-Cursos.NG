@@ -1103,6 +1103,21 @@ function mapAttendance(rec: AnyRec): AttendanceRecord {
   }
 }
 
+/** Foto do usuário: o campo `avatar` é arquivo (nome) ou URL legada. */
+function userAvatarUrl(rec: AnyRec): string {
+  const file = str(rec.avatar)
+  if (!file) return ''
+  if (/^https?:\/\//.test(file)) return file
+  try {
+    return pb.files.getURL(
+      { id: str(rec.id), collectionId: 'users', collectionName: 'users' },
+      file,
+    )
+  } catch (_) {
+    return ''
+  }
+}
+
 function mapAppUser(rec: AnyRec): UserAccount {
   return {
     id: str(rec.id),
@@ -1114,7 +1129,7 @@ function mapAppUser(rec: AnyRec): UserAccount {
     status: str(rec.status, 'ativo') as UserAccount['status'],
     cpf: str(rec.cpf),
     phone: str(rec.phone),
-    avatar: str(rec.avatar),
+    avatar: userAvatarUrl(rec),
     createdAt: str(rec.createdAt),
     lastAccess: str(rec.lastAccess),
     studentId: str(rec.studentId) || undefined,

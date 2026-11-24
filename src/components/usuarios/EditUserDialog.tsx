@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -21,9 +21,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, UserCog, Info, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Loader2, UserCog, Info, ShieldAlert, ShieldCheck, ImagePlus, Trash2 } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { updateAppUser, type UpdateUserResult } from '@/lib/portalDb'
+import { updateUserAvatar } from '@/lib/usuarioAvatar'
+
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024
 import type { UserAccount } from '@/types/portal'
 
 const USER_ROLES = [
@@ -84,6 +89,11 @@ export function EditUserDialog({
   const [savedEmail, setSavedEmail] = useState('')
   const [confirmStep, setConfirmStep] = useState(false)
   const [pendingValues, setPendingValues] = useState<EditUserFormValues | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState('')
+  const [photoRemoved, setPhotoRemoved] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const {
     register,
@@ -126,6 +136,10 @@ export function EditUserDialog({
       setSavedEmail('')
       setConfirmStep(false)
       setPendingValues(null)
+      setPhotoFile(null)
+      setPhotoPreview('')
+      setPhotoRemoved(false)
+      setPhotoError('')
     }
   }, [open, user, reset])
 
@@ -134,7 +148,40 @@ export function EditUserDialog({
   const showRoleStatus = canEditRoleStatus && !isSelf
 
   // Confirmação exigida quando a edição afeta terceiros ou muda papel/status.
-  const needsConfirm = !isSelf || showRoleStatus
+  const photoChanged = photoFile !== null || photoRemoved
+  const needsConfirm = !isSelf || showRoleStatus || photoChanged
+
+  const handlePhotoChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (!PHOTO_TYPES.includes(f.type)) {
+      setPhotoError('Formato inválido: envie uma imagem JPG, PNG ou WEBP.')
+      return
+    }
+    if (f.size > PHOTO_MAX_BYTES) {
+      setPhotoError('Arquivo muito grande: o limite é 5 MB.')
+      return
+    }
+    setPhotoError('')
+    setPhotoRemoved(false)
+    setPhotoFile(f)
+    setPhotoPreview(URL.createObjectURL(f))
+  }
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null)
+    setPhotoPreview('')
+    setPhotoError('')
+    setPhotoRemoved(true)
+  }
+
+  const undoPhotoChange = () => {
+    setPhotoFile(null)
+    setPhotoPreview('')
+    setPhotoRemoved(false)
+    setPhotoError('')
+  }
 
   const doSubmit = async (values: EditUserFormValues) => {
     if (!user) return
@@ -142,6 +189,13 @@ export function EditUserDialog({
     setErrorField('')
     setSavedEmail('')
     try {
+      // Foto primeiro: a troca/remoção do campo avatar passa pela guarda do backend.
+      if (photoChanged) {
+        await updateUserAvatar(user.id, photoFile)
+        setPhotoFile(null)
+        setPhotoPreview('')
+        setPhotoRemoved(false)
+      }
       const resp = await updateAppUser({
         targetUserId: user.id,
         name: values.name.trim(),
@@ -186,6 +240,8 @@ export function EditUserDialog({
     if (pendingValues.cpf.trim() !== (user.cpf || '')) parts.push('CPF')
     if (showRoleStatus && pendingValues.role !== user.role) parts.push('perfil de acesso')
     if (showRoleStatus && pendingValues.status !== (user.status || 'ativo')) parts.push('status')
+    if (photoFile) parts.push('foto')
+    if (photoRemoved) parts.push('remoção da foto')
     return parts.join(', ')
   })()
 
@@ -209,6 +265,67 @@ export function EditUserDialog({
             </DialogHeader>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16 border border-slate-700">
+                  <AvatarImage
+                    src={photoPreview || (photoRemoved ? '' : user.avatar)}
+                    alt={user.name}
+                  />
+                  <AvatarFallback className="bg-slate-800 text-sm text-white">
+                    {user.name.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="border-slate-700 text-xs"
+                    >
+                      <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                      {photoPreview || (!photoRemoved && user.avatar)
+                        ? 'Trocar foto'
+                        : 'Incluir foto'}
+                    </Button>
+                    {(photoPreview || (!photoRemoved && user.avatar)) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRemovePhoto}
+                        className="border-red-800 text-xs text-red-300"
+                      >
+                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                        Remover foto
+                      </Button>
+                    )}
+                  </div>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                  <p className="text-[11px] text-slate-500">JPG, PNG ou WEBP, até 5 MB.</p>
+                  {photoRemoved && (
+                    <p className="text-xs text-amber-300">
+                      A foto será removida ao salvar.{' '}
+                      <button type="button" onClick={undoPhotoChange} className="underline">
+                        Desfazer
+                      </button>
+                    </p>
+                  )}
+                  {photoFile && !photoRemoved && (
+                    <p className="text-xs text-emerald-300">
+                      Nova foto selecionada: {photoFile.name}
+                    </p>
+                  )}
+                  {photoError && <p className="text-xs text-red-400">{photoError}</p>}
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-user-name">
                   Nome completo <span className="text-red-500">*</span>
