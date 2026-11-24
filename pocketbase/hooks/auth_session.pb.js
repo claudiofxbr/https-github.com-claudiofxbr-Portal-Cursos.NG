@@ -566,7 +566,15 @@ routerAdd('GET', '/backend/v1/auth/audit', (e) => {
       (page - 1) * perPage,
       bind,
     )
-    const total = app.countRecordsByFilter('auth_audit', filterExpr, bind)
+    // countRecordsByFilter não existe no JSVM: contagem via varredura completa.
+    const total = app.findRecordsByFilter(
+      'auth_audit',
+      filterExpr,
+      '-created',
+      10000,
+      0,
+      bind,
+    ).length
 
     const mapped = []
     for (let i = 0; i < items.length; i++) {
@@ -629,21 +637,31 @@ routerAdd('GET', '/backend/v1/auth/audit/summary', (e) => {
   const now = new Date().toISOString().replace('T', ' ')
 
   try {
-    const loginsOk24h = app.countRecordsByFilter(
+    // countRecordsByFilter não existe no JSVM: contagem via varredura completa.
+    const loginsOk24h = app.findRecordsByFilter(
       'auth_audit',
       "eventType = 'login_success' && created >= {:since}",
+      '-created',
+      10000,
+      0,
       { since: since },
-    )
-    const falhas24h = app.countRecordsByFilter(
+    ).length
+    const falhas24h = app.findRecordsByFilter(
       'auth_audit',
       "(eventType = 'login_failed' || eventType = 'blocked_attempt') && created >= {:since}",
+      '-created',
+      10000,
+      0,
       { since: since },
-    )
-    const sessoesAtivas = app.countRecordsByFilter(
+    ).length
+    const sessoesAtivas = app.findRecordsByFilter(
       'auth_sessions',
       'revoked = false && expiresAt > {:now}',
+      '-created',
+      10000,
+      0,
       { now: now },
-    )
+    ).length
 
     return e.json(200, {
       loginsOk24h: loginsOk24h,

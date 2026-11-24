@@ -24,9 +24,10 @@
  *  - não existe global `app` — usar `$app` (aqui: `const app = $app` dentro de cada callback);
  *  - callbacks (routerAdd/onRecord*) rodam em pool de VMs separado: TODA a lógica
  *    fica INLINE no corpo do callback (declarações top-level não são visíveis);
- *  - SELECT não materializa em subquery: agregações usam countRecordsByFilter, e o
- *    "usuários ativos" e a "coleção mais alterada" (24h) são computados no backend
- *    via varredura de 500 registros recentes + mapa em memória.
+ *  - SELECT não materializa em subquery e countRecordsByFilter NÃO existe no JSVM:
+ *    toda contagem usa findRecordsByFilter + .length (varredura em memória); o
+ *    "usuários ativos" e a "coleção mais alterada" (24h) também são computados
+ *    no backend via varredura de 500 registros recentes + mapa em memória.
  */
 
 // ---------------------------------------------------------------------------
@@ -447,7 +448,15 @@ routerAdd('GET', '/backend/v1/data/audit', (e) => {
       (page - 1) * perPage,
       bind,
     )
-    const total = app.countRecordsByFilter('data_audit', filterExpr, bind)
+    // countRecordsByFilter não existe no JSVM: contagem via varredura completa.
+    const total = app.findRecordsByFilter(
+      'data_audit',
+      filterExpr,
+      '-created',
+      10000,
+      0,
+      bind,
+    ).length
 
     const mapped = []
     for (let i = 0; i < items.length; i++) {
@@ -522,9 +531,15 @@ routerAdd('GET', '/backend/v1/data/audit/summary', (e) => {
 
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ')
-    const alteracoes24h = app.countRecordsByFilter('data_audit', 'created >= {:since}', {
-      since: since,
-    })
+    // countRecordsByFilter não existe no JSVM: contagem via varredura completa.
+    const alteracoes24h = app.findRecordsByFilter(
+      'data_audit',
+      'created >= {:since}',
+      '-created',
+      10000,
+      0,
+      { since: since },
+    ).length
 
     // Varredura dos 500 registros mais recentes para usuários ativos e
     // coleção mais alterada (últimas 24h).

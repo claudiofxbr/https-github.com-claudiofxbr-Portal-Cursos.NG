@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 
 /**
  * Inclui, troca ou remove (file = null) a foto do usuário no campo `avatar`
