@@ -246,7 +246,7 @@ export function UsuariosEquipeModule() {
                       <div className="flex items-center gap-1.5">
                         <h3 className="text-sm font-semibold text-white truncate">{user.name}</h3>
                         {isCurrentUser && (
-                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded font-mono">
+                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono">
                             Você
                           </span>
                         )}
@@ -282,10 +282,12 @@ export function UsuariosEquipeModule() {
                   </p>
                 </div>
 
-                {/* Ações */}
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
-                  <span className="text-[10px] text-slate-500 truncate">{user.roleTitle}</span>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                {/* Ações — coluna empilhada: Alterar, Alterar Papel, Alterar senha */}
+                <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                  <span className="block text-[10px] text-slate-500 truncate">
+                    {user.roleTitle}
+                  </span>
+                  <div className="flex flex-col items-stretch gap-1.5">
                     {/* Botão Alterar: edição completa (self sempre; terceiros root/admin — regras finais no backend) */}
                     <Button
                       size="sm"
@@ -294,11 +296,22 @@ export function UsuariosEquipeModule() {
                         setEditModalUser(user)
                         setEditModalOpen(true)
                       }}
-                      className="h-7 text-xs border-blue-700/60 bg-blue-950/40 hover:bg-blue-900/60 text-blue-200"
+                      className="w-full h-7 px-2 text-xs justify-center border-blue-700/60 bg-blue-950/40 hover:bg-blue-900/60 text-blue-200"
                     >
-                      <UserCog className="w-3 h-3 mr-1" />
+                      <UserCog className="w-3 h-3 mr-1 shrink-0" />
                       Alterar
                     </Button>
+                    {isRootOrAdmin && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenRoleChange(user)}
+                        className="w-full h-7 px-2 text-xs justify-center border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
+                      >
+                        <ShieldCheck className="w-3 h-3 mr-1 shrink-0" />
+                        Alterar Papel
+                      </Button>
+                    )}
                     {/* Botão de alterar senha: própria senha sempre; de outros, só root/admin */}
                     {(isCurrentUser || isRootOrAdmin) && (
                       <Button
@@ -308,21 +321,10 @@ export function UsuariosEquipeModule() {
                           setPasswordModalUser(user)
                           setPasswordModalOpen(true)
                         }}
-                        className="h-7 text-xs border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
+                        className="w-full h-7 px-2 text-xs justify-center border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
                       >
-                        <KeyRound className="w-3 h-3 mr-1" />
+                        <KeyRound className="w-3 h-3 mr-1 shrink-0" />
                         {isCurrentUser ? 'Minha senha' : 'Alterar senha'}
-                      </Button>
-                    )}
-                    {isRootOrAdmin && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenRoleChange(user)}
-                        className="h-7 text-xs border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
-                      >
-                        <ShieldCheck className="w-3 h-3 mr-1" />
-                        Alterar Papel
                       </Button>
                     )}
                   </div>
